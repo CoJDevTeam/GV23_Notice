@@ -1,0 +1,68 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep1SummaryVm
+@using GV23_Notice.Domain.Workflow
+
+<h2>Step 1 Summary (Approve Dates)</h2>
+
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+<div class="card mb-3">
+    <div class="card-header"><b>Settings</b></div>
+    <div class="card-body">
+        <div><b>Roll:</b> @Model.RollShortCode - @Model.RollName</div>
+        <div><b>Notice:</b> @Model.Notice</div>
+        <div><b>Mode:</b> @Model.Mode</div>
+        <div><b>Version:</b> @Model.Version</div>
+        <hr />
+        <div><b>Letter Date:</b> @Model.LetterDate.ToString("yyyy-MM-dd")</div>
+        <div><b>PortalUrl:</b> @Model.PortalUrl</div>
+        <div><b>Enquiries:</b> @Model.EnquiriesLine</div>
+        <div><b>City Manager Sign Date:</b> @(Model.CityManagerSignDate?.ToString("yyyy-MM-dd") ?? "-")</div>
+    </div>
+</div>
+
+@if (Model.Notice == NoticeKind.S49)
+{
+    <div class="card mb-3">
+        <div class="card-header"><b>Section 49 Dates</b></div>
+        <div class="card-body">
+            <div><b>Start:</b> @Model.ObjectionStartDate?.ToString("yyyy-MM-dd")</div>
+            <div><b>End:</b> @Model.ObjectionEndDate?.ToString("yyyy-MM-dd")</div>
+            <div><b>Extension:</b> @(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "-")</div>
+            <div><b>Signature:</b> @(string.IsNullOrWhiteSpace(Model.SignaturePath) ? "❌ Missing" : "✅ Uploaded")</div>
+            @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
+            {
+                <small class="text-muted">@Model.SignaturePath</small>
+            }
+        </div>
+    </div>
+}
+
+@if (Model.Notice == NoticeKind.S53)
+{
+    <div class="card mb-3">
+        <div class="card-header"><b>Section 53 Dates</b></div>
+        <div class="card-body">
+            <div><b>Batch Date:</b> @Model.BatchDate?.ToString("yyyy-MM-dd")</div>
+            <div><b>Appeal Close Date:</b> @Model.AppealCloseDate?.ToString("yyyy-MM-dd")</div>
+            <div><b>Override Reason:</b> @(string.IsNullOrWhiteSpace(Model.AppealCloseOverrideReason) ? "-" : Model.AppealCloseOverrideReason)</div>
+            <div><b>Override Evidence:</b> @(string.IsNullOrWhiteSpace(Model.AppealCloseOverrideEvidencePath) ? "-" : "✅ Uploaded")</div>
+        </div>
+    </div>
+}
+
+<div class="d-flex gap-2">
+    <a class="btn btn-secondary" href="@Url.Action("Step1", "Workflow", new { settingsId = Model.SettingsId })">Edit</a>
+
+    <form asp-action="Step1SummaryApprove" asp-controller="Workflow" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+        <button class="btn btn-success" type="submit">Approve &amp; Go to Step 2</button>
+    </form>
+</div>

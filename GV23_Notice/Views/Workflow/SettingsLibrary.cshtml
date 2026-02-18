@@ -1,0 +1,42 @@
+﻿@model List<GV23_Notice.Models.Workflow.ViewModels.SettingsLibraryRowVm>
+
+<h2>Approved Settings Library (Admin)</h2>
+
+<table class="table table-sm table-striped">
+    <thead>
+        <tr>
+            <th>SettingsId</th>
+            <th>Roll</th>
+            <th>Notice</th>
+            <th>Mode</th>
+            <th>Version</th>
+            <th>LetterDate</th>
+            <th>Signature</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var r in Model)
+        {
+            <tr>
+                <td>@r.SettingsId</td>
+                <td>@r.RollShortCode</td>
+                <td>@r.Notice</td>
+                <td>@r.Mode</td>
+                <td>@r.Version</td>
+                <td>@r.LetterDate.ToString("yyyy-MM-dd")</td>
+                <td>@(string.IsNullOrWhiteSpace(r.SignaturePath) ? "Missing" : "Uploaded")</td>
+                <td>
+                    <a class="btn btn-sm btn-primary"
+                       href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
+                        Reuse / Edit
+                    </a>
+                    <a class="btn btn-sm btn-secondary"
+                       href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
+                        Summary
+                    </a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

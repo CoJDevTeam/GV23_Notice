@@ -1,0 +1,206 @@
+﻿using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+
+namespace GV23_Notice.Services.Notices.DearJohnny
+{
+    public sealed class DearJonnyPdfService : IDearJonnyPdfService
+    {
+        public byte[] BuildNotice(DearJonnyPdfData data, DearJonnyPdfContext ctx)
+            => BuildPdf(data, ctx, isPreview: false);
+
+        public byte[] BuildPreview(DearJonnyPreviewData preview)
+        {
+            var ctx = new DearJonnyPdfContext
+            {
+                HeaderImagePath = preview.HeaderImagePath,
+                LetterDate = preview.LetterDate,
+                EnquiriesLine = preview.EnquiriesLine
+            };
+
+            var data = new DearJonnyPdfData
+            {
+                ObjectionNo = preview.ObjectionNo,
+                PropertyDescription = preview.PropertyDescription,
+                RollName = preview.RollName,
+
+                Addr1 = preview.Addr1,
+                Addr2 = preview.Addr2,
+                Addr3 = preview.Addr3,
+                Addr4 = preview.Addr4,
+                Addr5 = preview.Addr5
+            };
+
+            return BuildPdf(data, ctx, isPreview: true);
+        }
+
+        private static byte[] BuildPdf(DearJonnyPdfData data, DearJonnyPdfContext ctx, bool isPreview)
+        {
+            if (data is null) throw new ArgumentNullException(nameof(data));
+            if (ctx is null) throw new ArgumentNullException(nameof(ctx));
+
+            var model = new Model(data, ctx);
+
+            return Document.Create(container =>
+            {
+                container.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.MarginLeft(30);
+                    page.MarginRight(30);
+                    page.MarginTop(10);
+                    page.MarginBottom(10);
+
+                    page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(9));
+
+                    page.Content().Column(col =>
+                    {
+                        // ✅ Preview banner (same idea as other previews)
+                        if (isPreview)
+                        {
+                            col.Item()
+                               .AlignCenter()
+                               .Text("TEMPLATE PREVIEW (DUMMY DATA)")
+                               .SemiBold()
+                               .FontSize(10);
+
+                            col.Item().PaddingTop(6);
+                        }
+
+                        // 1) Header image
+                        if (!string.IsNullOrWhiteSpace(model.HeaderImagePath) && File.Exists(model.HeaderImagePath))
+                        {
+                            col.Item().Height(95).AlignCenter().Image(model.HeaderImagePath, ImageScaling.FitArea);
+                            col.Item().PaddingTop(5);
+                        }
+
+                        // 2) Address (left) + Date (right)
+                        col.Item().Row(row =>
+                        {
+                            row.RelativeItem().Column(left =>
+                            {
+                                AddAddrLine(left, model.Addr1, bold: true);
+                                AddAddrLine(left, model.Addr2);
+                                AddAddrLine(left, model.Addr3);
+                                AddAddrLine(left, model.Addr4);
+                                AddAddrLine(left, model.Addr5);
+                            });
+
+                            row.ConstantItem(180).AlignRight().Column(right =>
+                            {
+                                right.Item().Text(model.LetterDate.ToString("dd MMMM yyyy")).FontSize(9);
+                            });
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // 3) Title block
+                        col.Item().AlignCenter().Text("CITY OF JOHANNESBURG").FontSize(12).SemiBold();
+                        col.Item().AlignCenter().Text("RESPONSE OF OBJECTION OUTCOME").FontSize(10).SemiBold();
+
+                        col.Item().PaddingTop(6).LineHorizontal(1.5f);
+                        col.Item().PaddingTop(10);
+
+                        // 4) Property Description
+                        col.Item().Text("Property Description:").SemiBold();
+                        col.Item().PaddingTop(2).Text(model.PropertyDescription);
+
+                        col.Item().PaddingTop(10);
+
+                        // 5) Body
+                        col.Item().Text(t =>
+                        {
+                            t.Span("The objection number: ");
+                            t.Span(model.ObjectionNo).SemiBold();
+                            t.Span(
+                                $" received to the above-mentioned property was not considered as the property was subject to a previous legislative process relating to the General Valuation Roll 2023 (GV2023) and was concluded prior to {model.RollName}. " +
+                                "It was considered as an objection, section 52 review or an appeal.");
+                        });
+
+                        col.Item().PaddingTop(10)
+                            .Text("A section 53 notice will not be issued, as the objection is not valid for the reasons stated above.")
+                            .Justify()
+                            .SemiBold();
+
+                        col.Item().PaddingTop(12);
+
+                        // 6) Bullets
+                        Bullet(col,
+                            "Alternatively, the owner or an authorised representative may submit an application for condonation for a late appeal, accompanied by a written motivation explaining the reasons for the late submission.");
+
+                        Bullet(col,
+                            "Condonation for late appeals will be placed before the Committee for consideration; approval is not guaranteed and remains at the Committee’s discretion.");
+
+                        Bullet(col,
+                            "Application may be submitted through email to valuationenquiries@joburg.org.za or hand delivered at Jorissen Place, 66 Jorissen Street, 1st floor Valuation Administration.");
+
+                        col.Item().PaddingTop(10);
+                        col.Item().Text(model.EnquiriesLine).FontSize(9);
+
+                        col.Item().PaddingTop(14);
+
+                        // 7) Signature block
+                        col.Item().Text("S. Faiaz").SemiBold();
+                        col.Item().Text("Municipal Valuer");
+                    });
+
+                    // Footer
+                    page.Footer().AlignCenter().Column(f =>
+                    {
+                        f.Item().PaddingTop(6).AlignCenter()
+                            .Text("_______________________________________________")
+                            .FontSize(7)
+                            .FontColor(Colors.Grey.Darken2);
+
+                        f.Item()
+                            .Text("This is an official document generated by the City of Johannesburg Valuation Services Department")
+                            .FontSize(7)
+                            .AlignCenter()
+                            .FontColor(Colors.Grey.Darken2);
+
+                        f.Item()
+                            .Text($"Generated on: {model.LetterDate:dd MMMM yyyy}")
+                            .FontSize(7)
+                            .AlignCenter()
+                            .FontColor(Colors.Grey.Darken2);
+                    });
+                });
+            }).GeneratePdf();
+        }
+
+        private static void AddAddrLine(ColumnDescriptor col, string? line, bool bold = false)
+        {
+            var value = string.IsNullOrWhiteSpace(line) ? "XXXX" : line.Trim();
+            var text = col.Item().Text(value).FontSize(10);
+            if (bold) text.SemiBold();
+        }
+
+        private static void Bullet(ColumnDescriptor col, string text)
+        {
+            col.Item().Row(row =>
+            {
+                row.ConstantItem(12).Text("•").FontSize(10);
+                row.RelativeItem().Text(text).Justify();
+            });
+            col.Item().PaddingTop(4);
+        }
+
+        private sealed record Model(DearJonnyPdfData Data, DearJonnyPdfContext Ctx)
+        {
+            public string HeaderImagePath => Ctx.HeaderImagePath;
+            public DateTime LetterDate => Ctx.LetterDate;
+            public string EnquiriesLine => Ctx.EnquiriesLine;
+
+            public string RollName => Data.RollName ?? "";
+            public string ObjectionNo => Data.ObjectionNo ?? "";
+            public string PropertyDescription => Data.PropertyDescription ?? "";
+
+            public string Addr1 => Data.Addr1 ?? "";
+            public string Addr2 => Data.Addr2 ?? "";
+            public string Addr3 => Data.Addr3 ?? "";
+            public string Addr4 => Data.Addr4 ?? "";
+            public string Addr5 => Data.Addr5 ?? "";
+        }
+    }
+}
+

@@ -1,0 +1,90 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
+@using GV23_Notice.Domain.Workflow
+
+@{
+    ViewData["Title"] = "Step 3 Kickoff";
+    bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
+}
+
+<h2>Step 3 Kickoff (Data Team)</h2>
+
+<div class="alert alert-info">
+    <div><b>Roll:</b> @Model.RollShortCode - @Model.RollName</div>
+    <div><b>Notice:</b> @Model.Notice</div>
+    <div><b>Version:</b> v@Model.Version</div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><b>Approved Summary (Read-only)</b></div>
+    <div class="card-body">
+        <div><b>Approved:</b> @(Model.IsApproved ? "Yes" : "No")</div>
+        <div><b>Approved By:</b> @(Model.ApprovedBy ?? "-")</div>
+        <div><b>Approved At (UTC):</b> @(Model.ApprovedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "-")</div>
+
+        <hr />
+
+        <div><b>Letter Date:</b> @Model.LetterDate.ToString("yyyy-MM-dd")</div>
+        <div><b>Objection Start:</b> @(Model.ObjectionStartDate?.ToString("yyyy-MM-dd") ?? "-")</div>
+        <div><b>Objection End:</b> @(Model.ObjectionEndDate?.ToString("yyyy-MM-dd") ?? "-")</div>
+        <div><b>Extension Date:</b> @(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "-")</div>
+        <div><b>Financial Year Text:</b> @(Model.FinancialYearsText ?? "-")</div>
+
+        <div class="mt-2">
+            <b>Signature:</b>
+            @if (hasSignature)
+            {
+                <span class="badge bg-success">Uploaded</span>
+            }
+            else
+            {
+
+                <span class="badge bg-warning text-dark">Not Uploaded</span>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between">
+                <b>Live PDF Preview (from DB)</b>
+                <a class="btn btn-sm btn-outline-secondary" href="@Model.PdfPreviewUrl" target="_blank">Open in new tab</a>
+            </div>
+            <div class="card-body" style="height:75vh;">
+                <iframe src="@Model.PdfPreviewUrl" style="width:100%; height:100%; border:1px solid #ddd;"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card mb-3">
+            <div class="card-header"><b>Live Sample (Roll + SAP)</b></div>
+            <div class="card-body">
+                <div><b>PremiseId:</b> @(Model.SamplePremiseId ?? "-")</div>
+                <div><b>Email:</b> @(Model.SampleEmail ?? "-")</div>
+                <div><b>Row Count:</b> @Model.SampleRowCount</div>
+                <div><b>Split:</b> @(Model.SampleIsSplit ? "Yes" : "No")</div>
+            </div>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header"><b>Email Preview (Live info)</b></div>
+            <div class="card-body">
+                <div class="border p-2" style="max-height:35vh; overflow:auto;">
+                    @Html.Raw(Model.EmailPreviewHtml)
+                </div>
+            </div>
+        </div>
+
+        <form asp-action="Step3StartS49Batch" asp-controller="Workflow" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+            <input type="hidden" name="key" value="@Model.ApprovalKey" />
+
+            <button type="submit" class="btn btn-primary">
+                Start with Batch (500)
+            </button>
+        </form>
+    </div>
+</div>

@@ -1,0 +1,441 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep1Vm
+@using GV23_Notice.Domain.Workflow
+@{
+    ViewData["Title"] = "Unified Workflow - Step 1 (Admin)";
+    var rolls = ViewBag.Rolls as List<SelectListItem> ?? new List<SelectListItem>();
+}
+
+<h2>Unified Notice Workflow - Step 1 (Admin)</h2>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
+
+<form asp-action="Step1" asp-controller="Workflow" method="post" enctype="multipart/form-data">
+    @Html.AntiForgeryToken()
+    <input type="hidden" asp-for="SettingsId" />
+    <div class="row g-3">
+        <div class="col-md-6">
+            <label class="form-label">Valuation Period</label>
+            <select class="form-select" asp-for="ValuationPeriodCode" asp-items="ViewBag.ValuationPeriods" id="valuationPeriod">
+                <option value="">-- select --</option>
+            </select>
+        </div>
+
+        <div class="col-md-6">
+            <label class="form-label">Financial Year (1 July – 30 June)</label>
+            <select class="form-select" id="financialYearSelect">
+                <option value="">-- select valuation period first --</option>
+            </select>
+
+            <!-- hidden fields saved to vm -->
+            <input type="hidden" asp-for="FinancialYearStart" id="fyStart" />
+            <input type="hidden" asp-for="FinancialYearEnd" id="fyEnd" />
+            <input type="hidden" asp-for="FinancialYearsText" id="fyText" />
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-4">
+            <label class="form-label">Roll</label>
+            <select class="form-select" asp-for="RollId" asp-items="rolls" id="rollSelect">
+                <option value="0">-- Select Roll --</option>
+            </select>
+            <span class="text-danger" asp-validation-for="RollId"></span>
+        </div>
+
+        <div class="col-md-4">
+            <label class="form-label">Notice</label>
+            <select class="form-select" id="noticeSelect" name="Notice">
+                <option value="S49" selected="@(Model.Notice == NoticeKind.S49)">Section 49 (S49)</option>
+                <option value="S51" selected="@(Model.Notice == NoticeKind.S51)">Section 51 (S51)</option>
+                <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Section 52 (S52)</option>
+                <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 (S53)</option>
+                <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny (DJ)</option>
+                <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity (IN)</option>
+                <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option>
+            </select>
+        </div>
+        <input type="hidden" asp-for="Notice" id="noticeHidden" />
+        <div class="col-md-4">
+            <label class="form-label">Mode</label>
+            <select class="form-select" asp-for="Mode" id="modeSelect">
+                <option value="@BatchMode.Single">Single</option>
+                <option value="@BatchMode.Bulk">Bulk</option>
+            </select>
+        </div>
+    </div>
+
+    <hr />
+
+    <h4>Common Fields</h4>
+
+    <div class="row">
+        <div class="col-md-4">
+            <label class="form-label">Letter Date</label>
+            <input class="form-control" type="date" asp-for="LetterDate" id="letterDate" />
+        </div>
+
+        <div class="col-md-8" id="letterOverrideBlock" style="display:none;">
+            <label class="form-label">Letter Date Override Reason (required if changed)</label>
+            <input class="form-control" asp-for="LetterDateOverrideReason" />
+            <span class="text-danger" asp-validation-for="LetterDateOverrideReason"></span>
+        </div>
+    </div>
+
+    <div class="row mt-2">
+        <div class="col-md-4">
+            <label class="form-label">Portal URL (optional)</label>
+            <input class="form-control" asp-for="PortalUrl" />
+        </div>
+        <div class="col-md-8">
+            <label class="form-label">Enquiries Line (optional)</label>
+            <input class="form-control" asp-for="EnquiriesLine" />
+        </div>
+    </div>
+
+    <div class="row mt-2">
+        <div class="col-md-4">
+            <label class="form-label">City Manager Sign Date (optional)</label>
+            <input class="form-control" type="date" asp-for="CityManagerSignDate" />
+        </div>
+    </div>
+
+    <hr />
+
+    <!-- S49 -->
+    <div id="blockS49" class="notice-block" style="display:none;">
+        <h4>Section 49 Fields</h4>
+        <div class="row">
+            <div class="col-md-4">
+                <label class="form-label">Objection Start Date</label>
+                <input class="form-control" type="date" asp-for="ObjectionStartDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Objection End Date</label>
+                <input class="form-control" type="date" asp-for="ObjectionEndDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Extension Date (optional)</label>
+                <input class="form-control" type="date" asp-for="ExtensionDate" />
+            </div>
+        </div>
+
+        <div class="row mt-2">
+            <div class="col-md-6">
+                <label class="form-label">Signature Upload (required before Approve)</label>
+                <input class="form-control" type="file" name="signatureFile" />
+                @if (!string.IsNullOrWhiteSpace(Model.ExistingSignaturePath))
+                {
+                    <small class="text-muted">Existing: @Model.ExistingSignaturePath</small>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- S51 -->
+    <div id="blockS51" class="notice-block" style="display:none;">
+        <h4>Section 51 Fields</h4>
+        <div class="row">
+            <div class="col-md-4">
+                <label class="form-label">Evidence Closing Date (auto = LetterDate + 30)</label>
+                <input class="form-control" type="date" asp-for="EvidenceCloseDate" id="evidenceCloseDate" readonly />
+
+
+            </div>
+        </div>
+        <small class="text-muted">This will be calculated when you Save Draft.</small>
+    </div>
+
+    <!-- S52 -->
+    <div id="blockS52" class="notice-block" style="display:none;">
+        <h4>Section 52 Fields</h4>
+        <div id="blockS52Bulk" style="display:none;">
+            <div class="row">
+                <div class="col-md-4">
+                    <label class="form-label">Bulk From Date</label>
+                    <input class="form-control" type="date" asp-for="BulkFromDate" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Bulk To Date</label>
+                    <input class="form-control" type="date" asp-for="BulkToDate" />
+                </div>
+            </div>
+            <small class="text-muted">Bulk range is required for Section 52 bulk approvals.</small>
+        </div>
+        <div id="blockS52Single" style="display:none;">
+            <small class="text-muted">Single mode uses only Letter Date approval.</small>
+        </div>
+    </div>
+
+    <!-- S53 -->
+    <div id="blockS53" class="notice-block" style="display:none;">
+        <h4>Section 53 Fields</h4>
+        <div class="row">
+            <div class="col-md-4">
+                <label class="form-label">Batch Date (default Today)</label>
+                <input class="form-control" type="date" asp-for="BatchDate" />
+            </div>
+
+            <div class="col-md-4">
+                <label class="form-label">Appeal Close Date (auto calc)</label>
+                <input class="form-control" type="date" asp-for="AppealCloseDate" id="appealCloseDate" />
+
+                <span class="text-danger" asp-validation-for="AppealCloseDate"></span>
+            </div>
+
+            <div class="col-md-4 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" asp-for="AppealCloseOverridden" id="overrideS53" />
+                    <label class="form-check-label" for="overrideS53">Override Appeal Close Date</label>
+                </div>
+            </div>
+        </div>
+
+        <div id="blockS53Override" style="display:none;" class="mt-2">
+            <div class="row">
+                <div class="col-md-8">
+                    <label class="form-label">Override Reason (required)</label>
+                    <input class="form-control" asp-for="AppealCloseOverrideReason" />
+                    <span class="text-danger" asp-validation-for="AppealCloseOverrideReason"></span>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Override Evidence Upload (required)</label>
+                    <input class="form-control" type="file" name="overrideEvidenceFile" />
+                    @if (!string.IsNullOrWhiteSpace(Model.ExistingOverrideEvidencePath))
+                    {
+                        <small class="text-muted">Existing: @Model.ExistingOverrideEvidencePath</small>
+                    }
+                </div>
+            </div>
+        </div>
+        <small class="text-muted">Appeal close date = LetterDate + 45 calendar days, then shifted forward if weekend/holiday.</small>
+    </div>
+
+    <!-- DJ / IN -->
+    <div id="blockDJIN" class="notice-block" style="display:none;">
+        <h4>Dear Jonny / Invalidity</h4>
+        <small class="text-muted">Only Letter Date (and common optional fields) are required.</small>
+    </div>
+
+    <!-- S78 -->
+    <div id="blockS78" class="notice-block" style="display:none;">
+        <h4>Section 78 Fields</h4>
+        <div class="row">
+            <div class="col-md-4">
+                <label class="form-label">Extraction Date</label>
+                <input class="form-control" type="date" asp-for="ExtractionDate" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Extract Period (Days)</label>
+                <input class="form-control" type="number" asp-for="ExtractPeriodDays" min="1" max="365" />
+                <span class="text-danger" asp-validation-for="ExtractPeriodDays"></span>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Review Open Date</label>
+                <input class="form-control" type="date" asp-for="ReviewOpenDate" />
+            </div>
+        </div>
+
+        <div class="row mt-2">
+            <div class="col-md-4">
+                <label class="form-label">Review Close Date</label>
+                <input class="form-control" type="date" asp-for="ReviewCloseDate" />
+            </div>
+        </div>
+    </div>
+
+    <hr />
+
+    <div class="d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Save & Review Summary</button>
+
+        @if (Model.SettingsId.HasValue)
+        {
+            <a class="btn btn-secondary"
+               href="@Url.Action("Step1Summary", "Workflow", new { settingsId = Model.SettingsId })">
+                View Summary
+            </a>
+        }
+
+        <a class="btn btn-outline-dark"
+           href="@Url.Action("SettingsLibrary", "Workflow")">
+            Reuse Approved Settings
+        </a>
+    </div>
+
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        function toIsoDate(d) {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, "0");
+            const dd = String(d.getDate()).padStart(2, "0");
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        function mapNoticeStringToEnum(val) {
+            switch (val) {
+                case "S49": return "S49";
+                case "S51": return "S51";
+                case "S52": return "S52";
+                case "S53": return "S53";
+                case "DJ":  return "DJ";
+                case "IN":  return "IN";
+                case "S78": return "S78";
+                default:    return "S49";
+            }
+        }
+
+        function getTodayIso() {
+            const t = new Date();
+            return toIsoDate(t);
+        }
+
+        function showBlocks() {
+            const noticeVal = document.getElementById("noticeSelect")?.value || "S49";
+            const modeVal = document.getElementById("modeSelect")?.value || "2";
+
+            // Sync to enum hidden field
+            const hidden = document.getElementById("noticeHidden");
+            if (hidden) hidden.value = mapNoticeStringToEnum(noticeVal);
+
+            // Hide all
+            document.querySelectorAll(".notice-block").forEach(x => x.style.display = "none");
+
+            // Show blocks
+            if (noticeVal === "S49") document.getElementById("blockS49").style.display = "block";
+            if (noticeVal === "S51") document.getElementById("blockS51").style.display = "block";
+            if (noticeVal === "S52") {
+                document.getElementById("blockS52").style.display = "block";
+                const isBulk = (modeVal === "2" || String(modeVal).toLowerCase() === "bulk");
+                document.getElementById("blockS52Bulk").style.display = isBulk ? "block" : "none";
+                document.getElementById("blockS52Single").style.display = isBulk ? "none" : "block";
+            }
+            if (noticeVal === "S53") document.getElementById("blockS53").style.display = "block";
+            if (noticeVal === "DJ" || noticeVal === "IN") document.getElementById("blockDJIN").style.display = "block";
+            if (noticeVal === "S78") document.getElementById("blockS78").style.display = "block";
+
+            // S53 override UI
+            const chk = document.getElementById("overrideS53");
+            const overrideBlock = document.getElementById("blockS53Override");
+            const appeal = document.getElementById("appealCloseDate");
+
+            if (chk) {
+                if (overrideBlock) overrideBlock.style.display = chk.checked ? "block" : "none";
+                if (appeal) appeal.readOnly = !chk.checked;
+            }
+
+            // S49 letter override reason
+            const letterDate = document.getElementById("letterDate")?.value;
+            const todayStr = getTodayIso();
+            const letterOverrideBlock = document.getElementById("letterOverrideBlock");
+            if (letterOverrideBlock) {
+                letterOverrideBlock.style.display =
+                    (noticeVal === "S49" && letterDate && letterDate !== todayStr) ? "block" : "none";
+            }
+        }
+
+        function calcS51EvidenceClose() {
+            const notice = document.getElementById("noticeSelect")?.value;
+            if (notice !== "S51") return;
+
+            const letter = document.getElementById("letterDate")?.value;
+            const out = document.getElementById("evidenceCloseDate");
+            if (!letter || !out) return;
+
+            const dt = new Date(letter + "T00:00:00");
+            dt.setDate(dt.getDate() + 30);
+            out.value = toIsoDate(dt);
+        }
+
+        async function calcS53AppealClose() {
+            const notice = document.getElementById("noticeSelect")?.value;
+            if (notice !== "S53") return;
+
+            const override = document.getElementById("overrideS53")?.checked;
+            if (override) return;
+
+            const rollId = document.getElementById("rollSelect")?.value;
+            const letter = document.getElementById("letterDate")?.value;
+            const out = document.getElementById("appealCloseDate");
+
+            if (!rollId || rollId === "0" || !letter || !out) return;
+
+            const url = `/Workflow/CalcS53AppealCloseDate?rollId=${encodeURIComponent(rollId)}&letterDate=${encodeURIComponent(letter)}`;
+
+            try {
+                const resp = await fetch(url, { headers: { "Accept": "application/json" } });
+                if (!resp.ok) return;
+
+                const data = await resp.json();
+                if (data?.appealCloseDate) out.value = data.appealCloseDate;
+            } catch { }
+        }
+
+        async function runAll() {
+            showBlocks();
+            calcS51EvidenceClose();
+            await calcS53AppealClose();
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("noticeSelect")?.addEventListener("change", runAll);
+            document.getElementById("modeSelect")?.addEventListener("change", runAll);
+            document.getElementById("rollSelect")?.addEventListener("change", runAll);
+            document.getElementById("letterDate")?.addEventListener("change", runAll);
+            document.getElementById("overrideS53")?.addEventListener("change", runAll);
+
+            runAll();
+        });
+    </script>
+
+    <script>
+        const valuationPeriod = document.getElementById("valuationPeriod");
+        const fySelect = document.getElementById("financialYearSelect");
+        const fyStart = document.getElementById("fyStart");
+        const fyEnd = document.getElementById("fyEnd");
+        const fyText = document.getElementById("fyText");
+
+        valuationPeriod.addEventListener("change", async () => {
+          const code = valuationPeriod.value;
+          fySelect.innerHTML = `<option value="">-- select --</option>`;
+          fyStart.value = "";
+          fyEnd.value = "";
+          fyText.value = "";
+
+          if (!code) return;
+
+          const res = await fetch(`/Workflow/FinancialYears?valuationPeriodCode=${encodeURIComponent(code)}`);
+          const list = await res.json();
+
+          for (const item of list) {
+            const opt = document.createElement("option");
+            opt.value = `${item.start}|${item.end}|${item.text}`;
+            opt.textContent = item.text;
+            fySelect.appendChild(opt);
+          }
+        });
+
+        fySelect.addEventListener("change", () => {
+          const v = fySelect.value;
+          if (!v) return;
+
+          const [start, end, text] = v.split("|");
+          fyStart.value = start;
+          fyEnd.value = end;
+          fyText.value = text;
+        });
+    </script>
+
+}
+
+
