@@ -33,45 +33,64 @@ namespace GV23_Notice.Services
 
         private sealed record HolidayTableCfg(string Table, string DateColumn);
 
-        private async Task<HolidayTableCfg> GetHolidayTableCfgAsync(int rollId, CancellationToken ct)
+        private async Task<(string SourceDb, HolidayTableCfg Cfg)> GetHolidayTableCfgAsync(int rollId, CancellationToken ct)
         {
             var roll = await _centralDb.RollRegistry.AsNoTracking()
                 .FirstOrDefaultAsync(r => r.RollId == rollId, ct);
 
-            if (roll is null) throw new InvalidOperationException($"Roll not found. RollId={rollId}");
+            if (roll is null)
+                throw new InvalidOperationException($"Roll not found. RollId={rollId}");
+
+            if (string.IsNullOrWhiteSpace(roll.SourceDb))
+                throw new InvalidOperationException($"Roll SourceDb is missing. RollId={rollId}");
 
             var sectionPath = $"RollDb:HolidayTablesBySourceDb:{roll.SourceDb}";
             var table = _cfg[$"{sectionPath}:Table"];
             var col = _cfg[$"{sectionPath}:DateColumn"];
 
             if (string.IsNullOrWhiteSpace(table) || string.IsNullOrWhiteSpace(col))
-                throw new InvalidOperationException($"Holiday table config missing for SourceDb '{roll.SourceDb}' in appsettings.json");
+                throw new InvalidOperationException(
+                    $"Holiday table config missing for SourceDb '{roll.SourceDb}' in appsettings.json (Table/DateColumn).");
 
-            return new HolidayTableCfg(table, col);
+            return (roll.SourceDb, new HolidayTableCfg(table.Trim(), col.Trim()));
         }
 
         public async Task<HashSet<DateOnly>> GetHolidaysAsync(int rollId, DateOnly from, DateOnly to, CancellationToken ct)
         {
             if (to < from) (from, to) = (to, from);
 
-            // Cache per roll + year span (simple and very effective)
+            // Cache per roll + date span (safe + simple)
             var key = $"holidays:{rollId}:{from:yyyyMMdd}:{to:yyyyMMdd}";
-            if (_cache.TryGetValue(key, out HashSet<DateOnly> cached))
+            if (_cache.TryGetValue(key, out HashSet<DateOnly>? cached) && cached is not null)
                 return cached;
 
-            var cfg = await GetHolidayTableCfgAsync(rollId, ct);
+            var (sourceDb, cfg) = await GetHolidayTableCfgAsync(rollId, ct);
 
-            await using var conn = await _connFactory.OpenAsync(rollId, ct);
+            // ✅ Use your updated factory (Create(sourceDb)) — no OpenAsync on the factory
+            await using var conn = _connFactory.Create(sourceDb);
+            await conn.OpenAsync(ct);
 
             // IMPORTANT: table/column come from config (trusted), not user input.
+            // Still: wrap identifiers in [] and do NOT parameterize identifiers.
             var sql = $@"
 SELECT [{cfg.DateColumn}]
 FROM dbo.[{cfg.Table}]
 WHERE [{cfg.DateColumn}] >= @FromDate AND [{cfg.DateColumn}] <= @ToDate;";
 
-            await using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@FromDate", from.ToDateTime(TimeOnly.MinValue));
-            cmd.Parameters.AddWithValue("@ToDate", to.ToDateTime(TimeOnly.MinValue));
+            await using var cmd = new SqlCommand(sql, conn)
+            {
+                CommandTimeout = 60
+            };
+
+            // Use typed parameters (avoid AddWithValue surprises)
+            cmd.Parameters.Add(new SqlParameter("@FromDate", System.Data.SqlDbType.DateTime2)
+            {
+                Value = from.ToDateTime(TimeOnly.MinValue)
+            });
+            cmd.Parameters.Add(new SqlParameter("@ToDate", System.Data.SqlDbType.DateTime2)
+            {
+                Value = to.ToDateTime(TimeOnly.MinValue)
+            });
 
             var set = new HashSet<DateOnly>();
 
@@ -80,6 +99,7 @@ WHERE [{cfg.DateColumn}] >= @FromDate AND [{cfg.DateColumn}] <= @ToDate;";
             {
                 if (reader.IsDBNull(0)) continue;
 
+                // Handles Date/DateTime/DateTime2 columns
                 var dt = reader.GetDateTime(0).Date;
                 set.Add(DateOnly.FromDateTime(dt));
             }
@@ -95,4 +115,3 @@ WHERE [{cfg.DateColumn}] >= @FromDate AND [{cfg.DateColumn}] <= @ToDate;";
         }
     }
 }
-

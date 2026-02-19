@@ -1,5 +1,4 @@
-﻿using GV23_Notice.Services.Notices.Section49;
-using QuestPDF.Fluent;
+﻿using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using System.Globalization;
@@ -12,7 +11,6 @@ namespace GV23_Notice.Services.Notices.Section51
         {
             if (data is null) throw new ArgumentNullException(nameof(data));
             if (ctx is null) throw new ArgumentNullException(nameof(ctx));
-
             return BuildPdf(ctx, data, isPreview: false);
         }
 
@@ -20,7 +18,6 @@ namespace GV23_Notice.Services.Notices.Section51
         {
             if (preview is null) throw new ArgumentNullException(nameof(preview));
 
-            // Context comes from APPROVED Step1 settings
             var ctx = new Section51NoticeContext
             {
                 HeaderImagePath = preview.HeaderImagePath,
@@ -31,13 +28,16 @@ namespace GV23_Notice.Services.Notices.Section51
                 SignOffTitle = preview.SignOffTitle
             };
 
-            // Dummy data only (to make template complete for approval)
+            // NOTE: If you no longer want dummy at all, delete this preview builder
+            // and only call BuildNotice with DB data in Step2.
             var data = new Section51NoticeData
             {
                 RollName = preview.RollName,
                 ObjectionNo = preview.ObjectionNo,
                 Section51Pin = preview.Section51Pin,
                 PropertyFrom = preview.PropertyFrom,
+                ValuationKey = preview.ValuationKey,
+                EffectiveDate = preview.EffectiveDate,
 
                 Addr1 = "Notice Sample",
                 Addr2 = "66 Jorissen Place",
@@ -45,26 +45,23 @@ namespace GV23_Notice.Services.Notices.Section51
                 Addr4 = "Braamfontein",
                 Addr5 = "",
 
-                PropertyDesc = "PORTION 2 ERF 201 ROSEBANK",
+                PropertyDesc = "MELROSE NORTH Erf 181 Portion 38",
 
                 Section6 = new Section6Row
                 {
-                    Old_Market_Value = "349610000",
-                    Old_Category = "Business and Commercial",
-                    Old_Extent = "2000",
+                    Old_Market_Value = null,               // omitted example
+                    Old_Category = null,
+                    Old_Extent = null,
 
-                    New_Market_Value = "300000000",
+                    New_Market_Value = "3000000000",
                     New_Category = "Business and Commercial",
-                    New_Extent = "2000"
+                    New_Extent = "22436"
                 }
             };
 
             return BuildPdf(ctx, data, isPreview: true);
         }
 
-        // ==========================================================
-        // ONE PDF TEMPLATE (BODY) USED FOR BOTH PREVIEW + FINAL
-        // ==========================================================
         private static byte[] BuildPdf(Section51NoticeContext ctx, Section51NoticeData data, bool isPreview)
         {
             QuestPDF.Settings.License = LicenseType.Community;
@@ -72,26 +69,53 @@ namespace GV23_Notice.Services.Notices.Section51
             if (string.IsNullOrWhiteSpace(ctx.HeaderImagePath))
                 throw new InvalidOperationException("HeaderImagePath is required for Section51 PDF.");
 
-            var headerPath = ctx.HeaderImagePath;
+            var culture = CultureInfo.GetCultureInfo("en-ZA");
+
+            // keep consistent with S49
+            var title12 = TextStyle.Default.FontFamily("Arial").FontSize(12).SemiBold();
+            var sub10b = TextStyle.Default.FontFamily("Arial").FontSize(10).SemiBold();
+            var body9 = TextStyle.Default.FontFamily("Arial").FontSize(9);
+            var body9b = TextStyle.Default.FontFamily("Arial").FontSize(9).SemiBold();
+            var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
+
+            static string Safe(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
+
+            var isOmission = string.Equals(data.PropertyFrom?.Trim(), "Omission", StringComparison.OrdinalIgnoreCase);
 
             return Document.Create(container =>
             {
                 container.Page(page =>
                 {
                     page.Size(PageSizes.A4);
-                    page.Margin(30);
-                    page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(10));
+                    page.MarginLeft(30);
+                    page.MarginRight(30);
+                    page.MarginTop(10);
+                    page.MarginBottom(10);
+
+                    // ✅ Footer matches Section49: official line left, valuation key right
+                    page.Footer().PaddingTop(8).Row(r =>
+                    {
+                        r.RelativeItem().AlignLeft().Text(t =>
+                        {
+                            t.Span("_______________________________________________\n").Style(small7);
+                            t.Span("This is an official document generated by the City of Johannesburg Valuation Services Department\n").Style(small7);
+                            t.Span($"Generated on: {DateTime.Now:dd MMMM yyyy}").Style(small7);
+                        });
+
+                        r.ConstantItem(220).AlignRight().Text(t =>
+                        {
+                            t.Span("Valuation Key:\n").Style(small7);
+                            t.Span(Safe(data.ValuationKey)).Style(small7.SemiBold());
+                        });
+                    });
 
                     page.Content().Column(col =>
                     {
-                        // HEADER IMAGE
-                        if (File.Exists(headerPath))
-                        {
-                            col.Item().Height(95).AlignCenter().Image(headerPath, ImageScaling.FitArea);
-                            col.Item().PaddingTop(6);
-                        }
+                        col.Spacing(6);
 
-                        // PREVIEW BANNER
+                        // Header image (same as S49)
+                        col.Item().Image(ctx.HeaderImagePath, ImageScaling.FitWidth);
+
                         if (isPreview)
                         {
                             col.Item()
@@ -99,183 +123,126 @@ namespace GV23_Notice.Services.Notices.Section51
                                .Background(Colors.Grey.Lighten3)
                                .Padding(6)
                                .AlignCenter()
-                               .Text("TEMPLATE PREVIEW (DUMMY DATA) – FOR ADMIN APPROVAL")
-                               .SemiBold()
-                               .FontSize(10);
-
-                            col.Item().PaddingTop(8);
+                               .Text("TEMPLATE PREVIEW (DB / SAMPLE) – FOR ADMIN APPROVAL")
+                               .FontFamily("Arial").FontSize(9).SemiBold();
                         }
 
-                        // BODY (single source)
-                        BuildBody(col, ctx, data);
-                    });
+                        // Address + date row
+                        col.Item().PaddingTop(6).Row(r =>
+                        {
+                            r.RelativeItem().Text(t =>
+                            {
+                                t.Span(Safe(data.Addr1) + "\n").Style(sub10b);
+                                if (!string.IsNullOrWhiteSpace(data.Addr2)) t.Span(Safe(data.Addr2) + "\n").Style(sub10b);
+                                if (!string.IsNullOrWhiteSpace(data.Addr3)) t.Span(Safe(data.Addr3) + "\n").Style(sub10b);
+                                if (!string.IsNullOrWhiteSpace(data.Addr4)) t.Span(Safe(data.Addr4) + "\n").Style(sub10b);
+                                if (!string.IsNullOrWhiteSpace(data.Addr5)) t.Span(Safe(data.Addr5) + "\n").Style(sub10b);
+                            });
 
-                    page.Footer()
-                        .AlignCenter()
-                        .Text("This is an official document generated by the City of Johannesburg Valuation Services Department")
-                        .FontSize(7)
-                        .FontColor(Colors.Grey.Darken2);
+                            r.ConstantItem(180).AlignRight()
+                                .Text(ctx.LetterDate.ToString("dd MMMM yyyy", culture))
+                                .Style(body9);
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // Title like the Word sample
+                        col.Item().AlignCenter().Text(t =>
+                        {
+                            t.Span("NOTICE – OBJECTION NUMBER ").Style(title12);
+                            t.Span(Safe(data.ObjectionNo)).Style(title12);
+                        });
+
+                        col.Item().AlignCenter().Text(
+                            "Notifications of processing of objection in terms of section 51 of the Municipal Property Rates act No 6 of 2004"
+                        ).Style(body9b);
+
+                        col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor(Colors.Grey.Darken2);
+                        col.Item().PaddingTop(10);
+
+                        // Greeting
+                        col.Item().Text($"Dear {GetRecipientName(data)},").Style(body9b);
+                        col.Item().PaddingTop(6);
+
+                        // Core paragraph (matches the Word message)
+                        col.Item().Text(t =>
+                        {
+                            t.Span("You are hereby notified that the Municipal Valuer has received an objection from an individual to your property which was ").Style(body9);
+                            t.Span("omitted/printed").Style(body9b);
+                            t.Span(" in the ").Style(body9);
+                            t.Span(Safe(data.RollName)).Style(body9b);
+                            t.Span(".").Style(body9);
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // Roll header + property description block
+                        if (!string.IsNullOrWhiteSpace(data.RollName))
+                            col.Item().Text(Safe(data.RollName)).Style(body9b);
+
+                        col.Item().PaddingTop(2).Text("PROPERTY DESCRIPTION").Style(body9b);
+                        col.Item().Text(Safe(data.PropertyDesc)).Style(body9);
+
+                        col.Item().PaddingTop(10);
+
+                        // Comparison table (GV vs Objector)
+                        col.Item().Element(e => BuildComparisonTable(e, data, isOmission));
+
+                        // With effect date (from your Word sample)
+                        if (data.EffectiveDate.HasValue)
+                        {
+                            col.Item().PaddingTop(6).Text(t =>
+                            {
+                                t.Span("With Effect Date ").Style(body9b);
+                                t.Span(data.EffectiveDate.Value.ToString("dd MMMM yyyy", culture)).Style(body9);
+                            });
+                        }
+
+                        col.Item().PaddingTop(10);
+
+                        // MPRA quote line
+                        col.Item().Text(
+                            "\"Processing of objections – A Municipal Valuer must promptly –\n" +
+                            "(b) decide objections on facts, including the submission of an objector, and, if the objector is not the owner, of the owner\"."
+                        ).Style(body9);
+
+                        col.Item().PaddingTop(10);
+
+                        // Submission instruction paragraph (wording aligned)
+                        col.Item().Text(t =>
+                        {
+                            t.Span("Submissions by the owner in response to the objections must be submitted online to the Municipal Valuer no later than ").Style(body9);
+                            t.Span(ctx.SubmissionsCloseDate.ToString("dd MMMM yyyy", culture)).Style(body9b);
+                            t.Span($" via {ctx.PortalUrl}. ").Style(body9);
+                            t.Span("To attach submissions, click on “Upload Documents,” select “Section 51 Uploads,” fill in the objection number ").Style(body9);
+                            t.Span(Safe(data.ObjectionNo)).Style(body9b);
+                            t.Span(" and PIN ").Style(body9);
+                            t.Span(Safe(data.Section51Pin)).Style(body9b);
+                            t.Span(", and then upload the submission documents.").Style(body9);
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // Next notification paragraph
+                        col.Item().Text(
+                            "You will be notified of the Municipal Valuer’s decision in terms of Section 53 of the Municipal Property Rates Act 6 of 2004. " +
+                            "If you are dissatisfied with the decision, you will have the right to lodge an appeal."
+                        ).Style(body9).Justify();
+
+                        col.Item().PaddingTop(10);
+
+                        // Enquiries line
+                        col.Item().Text(Safe(ctx.EnquiriesLine)).Style(body9);
+
+                        col.Item().PaddingTop(12);
+
+                        // Sign-off
+                        col.Item().Text("Kind Regards,").Style(body9);
+                        col.Item().Text(Safe(ctx.SignOffName)).Style(body9b);
+                        col.Item().Text(Safe(ctx.SignOffTitle)).Style(body9);
+                    });
                 });
             }).GeneratePdf();
-        }
-
-        // ==========================================================
-        // BODY LAYOUT (the “template” you approve in Step2)
-        // ==========================================================
-        private static void BuildBody(ColumnDescriptor col, Section51NoticeContext ctx, Section51NoticeData data)
-        {
-            var culture = CultureInfo.GetCultureInfo("en-ZA");
-            var isOmission = string.Equals(data.PropertyFrom?.Trim(), "Omission", StringComparison.OrdinalIgnoreCase);
-
-            // ADDRESS + DATE
-            col.Item().Row(r =>
-            {
-                r.RelativeItem().Column(left =>
-                {
-                    AddAddrLine(left, data.Addr1);
-                    AddAddrLine(left, data.Addr2);
-                    AddAddrLine(left, data.Addr3);
-                    AddAddrLine(left, data.Addr4);
-                    AddAddrLine(left, data.Addr5);
-                });
-
-                r.ConstantItem(180)
-                 .AlignRight()
-                 .Text(ctx.LetterDate.ToString("dd MMMM yyyy", culture));
-            });
-
-            col.Item().PaddingTop(10);
-
-            // TITLE
-            col.Item().AlignCenter().Text(t =>
-            {
-                t.Span("SECTION 51 NOTICE – OBJECTION NUMBER: ").SemiBold().FontSize(12);
-                t.Span((data.ObjectionNo ?? "").ToUpperInvariant()).SemiBold().FontSize(12);
-            });
-
-            col.Item().AlignCenter()
-                .Text("Processing of objection in terms of section 51 of the Municipal Property Rates Act, 2004 (Act No. 6 of 2004)")
-                .SemiBold().FontSize(10);
-
-            col.Item().PaddingTop(6).LineHorizontal(1.5f);
-            col.Item().PaddingTop(10);
-
-            // GREETING
-            col.Item().Text($"Dear {GetRecipientName(data)},").SemiBold();
-            col.Item().PaddingTop(8);
-
-            // WHY THIS LETTER
-            col.Item().Text(t =>
-            {
-                t.Span("You are hereby notified that the Municipal Valuer has received an objection in respect of your property, ");
-                t.Span("which was omitted/printed ").Italic();
-                t.Span("in the ");
-                t.Span(string.IsNullOrWhiteSpace(data.RollName) ? "valuation roll" : data.RollName).SemiBold();
-                t.Span(".");
-            });
-
-            col.Item().PaddingTop(6);
-
-            col.Item().Text(
-                "The Municipal Valuer will review the property in relation to the objection in terms of Section 51 of the MPRA. " +
-                "This process requires the Municipal Valuer to decide objections on facts, including any submission made by the owner (where applicable)."
-            ).Justify();
-
-            // DETAILS
-            col.Item().PaddingTop(12);
-            col.Item().Text("PROPERTY AND OBJECTION DETAILS").SemiBold();
-            col.Item().PaddingTop(4);
-
-            col.Item().Text(t =>
-            {
-                t.Span("Valuation Roll: ").SemiBold();
-                t.Span(string.IsNullOrWhiteSpace(data.RollName) ? "valuation roll" : data.RollName);
-            });
-
-            col.Item().Text(t =>
-            {
-                t.Span("Property Description: ").SemiBold();
-                t.Span(data.PropertyDesc ?? "");
-            });
-
-            col.Item().Text(t =>
-            {
-                t.Span("Objection Number: ").SemiBold();
-                t.Span(data.ObjectionNo ?? "");
-            });
-
-            // PIN BOX (CLEAR)
-            col.Item().PaddingTop(8)
-                .Border(1)
-                .Background(Colors.Grey.Lighten4)
-                .Padding(8)
-                .Row(r =>
-                {
-                    r.ConstantItem(120).Text("SECTION 51 PIN:").SemiBold();
-                    r.RelativeItem()
-                        .Text(string.IsNullOrWhiteSpace(data.Section51Pin) ? "Not available" : data.Section51Pin.Trim())
-                        .SemiBold()
-                        .FontSize(12);
-                });
-
-            // COMPARISON TABLE
-            col.Item().PaddingTop(10);
-            col.Item().Element(e => BuildComparisonTable(e, data, isOmission));
-
-            // INSTRUCTIONS
-            col.Item().PaddingTop(12);
-            col.Item().Text("INSTRUCTIONS").SemiBold();
-            col.Item().PaddingTop(6);
-
-            col.Item().Text(t =>
-            {
-                t.Span("Should you wish to make submissions for consideration by the Municipal Valuer, ");
-                t.Span("these must be submitted not later than ").SemiBold();
-                t.Span(ctx.SubmissionsCloseDate.ToString("dd MMMM yyyy", culture)).SemiBold();
-                t.Span(" via the City’s online portal.");
-            });
-
-            col.Item().PaddingTop(6);
-
-            col.Item().Column(list =>
-            {
-                Bullet(list, $"Access the portal at {ctx.PortalUrl}");
-                Bullet(list, "Click on “Upload documents”.");
-                Bullet(list, "Select “Section 51 Uploads”.");
-                Bullet(list, $"Enter the objection number: {data.ObjectionNo}");
-                if (!string.IsNullOrWhiteSpace(data.Section51Pin))
-                    Bullet(list, $"Enter the PIN: {data.Section51Pin.Trim()}");
-                Bullet(list, "Attach your supporting documents and submit.");
-            });
-
-            // FOOTER CONTACT + SIGN OFF
-            col.Item().PaddingTop(12);
-            col.Item().Text("For any enquiries please contact:").SemiBold();
-            col.Item().Text("Telephone 011 407 6622 or 011 407 6597");
-            col.Item().Text("Email: valuationenquiries@joburg.org.za");
-
-            col.Item().PaddingTop(12);
-            col.Item().Text("Kind Regards,");
-            col.Item().Text(ctx.SignOffName ?? "S. Faiaz").SemiBold();
-            col.Item().Text(ctx.SignOffTitle ?? "Municipal Valuer");
-            col.Item().Text("City of Johannesburg");
-        }
-
-        // ================= HELPERS (unchanged) =================
-
-        private static void AddAddrLine(ColumnDescriptor col, string? value)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-                col.Item().Text(value.Trim());
-        }
-
-        private static void Bullet(ColumnDescriptor col, string text)
-        {
-            col.Item().Row(r =>
-            {
-                r.ConstantItem(12).Text("•").SemiBold();
-                r.RelativeItem().Text(text).Justify();
-            });
         }
 
         private static string GetRecipientName(Section51NoticeData data)
@@ -290,68 +257,65 @@ namespace GV23_Notice.Services.Notices.Section51
 
             string gvValue = isOmission ? "Omitted" : StackMoney(s6?.Old_Market_Value, s6?.Old2_Market_Value, s6?.Old3_Market_Value);
             string gvCat = isOmission ? "Omitted" : StackText(s6?.Old_Category, s6?.Old2_Category, s6?.Old3_Category);
-            string gvArea = isOmission ? "Omitted" : StackNumber(s6?.Old_Extent, s6?.Old2_Extent, s6?.Old3_Extent);
+            string gvArea = isOmission ? "Omitted" : StackText(s6?.Old_Extent, s6?.Old2_Extent, s6?.Old3_Extent);
 
             string objValue = StackMoney(s6?.New_Market_Value, s6?.New2_Market_Value, s6?.New3_Market_Value);
             string objCat = StackText(s6?.New_Category, s6?.New2_Category, s6?.New3_Category);
-            string objArea = StackNumber(s6?.New_Extent, s6?.New2_Extent, s6?.New3_Extent);
+            string objArea = StackText(s6?.New_Extent, s6?.New2_Extent, s6?.New3_Extent);
 
             container.Table(t =>
             {
                 t.ColumnsDefinition(c =>
                 {
-                    c.ConstantColumn(110);
-                    c.RelativeColumn();
-                    c.RelativeColumn();
+                    c.ConstantColumn(110); // row labels
+                    c.RelativeColumn();    // GV
+                    c.RelativeColumn();    // Objector
                 });
 
                 t.Header(h =>
                 {
                     h.Cell().Element(HeaderCell).Text("");
-                    h.Cell().Element(HeaderCell).Text("General Valuation Roll 2023").SemiBold();
-                    h.Cell().Element(HeaderCell).Text("Objector’s Request").SemiBold();
+                    h.Cell().Element(HeaderCell).Text("General Valuation Roll 2023").FontFamily("Arial").FontSize(9).SemiBold();
+                    h.Cell().Element(HeaderCell).Text("Objectors Request").FontFamily("Arial").FontSize(9).SemiBold();
                 });
 
                 Row(t, "Value", gvValue, objValue);
                 Row(t, "Category", gvCat, objCat);
                 Row(t, "Area m²", gvArea, objArea);
             });
-        }
 
-        private static void Row(TableDescriptor t, string label, string left, string right)
-        {
-            t.Cell().Element(BodyCell).Text(label).SemiBold();
-            t.Cell().Element(BodyCell).Text(left ?? "");
-            t.Cell().Element(BodyCell).Text(right ?? "");
-        }
-
-        private static IContainer HeaderCell(IContainer c) => c.Border(1).Background(Colors.Grey.Lighten3).Padding(6);
-        private static IContainer BodyCell(IContainer c) => c.Border(1).Padding(6);
-
-        private static string StackText(params string?[] parts)
-            => string.Join("\n", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
-
-        private static string StackNumber(params string?[] parts)
-            => string.Join("\n", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
-
-        private static string StackMoney(params string?[] parts)
-            => string.Join("\n", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => FormatMoney(x!)));
-
-        private static string FormatMoney(string raw)
-        {
-            var cleaned = raw.Replace("R", "", StringComparison.OrdinalIgnoreCase)
-                             .Replace(",", " ")
-                             .Trim();
-
-            cleaned = new string(cleaned.Where(ch => char.IsDigit(ch) || ch == '.' || ch == '-').ToArray());
-
-            if (decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out var val))
+            static void Row(TableDescriptor t, string label, string left, string right)
             {
-                var s = val.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
-                return $"R {s}";
+                t.Cell().Element(BodyCell).Text(label).FontFamily("Arial").FontSize(9).SemiBold();
+                t.Cell().Element(BodyCell).Text(left ?? "").FontFamily("Arial").FontSize(9);
+                t.Cell().Element(BodyCell).Text(right ?? "").FontFamily("Arial").FontSize(9);
             }
 
-            return raw.Trim();
+            static IContainer HeaderCell(IContainer c) => c.Border(1).Background(Colors.Grey.Lighten3).Padding(6);
+            static IContainer BodyCell(IContainer c) => c.Border(1).Padding(6);
+
+            static string StackText(params string?[] parts)
+                => string.Join("\n", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+
+            static string StackMoney(params string?[] parts)
+                => string.Join("\n", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => FormatMoney(x!)));
+
+            static string FormatMoney(string raw)
+            {
+                var cleaned = raw.Replace("R", "", StringComparison.OrdinalIgnoreCase)
+                                 .Replace(",", " ")
+                                 .Trim();
+
+                cleaned = new string(cleaned.Where(ch => char.IsDigit(ch) || ch == '.' || ch == '-').ToArray());
+
+                if (decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out var val))
+                {
+                    var s = val.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+                    return $"R {s}";
+                }
+
+                return raw.Trim();
+            }
         }
     }
 }

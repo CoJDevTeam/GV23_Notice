@@ -23,7 +23,8 @@
         public string? Appeal_No { get; set; } // only shown if !isReview
 
         public string? App_Category { get; set; }
-
+        public string? App_Category2 { get; set; }
+        public string? App_Category3 { get; set; }
         public object? App_Extent { get; set; }
         public object? App_Extent2 { get; set; }
         public object? App_Extent3 { get; set; }

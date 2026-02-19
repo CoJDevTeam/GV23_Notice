@@ -1,5 +1,6 @@
 ﻿using GV23_Notice.Domain.Rolls;
 using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Models.DTOs;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Reflection.Emit;
@@ -25,6 +26,12 @@ namespace GV23_Notice.Data
 
         public DbSet<S49BatchRun> S49BatchRuns => Set<S49BatchRun>();
         public DbSet<S49BatchItem> S49BatchItems => Set<S49BatchItem>();
+
+        public DbSet<NoticeSettingsAudit> NoticeSettingsAudits => Set<NoticeSettingsAudit>();
+
+
+        public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -142,6 +149,32 @@ namespace GV23_Notice.Data
                 b.ToTable("S49BatchItems");
                 b.HasKey(x => x.Id);
                 b.HasIndex(x => new { x.BatchRunId, x.PremiseId }).IsUnique();
+            });
+
+            modelBuilder.Entity<NoticeSettingsAudit>(b =>
+            {
+                b.HasKey(x => x.Id);
+                b.Property(x => x.Step).HasMaxLength(30);
+                b.Property(x => x.Action).HasMaxLength(50);
+                b.Property(x => x.PerformedBy).HasMaxLength(256);
+
+                b.HasOne(x => x.Settings)
+                    .WithMany()
+                    .HasForeignKey(x => x.SettingsId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<NoticePreviewSnapshot>(b =>
+            {
+                b.HasKey(x => x.Id);
+                b.Property(x => x.Variant).HasMaxLength(50);
+                b.Property(x => x.Mode).HasMaxLength(20);
+                b.Property(x => x.CreatedBy).HasMaxLength(256);
+
+                b.HasOne(x => x.Settings)
+                    .WithMany()
+                    .HasForeignKey(x => x.SettingsId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
         }
     }

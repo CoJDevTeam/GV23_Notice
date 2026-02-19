@@ -5,9 +5,11 @@ using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Helper;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services;
+using GV23_Notice.Services.Audit;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Preview;
+using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -32,41 +34,56 @@ namespace GV23_Notice.Controllers
         private readonly INoticeEmailArchiveService _emailArchive;
         private readonly IOptions<EmailTemplateOptions> _emailOpt;
         private readonly IS49RollRepository _s49Roll;
-
+        private readonly INoticeSettingsAuditService _audit;
+        private readonly IPreviewDbDataService _previewRepo;
+        private readonly ITempFileStore _tempFiles;
 
         public WorkflowController(
-                AppDbContext db,
-                INoticeSettingsService settings,
-                IWorkflowAssetStorage assets,
-                IS53AppealCloseDateCalculator s53Calc,
-                ILogger<WorkflowController> log,INoticePreviewService previewService,IWorkflowApprovalEmailService wfEmails,
-                INoticeEmailArchiveService emailArchiveService, IOptions<EmailTemplateOptions> emailOpt, IS49RollRepository s49Roll)
-            {
-                _db = db;
-                _settings = settings;
-                _assets = assets;
-                _s53Calc = s53Calc;
-                _log = log;
+     AppDbContext db,
+     INoticeSettingsService settings,
+     IWorkflowAssetStorage assets,
+     IS53AppealCloseDateCalculator s53Calc,
+     ILogger<WorkflowController> log,
+     INoticePreviewService previewService,
+     IWorkflowApprovalEmailService wfEmails,
+     INoticeEmailArchiveService emailArchiveService,
+     IOptions<EmailTemplateOptions> emailOpt,
+     IS49RollRepository s49Roll,
+     INoticeSettingsAuditService audit,
+     IPreviewDbDataService previewDb,
+     ITempFileStore tempFiles)   // ✅ add
+        {
+            _db = db;
+            _settings = settings;
+            _assets = assets;
+            _s53Calc = s53Calc;
+            _log = log;
+
             _preview = previewService;
             _wfEmails = wfEmails;
             _emailArchive = emailArchiveService;
             _emailOpt = emailOpt;
             _s49Roll = s49Roll;
+            _audit = audit;
+            _previewRepo = previewDb;
 
+            _tempFiles = tempFiles;     // ✅ assign
         }
 
-            // GET: /Workflow/Step1
-            [HttpGet("Step1")]
+        // GET: /Workflow/Step1
+        [HttpGet("Step1")]
             public async Task<IActionResult> Step1(int? rollId, NoticeKind? notice, BatchMode? mode, int? settingsId, CancellationToken ct)
             {
                 await PopulateRollsAsync(ct);
-                        ViewBag.ValuationPeriods = ValuationPeriodCatalog.Periods
+                        ViewBag.ValuationPeriods = Helper.ValuationPeriodCatalog.Periods
                 .Select(p => new SelectListItem
                 {
                     Value = p.Code,
                     Text = $"{p.Code} ({p.Start:dd MMM yyyy} – {p.End:dd MMM yyyy})"
                 })
                 .ToList();
+
+
             // If opening an existing draft/version
             if (settingsId.HasValue)
                 {
@@ -103,13 +120,37 @@ namespace GV23_Notice.Controllers
                     BatchDate = DateTime.Today
                 });
             }
+
+        private static void ApplyValuationAndFinancialYear(WorkflowStep1Vm vm, NoticeSettings e)
+        {
+            e.ValuationPeriodCode = vm.ValuationPeriodCode;
+
+            var period = !string.IsNullOrWhiteSpace(vm.ValuationPeriodCode)
+                ? Helper.ValuationPeriodCatalog.Get(vm.ValuationPeriodCode)
+                : null;
+
+            if (period != null)
+            {
+                e.ValuationPeriodStart = period.Start;
+                e.ValuationPeriodEnd = period.End;
+            }
+
+            e.FinancialYearStart = vm.FinancialYearStart?.Date;
+            e.FinancialYearEnd = vm.FinancialYearEnd?.Date;
+
+            e.FinancialYearsText =
+                (vm.FinancialYearStart.HasValue && vm.FinancialYearEnd.HasValue)
+                    ? $"{vm.FinancialYearStart:dd MMMM yyyy} – {vm.FinancialYearEnd:dd MMMM yyyy}"
+                    : null;
+        }
+
         [HttpGet("FinancialYears")]
         public IActionResult FinancialYears(string valuationPeriodCode)
         {
-            var period = ValuationPeriodCatalog.Get(valuationPeriodCode);
+            var period = Helper.ValuationPeriodCatalog.Get(valuationPeriodCode);
             if (period is null) return Ok(new List<object>());
 
-            var years = ValuationPeriodCatalog.BuildFinancialYears(period)
+            var years = Helper.ValuationPeriodCatalog.BuildFinancialYears(period)
                 .Select(y => new
                 {
                     start = y.start.ToString("yyyy-MM-dd"),
@@ -131,39 +172,19 @@ namespace GV23_Notice.Controllers
       CancellationToken ct)
         {
             await PopulateRollsAsync(ct);
-
             var user = User?.Identity?.Name ?? "UNKNOWN";
 
-            // ---------------------------
-            // Validations
-            // ---------------------------
-
-            // Basic selection validation
             if (vm.RollId <= 0)
                 ModelState.AddModelError(nameof(vm.RollId), "Roll is required.");
 
-            // ✅ NEW: Valuation period + financial year required
+            // ✅ Valuation Period + Financial Year validation
             if (string.IsNullOrWhiteSpace(vm.ValuationPeriodCode))
                 ModelState.AddModelError(nameof(vm.ValuationPeriodCode), "Valuation Period is required.");
 
             if (!vm.FinancialYearStart.HasValue || !vm.FinancialYearEnd.HasValue)
                 ModelState.AddModelError(nameof(vm.FinancialYearStart), "Financial Year is required (1 July – 30 June).");
 
-            // (Optional but recommended) validate the financial year structure
-            if (vm.FinancialYearStart.HasValue && vm.FinancialYearEnd.HasValue)
-            {
-                var s = vm.FinancialYearStart.Value.Date;
-                var e = vm.FinancialYearEnd.Value.Date;
-
-                // must be 1 July -> 30 June next year
-                if (!(s.Month == 7 && s.Day == 1 && e.Month == 6 && e.Day == 30 && e.Year == s.Year + 1))
-                {
-                    ModelState.AddModelError(nameof(vm.FinancialYearStart),
-                        "Financial Year must run from 1 July to 30 June (next year).");
-                }
-            }
-
-            // LetterDate override rule (S49)
+            // S49 override rule
             if (vm.Notice == NoticeKind.S49)
             {
                 var today = DateTime.Today;
@@ -174,13 +195,11 @@ namespace GV23_Notice.Controllers
                         "Reason is required when Letter Date is overridden.");
             }
 
-            // S51 auto-calc evidence close date (always based on LetterDate)
+            // S51 close date
             if (vm.Notice == NoticeKind.S51)
-            {
                 vm.EvidenceCloseDate = vm.LetterDate.Date.AddDays(30);
-            }
 
-            // S53 auto-calc appeal close date unless override
+            // S53 appeal close date (unless override)
             if (vm.Notice == NoticeKind.S53)
             {
                 vm.BatchDate ??= DateTime.Today;
@@ -197,15 +216,11 @@ namespace GV23_Notice.Controllers
                         ModelState.AddModelError(nameof(vm.AppealCloseOverrideReason),
                             "Reason is required when overriding Appeal Close Date.");
 
-                    // Evidence required when override is selected (allow if already uploaded previously)
-                    if (overrideEvidenceFile is null || overrideEvidenceFile.Length <= 0)
-                    {
-                        if (string.IsNullOrWhiteSpace(vm.ExistingOverrideEvidencePath))
-                            ModelState.AddModelError("overrideEvidenceFile",
-                                "Evidence file is required when overriding Appeal Close Date.");
-                    }
+                    if ((overrideEvidenceFile is null || overrideEvidenceFile.Length <= 0) &&
+                        string.IsNullOrWhiteSpace(vm.ExistingOverrideEvidencePath))
+                        ModelState.AddModelError("overrideEvidenceFile",
+                            "Evidence file is required when overriding Appeal Close Date.");
 
-                    // Admin can type AppealCloseDate when overridden (validate present)
                     if (!vm.AppealCloseDate.HasValue)
                         ModelState.AddModelError(nameof(vm.AppealCloseDate),
                             "Appeal Close Date is required when overridden.");
@@ -215,16 +230,12 @@ namespace GV23_Notice.Controllers
             if (!ModelState.IsValid)
                 return View("Step1", vm);
 
-            // ---------------------------
             // Create or load draft
-            // ---------------------------
             NoticeSettings entity;
-
             if (vm.SettingsId.HasValue)
             {
-                var existing = await _settings.GetByIdForUpdateAsync(vm.SettingsId.Value, ct);
-                if (existing is null) return NotFound();
-                entity = existing;
+                entity = await _settings.GetByIdForUpdateAsync(vm.SettingsId.Value, ct) ?? (NoticeSettings)null!;
+                if (entity is null) return NotFound();
             }
             else
             {
@@ -232,11 +243,7 @@ namespace GV23_Notice.Controllers
                 vm.SettingsId = entity.Id;
             }
 
-            // ---------------------------
-            // Files
-            // ---------------------------
-
-            // Save signature (if uploaded)
+            // Save signature
             if (signatureFile is not null && signatureFile.Length > 0)
             {
                 var path = await _assets.SaveSignatureAsync(vm.RollId, vm.Notice, entity.Version, signatureFile, ct);
@@ -244,7 +251,7 @@ namespace GV23_Notice.Controllers
                 vm.ExistingSignaturePath = path;
             }
 
-            // Save S53 override evidence (if uploaded)
+            // Save override evidence
             if (vm.Notice == NoticeKind.S53 && overrideEvidenceFile is not null && overrideEvidenceFile.Length > 0)
             {
                 var path = await _assets.SaveOverrideEvidenceAsync(vm.RollId, vm.Notice, entity.Version, overrideEvidenceFile, ct);
@@ -252,47 +259,46 @@ namespace GV23_Notice.Controllers
                 vm.ExistingOverrideEvidencePath = path;
             }
 
-            // ---------------------------
-            // Map vm -> entity (including Valuation Period)
-            // ---------------------------
+            // Map vm → entity (your existing mapping)
             ApplyVmToEntity(vm, entity);
 
-            // ✅ Valuation Period mapping (FIXED: use "entity", not "e")
-            entity.ValuationPeriodCode = vm.ValuationPeriodCode;
+            // ✅ apply new period fields
+            ApplyValuationAndFinancialYear(vm, entity);
 
-            var period = ValuationPeriodCatalog.Get(vm.ValuationPeriodCode ?? "");
-            if (period != null)
-            {
-                entity.ValuationPeriodStart = period.Start;
-                entity.ValuationPeriodEnd = period.End;
-            }
-            else
-            {
-                // hard fail if the code is invalid
-                ModelState.AddModelError(nameof(vm.ValuationPeriodCode), "Invalid Valuation Period selected.");
-                return View("Step1", vm);
-            }
-
-            entity.FinancialYearStart = vm.FinancialYearStart?.Date;
-            entity.FinancialYearEnd = vm.FinancialYearEnd?.Date;
-
-            entity.FinancialYearsText = !string.IsNullOrWhiteSpace(vm.FinancialYearsText)
-                ? vm.FinancialYearsText
-                : (vm.FinancialYearStart.HasValue && vm.FinancialYearEnd.HasValue
-                    ? $"{vm.FinancialYearStart:dd MMMM yyyy} – {vm.FinancialYearEnd:dd MMMM yyyy}"
-                    : null);
-
-            // ---------------------------
-            // Save + Auto-confirm + Redirect
-            // ---------------------------
             await _settings.SaveDraftAsync(entity, ct);
 
             if (!entity.IsConfirmed)
                 await _settings.ConfirmAsync(entity.Id, user, "Auto-confirmed after Save Draft.", ct);
 
+            // ✅ AUDIT
+            await _audit.WriteAsync(
+                settingsId: entity.Id,
+                step: "Step1",
+                action: "SAVE_AND_CONFIRM",
+                by: user,
+                snapshot: new
+                {
+                    entity.Id,
+                    entity.RollId,
+                    entity.Notice,
+                    entity.Mode,
+                    entity.Version,
+                    entity.LetterDate,
+                    entity.ValuationPeriodCode,
+                    entity.ValuationPeriodStart,
+                    entity.ValuationPeriodEnd,
+                    entity.FinancialYearStart,
+                    entity.FinancialYearEnd,
+                    entity.FinancialYearsText,
+                    entity.SignaturePath
+                },
+                comment: null,
+                ct: ct);
+
             TempData["Success"] = $"Saved and confirmed (v{entity.Version}). Please review summary to approve.";
             return RedirectToAction(nameof(Step1Summary), new { settingsId = entity.Id });
         }
+
 
         // GET: /Workflow/Step1Summary?settingsId=123
         [HttpGet("Step1Summary")]
@@ -671,90 +677,184 @@ namespace GV23_Notice.Controllers
 
         [HttpGet("Step2")]
         public async Task<IActionResult> Step2(
-    int settingsId,
-    string? variant = null,
-    string? mode = null,
-    CancellationToken ct = default)
+     int settingsId,
+     string? variant,
+     string? mode,
+     string? appealNo,
+     CancellationToken ct)
         {
-            var parsedVariant = ParseVariantOrDefault(variant);
-            var parsedMode = ParseModeOrDefault(mode);
-
-            // ✅ Build preview using enum mode
-            var result = await _preview.BuildPreviewAsync(settingsId, parsedVariant, parsedMode, ct);
-
-            // ✅ Load Step1 settings so Step2 can show dates + signature
+            // 1) Snapshot (approved step1)
             var s = await _settings.GetByIdAsync(settingsId, ct);
             if (s is null) return NotFound();
 
-            // ✅ Persist UI mode string consistently
-            var uiMode = ToUiMode(parsedMode);
+            if (!s.IsConfirmed)
+            {
+                TempData["Error"] = "Step 1 must be confirmed before Step 2.";
+                return RedirectToAction(nameof(Step1), new { settingsId });
+            }
 
+            // 2) Parse UI -> enums
+            var v = PreviewVariantParser.Parse(variant);
+            var m = PreviewModeParser.Parse(mode);
+
+            // ✅ Section 52 needs appealNo
+            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(appealNo))
+            {
+                TempData["Error"] = "Appeal No is required for Section 52 previews.";
+                return RedirectToAction(nameof(Step1), new { settingsId });
+            }
+
+            // 3) Build preview (REAL DB row via stored procs inside service)
+            var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
+
+            // 4) Save pdf to temp and get URL for iframe
+            var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
+                ? $"Preview_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
+                : result.PdfFileName;
+
+            var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
+
+            // 5) Roll info (for headers)
+            var roll = await _db.RollRegistry.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+
+            // 6) Build VM
             var vm = new WorkflowStep2Vm
             {
-                SettingsId = result.SettingsId,
-                RollId = result.RollId,
-                RollShortCode = result.RollShortCode,
-                RollName = result.RollName,
-                Notice = result.Notice,
-                Mode = result.Mode,
-                Version = result.Version,
+                SettingsId = settingsId,
+                RollId = s.RollId,
+                RollShortCode = roll?.ShortCode ?? result.RollShortCode ?? "",
+                RollName = roll?.Name ?? result.RollName ?? "",
 
-                SelectedVariant = string.IsNullOrWhiteSpace(variant) ? "Default" : variant.Trim(),
-                SelectedMode = uiMode,
+                Notice = s.Notice,
+                Mode = s.Mode,
+                Version = s.Version,
 
-                RecipientName = result.RecipientName,
-                RecipientEmail = result.RecipientEmail,
+                // recipient
+                RecipientName = result.RecipientName ?? "",
+                RecipientEmail = result.RecipientEmail ?? "",
 
-                EmailSubject = result.EmailSubject,
-                EmailBodyHtml = result.EmailBodyHtml,
+                // email preview
+                EmailSubject = result.EmailSubject ?? "",
+                EmailBodyHtml = result.EmailBodyHtml ?? "",
 
-                // ✅ IMPORTANT: PdfUrl must use the SAME variant/mode the UI is showing
-                PdfUrl = Url.Action(nameof(Step2Pdf), "Workflow", new
-                {
-                    settingsId,
-                    variant = parsedVariant.ToString(),
-                    mode = uiMode
-                }) ?? "",
+                // pdf preview
+                PdfUrl = pdfUrl,
 
-                // ✅ Step1 snapshot shown in Step2
+                // keep UI selection
+                SelectedVariant = (variant ?? "Default"),
+                SelectedMode = (mode ?? "single"),
+                AppealNo = appealNo, // ✅ add to vm if you have it
+
+                // ✅ snapshot fields from settings (Step1)
                 LetterDate = s.LetterDate,
-                CityManagerSignDate = s.CityManagerSignDate,
+                PortalUrl = s.PortalUrl,
+                EnquiriesLine = s.EnquiriesLine,
+                FinancialYearsText = s.FinancialYearsText,
+
                 ObjectionStartDate = s.ObjectionStartDate,
                 ObjectionEndDate = s.ObjectionEndDate,
                 ExtensionDate = s.ExtensionDate,
+
                 EvidenceCloseDate = s.EvidenceCloseDate,
+
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
-                BatchDate = s.BatchDate,
-                AppealCloseDate = s.AppealCloseDate,
-                ExtractionDate = s.ExtractionDate,
-                ExtractPeriodDays = s.ExtractPeriodDays,
-                ReviewOpenDate = s.ReviewOpenDate,
-                ReviewCloseDate = s.ReviewCloseDate,
 
-                SignaturePath = s.SignaturePath,
-                IsConfirmed = s.IsConfirmed,
-                IsApproved = s.IsApproved
+                BatchDate = s.BatchDate,
+                AppealCloseDate = s.AppealCloseDate
             };
 
             return View(vm);
         }
 
+        public static class PreviewVariantParser
+        {
+            public static PreviewVariant Parse(string? variant)
+            {
+                if (string.IsNullOrWhiteSpace(variant))
+                    return PreviewVariant.Default;
 
-        // GET: /Workflow/Step2Pdf
+                var v = variant.Trim();
+
+                // Friendly aliases first
+                if (v.Equals("S52Review", StringComparison.OrdinalIgnoreCase) ||
+                    v.Equals("Review", StringComparison.OrdinalIgnoreCase) ||
+                    v.Equals("S52ReviewDecision", StringComparison.OrdinalIgnoreCase))
+                    return PreviewVariant.S52ReviewDecision;
+
+                if (v.Equals("S52Appeal", StringComparison.OrdinalIgnoreCase) ||
+                    v.Equals("Appeal", StringComparison.OrdinalIgnoreCase) ||
+                    v.Equals("S52AppealDecision", StringComparison.OrdinalIgnoreCase))
+                    return PreviewVariant.S52AppealDecision;
+
+                if (v.Equals("InvalidOmission", StringComparison.OrdinalIgnoreCase) ||
+                    v.Equals("Omission", StringComparison.OrdinalIgnoreCase))
+                    return PreviewVariant.InvalidOmission;
+
+                if (v.Equals("InvalidObjection", StringComparison.OrdinalIgnoreCase) ||
+                    v.Equals("Objection", StringComparison.OrdinalIgnoreCase))
+                    return PreviewVariant.InvalidObjection;
+
+                // Try enum parse
+                if (Enum.TryParse<PreviewVariant>(v, ignoreCase: true, out var parsed))
+                    return parsed;
+
+                return PreviewVariant.Default;
+            }
+        }
+        public static class PreviewModeParser
+        {
+            public static PreviewMode Parse(string? mode)
+            {
+                if (string.IsNullOrWhiteSpace(mode))
+                    return PreviewMode.Single;
+
+                var m = mode.Trim().ToLowerInvariant();
+
+                return m switch
+                {
+                    "single" => PreviewMode.Single,
+
+                    // backward compat from older code
+                    "multi" => PreviewMode.EmailMulti,
+
+                    // new canonical
+                    "emailmulti" => PreviewMode.EmailMulti,
+                    "email-multi" => PreviewMode.EmailMulti,
+                    "email_multi" => PreviewMode.EmailMulti,
+
+                    // split / multipurpose
+                    "split" => PreviewMode.SplitPdf,
+                    "splitpdf" => PreviewMode.SplitPdf,
+                    "split-pdf" => PreviewMode.SplitPdf,
+                    "split_pdf" => PreviewMode.SplitPdf,
+
+                    _ => PreviewMode.Single
+                };
+            }
+        }
+
+
         [HttpGet("Step2Pdf")]
         public async Task<IActionResult> Step2Pdf(
-            int settingsId,
-            string? variant = null,
-            string? mode = null,
-            CancellationToken ct = default)
+       int settingsId,
+       string? variant = null,
+       string? mode = null,
+       string? appealNo = null,
+       CancellationToken ct = default)
         {
+            var s = await _settings.GetByIdAsync(settingsId, ct);
+            if (s is null) return NotFound();
+
             var parsedVariant = ParseVariantOrDefault(variant);
             var parsedMode = ParseModeOrDefault(mode);
 
-            var result = await _preview.BuildPreviewAsync(settingsId, parsedVariant, parsedMode, ct);
+            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(appealNo))
+                return BadRequest("AppealNo is required for Section 52 previews.");
 
-            // ✅ Force browser preview (iframe) instead of download
+            var result = await _preview.BuildPreviewAsync(settingsId, parsedVariant, parsedMode, appealNo, ct);
+
             var fileName = string.IsNullOrWhiteSpace(result.PdfFileName)
                 ? $"Preview_{result.RollShortCode}_{result.Notice}.pdf"
                 : result.PdfFileName;
@@ -764,6 +864,7 @@ namespace GV23_Notice.Controllers
 
             return File(result.PdfBytes, "application/pdf");
         }
+
         // ✅ Mode parsing: accept old values + new tabs
         private static PreviewMode ParseModeOrDefault(string? mode)
         {
@@ -1109,59 +1210,98 @@ namespace GV23_Notice.Controllers
         }
 
         private byte[] BuildS49RealPreviewPdf(
-    NoticeSettings s,
-    string rollShortCode,
-    List<GV23_Notice.Models.DTOs.S49RollRowDto> rollRows,
-    GV23_Notice.Models.DTOs.SapContactDto contact)
+      NoticeSettings s,
+      string rollShortCode,
+      List<GV23_Notice.Models.DTOs.S49RollRowDto> rollRows,
+      GV23_Notice.Models.DTOs.SapContactDto contact)
         {
+            if (rollRows == null || rollRows.Count == 0)
+                throw new InvalidOperationException("No roll rows found for S49 preview.");
+
             var headerPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "Images", "Obj_Header.PNG");
 
-            // Choose property description/address from the first row
             var first = rollRows.First();
 
-            // Compute split rows (4 rows always)
-            var tableRows = S49SplitHelper.Build4RowSplit(rollRows);
+            // Decide if split/multipurpose
+            var isSplit = rollRows.Count > 1 ||
+                          rollRows.Any(r => !string.IsNullOrWhiteSpace(r.ValuationSplitIndicator));
 
-            // Plug into your existing builder by constructing NoticeAttributesModel-like input.
-            // Easiest (no refactor): we reuse your Section49PdfBuilder BuildNotice but update it to accept a list of table rows.
-            // For now, we’ll keep it simple: put the “tableRows” into Reason text until we refactor the builder.
-            // ✅ NEXT step (after kickoff) we refactor Section49PdfBuilder to render 4 rows properly.
-            var reason = string.Join(" | ", tableRows.Select(r => $"{r.Category}:{r.MarketValue:N0}/{r.Extent:N0}"));
+            // Build rows for PDF table
+            List<GV23_Notice.Services.Notices.Section49.Section49PropertyRow> propertyRows;
 
-            var builder = HttpContext.RequestServices.GetRequiredService<GV23_Notice.Services.Notices.Section49.ISection49PdfBuilder>();
-
-            var noticeData = new NoticeAttributesModel
+            if (isSplit)
             {
-                ADDR1 = contact.Addr1 ?? "Owner",
-                ADDR2 = contact.Addr2 ?? "",
-                ADDR3 = contact.Addr3 ?? "",
-                ADDR4 = contact.Addr4 ?? "",
-                ADDR5 = contact.Addr5 ?? "",
+                // Use your rule: 4 rows always (Multipurpose + BC + Residential + blank)
+                var splitRows = S49SplitHelper.Build4RowSplit(rollRows);
+
+                propertyRows = splitRows.Select(x => new GV23_Notice.Services.Notices.Section49.Section49PropertyRow
+                {
+                    Category = x.Category ?? "",
+                    MarketValue = x.MarketValue <= 0 ? "" : x.MarketValue.ToString("N0"),
+                    Extent = x.Extent <= 0 ? "" : x.Extent.ToString("N0"),
+                    Remarks = ""
+                }).ToList();
+            }
+            else
+            {
+                // Single property
+                propertyRows = new List<GV23_Notice.Services.Notices.Section49.Section49PropertyRow>
+        {
+            new GV23_Notice.Services.Notices.Section49.Section49PropertyRow
+            {
+                Category = first.CatDesc ?? "",
+                MarketValue = first.MarketValue.ToString("N0"),
+                Extent = first.Extent.ToString("N0"),
+                Remarks = ""
+            }
+        };
+            }
+
+            // ✅ Build the NEW expected model (Section49PdfData)
+            var data = new GV23_Notice.Services.Notices.Section49.Section49PdfData
+            {
+                Addr1 = contact.Addr1 ?? "Owner",
+                Addr2 = contact.Addr2 ?? "",
+                Addr3 = contact.Addr3 ?? "",
+                Addr4 = contact.Addr4 ?? "",
+                Addr5 = contact.Addr5 ?? "",
 
                 PropertyDesc = first.PropertyDesc ?? "",
-                LisStreetAddress = first.LisStreetAddress ?? (contact.PremiseAddress ?? ""),
+                LisStreetAddress = first.LisStreetAddress ?? contact.PremiseAddress ?? "",
 
-                // Temporarily first row only until we refactor builder table to accept list
-                MarketValue = first.MarketValue.ToString("N0"),
-                RateableArea = first.Extent.ToString("N0"),
-                CatDesc = first.CatDesc ?? "",
-                Reason = reason
+                PremiseId = first.PremiseId ,   // use whichever exists in your DTO
+                ValuationKey = first.ValuationKey ,
+
+                // if you still display reason text anywhere
+                Reason = first.Reason ?? "",
+
+                PropertyRows = propertyRows,
+
+                // If split -> force 4 rows rendering (your builder supports this)
+                ForceFourRows = isSplit
             };
 
+            // ✅ Use the correct context class name you implemented in the new builder
             var ctx = new GV23_Notice.Services.Notices.Section49.Section49NoticeContext
             {
                 HeaderImagePath = headerPath,
-                SignaturePath = s.SignaturePath,
+                SignaturePath = s.SignaturePath ?? "",
                 LetterDate = s.LetterDate,
+
                 InspectionStartDate = s.ObjectionStartDate ?? s.LetterDate,
                 InspectionEndDate = s.ObjectionEndDate ?? s.LetterDate.AddDays(30),
                 ExtendedEndDate = s.ExtensionDate,
+
                 FinancialYearsText = s.FinancialYearsText ?? "1 July 2025 – 30 June 2026",
                 RollHeaderText = $"{rollShortCode} ROLL"
             };
 
-            return builder.BuildNotice(noticeData, ctx);
+            var builder = HttpContext.RequestServices
+                .GetRequiredService<GV23_Notice.Services.Notices.Section49.ISection49PdfBuilder>();
+
+            return builder.BuildNotice(data, ctx);
         }
+
 
         private static class S49SplitHelper
         {

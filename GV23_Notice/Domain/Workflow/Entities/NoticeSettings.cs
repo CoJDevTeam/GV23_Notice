@@ -108,5 +108,10 @@ namespace GV23_Notice.Domain.Workflow.Entities
 
         public DateTime? FinancialYearStart { get; set; }   // 2025-07-01
         public DateTime? FinancialYearEnd { get; set; }     // 2026-06-30
+
+      
+
+     
+      
     }
 }

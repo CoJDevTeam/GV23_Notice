@@ -10,6 +10,9 @@
         public decimal Extent { get; set; }
         public string? Reason { get; set; }
         public int EmailSent { get; set; } // Email_Sent
+        public string ? ValuationSplitIndicator { get; set; }
+
+        public string? ValuationKey { get; set; }
     }
 
     public sealed class SapContactDto

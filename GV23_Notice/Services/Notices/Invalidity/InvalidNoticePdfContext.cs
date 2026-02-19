@@ -27,6 +27,9 @@
         public string? Addr3 { get; set; }
         public string? Addr4 { get; set; }
         public string? Addr5 { get; set; }
+
+        // ✅ NEW
+        public string ValuationKey { get; set; } = "";
     }
 
     /// <summary>
@@ -50,5 +53,8 @@
         // Use multiline address like your current builder expects
         public string RecipientAddress { get; set; } =
             "XXXX\nXXXX\nXXXX\nXXXX";
+
+        // ✅ NEW
+        public string ValuationKey { get; set; } = "";
     }
 }

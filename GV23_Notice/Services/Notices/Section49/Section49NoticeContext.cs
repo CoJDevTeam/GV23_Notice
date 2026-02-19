@@ -9,13 +9,14 @@
         public DateTime InspectionEndDate { get; set; }
         public DateTime? ExtendedEndDate { get; set; }
 
-        public string FinancialYearsText { get; set; } 
+        public string? FinancialYearsText { get; set; }
         public string? RollHeaderText { get; set; }
 
         public string? SignaturePath { get; set; }
 
         public bool ForceFourRows { get; set; } = false;
         public List<Section49PropertyRow>? PropertyRows { get; set; }
+
 
     }
 }

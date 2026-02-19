@@ -15,7 +15,17 @@
         // ================= Sign-off =================
         public string? SignOffName { get; set; }
         public string? SignOffTitle { get; set; }
+
+       
+     
+
+        // Optional contact line
+        public string EnquiriesLine { get; set; } =
+            "For any enquiries, please contact us on 011 407 6622 or 011 407 6597/valuationenquiries@joburg.org.za";
+
     }
+
+
     public sealed class Section6Row
     {
         // ================= OLD (GV Roll) =================
@@ -43,5 +53,8 @@
         public string? New3_Market_Value { get; set; }
         public string? New3_Category { get; set; }
         public string? New3_Extent { get; set; }
+
+
+
     }
 }

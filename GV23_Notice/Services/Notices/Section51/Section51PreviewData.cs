@@ -19,5 +19,10 @@
         public string ObjectionNo { get; set; } = "OBJ-GV23-1";
         public string Section51Pin { get; set; } = "123456";
         public string PropertyFrom { get; set; } = "Omission"; // or "Printed"
+
+     
+
+        public string? ValuationKey { get; set; }
+        public DateOnly? EffectiveDate { get; set; }
     }
 }

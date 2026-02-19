@@ -10,6 +10,7 @@ using GV23_Notice.Services.Notices.Section52;
 using GV23_Notice.Services.Notices.Section53;
 using GV23_Notice.Services.Notices.Section78;
 using GV23_Notice.Services.Preview;
+using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.EntityFrameworkCore;
@@ -42,8 +43,14 @@ builder.Services.AddScoped<IHolidayService, HolidayService>();
 builder.Services.AddScoped<IS53AppealCloseDateCalculator, S53AppealCloseDateCalculator>();
 
 // --------------------------- Preview ---------------------------
-builder.Services.AddScoped<IDummyPreviewDataFactory, DummyPreviewDataFactory>();
+// Preview / Step2
 builder.Services.AddScoped<INoticePreviewService, NoticePreviewService>();
+builder.Services.AddScoped<GV23_Notice.Services.Preview.ITempFileStore, GV23_Notice.Services.Preview.TempFileStore>();
+
+
+// You already have these, but ensure they exist:
+builder.Services.AddScoped<GV23_Notice.Services.Preview.IPreviewDbDataService, GV23_Notice.Services.Preview.PreviewDbDataService>();
+
 
 // --------------------------- PDF Builders / Services (REQUIRED) ---------------------------
 // NOTE: these must match the interfaces used in NoticePreviewService ctor

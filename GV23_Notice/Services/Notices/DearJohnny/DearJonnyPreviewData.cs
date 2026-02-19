@@ -20,5 +20,8 @@
         public string Addr3 { get; set; } = "Jorissen Street";
         public string Addr4 { get; set; } = "Braamfontein";
         public string Addr5 { get; set; } = "2001";
+
+        // ✅ NEW
+        public string ValuationKey { get; set; } = "";
     }
 }

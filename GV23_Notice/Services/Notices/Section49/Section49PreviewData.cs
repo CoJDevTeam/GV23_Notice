@@ -20,11 +20,39 @@
         // ✅ NEW: rows for the property table (max 4 used)
         public List<Section49PropertyRow>? PropertyRows { get; set; }
     }
+
+    public sealed class Section49PdfData
+    {
+        // Recipient address (sapContacts)
+        public string Addr1 { get; set; } = "";
+        public string Addr2 { get; set; } = "";
+        public string Addr3 { get; set; } = "";
+        public string Addr4 { get; set; } = "";
+        public string Addr5 { get; set; } = "";
+
+        // Property heading line (roll)
+        public string PropertyDesc { get; set; } = "";
+        public string PhysicalAddress { get; set; } = "";
+
+        // Trace key (must show bottom-right)
+        public string ValuationKey { get; set; } = "";
+
+        // Table rows (single OR split)
+        public bool ForceFourRows { get; set; } = true;
+        public List<Section49PropertyRow> PropertyRows { get; set; } = new();
+
+        public string? LisStreetAddress { get; set; }
+
+        public string? PremiseId { get; set; }
+
+        public string? Reason { get; set; }
+    }
     public sealed class Section49PropertyRow
     {
         public string MarketValue { get; set; } = "";
         public string Extent { get; set; } = "";
         public string Category { get; set; } = "";
         public string Remarks { get; set; } = "";
+
     }
 }

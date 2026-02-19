@@ -21,5 +21,8 @@
         public string Addr3 { get; set; } = "";
         public string Addr4 { get; set; } = "";
         public string Addr5 { get; set; } = "";
+
+        // ✅ NEW
+        public string ValuationKey { get; set; } = "";
     }
 }

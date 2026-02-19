@@ -26,5 +26,16 @@
         public Section6Row? Section6 { get; set; }
 
         public string? PropertyFrom { get; set; } // "Omission" or "Printed"
+
+     
+            // recipient/address
+                   // “MELROSE NORTH Erf ...”
+            public DateOnly? EffectiveDate { get; set; }           // “With Effect Date 01 July 2023”
+
+            // ✅ Trace key (required by you)
+            public string? ValuationKey { get; set; }
+
+           
+        
     }
 }

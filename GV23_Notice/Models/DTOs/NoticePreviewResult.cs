@@ -24,5 +24,11 @@ namespace GV23_Notice.Models.DTOs
 
         public byte[] PdfBytes { get; init; } = Array.Empty<byte>();
         public string PdfFileName { get; init; } = "Preview.pdf";
+
+        public long SnapshotId { get; set; }  // ✅ NEW
+
+       
+
+      
     }
 }

@@ -46,8 +46,15 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string SampleObjectionNo { get; set; } = "";
         public string SampleAppealNo { get; set; } = "";
 
+        public string AppealNo { get; set; } = "";
 
-    
+        public string? PortalUrl { get; set; } 
+         
+
+        public string? EnquiriesLine { get; set; }
+
+
+        public string? FinancialYearsText { get; set; }
 
         // UI selections (tabs)
         public string SelectedVariant { get; set; } = ""; // e.g. "InvalidOmission"
