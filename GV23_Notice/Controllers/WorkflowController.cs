@@ -3,6 +3,7 @@ using GV23_Notice.Domain.Email;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Helper;
+using GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
@@ -11,6 +12,7 @@ using GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
+using GV23_Notice.Services.SnapShotStep2;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -37,7 +39,7 @@ namespace GV23_Notice.Controllers
         private readonly INoticeSettingsAuditService _audit;
         private readonly IPreviewDbDataService _previewRepo;
         private readonly ITempFileStore _tempFiles;
-
+        private readonly INoticeStep2SnapshotService _snap;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -51,7 +53,7 @@ namespace GV23_Notice.Controllers
      IS49RollRepository s49Roll,
      INoticeSettingsAuditService audit,
      IPreviewDbDataService previewDb,
-     ITempFileStore tempFiles)   // ✅ add
+     ITempFileStore tempFiles, INoticeStep2SnapshotService _snap)   // ✅ add
         {
             _db = db;
             _settings = settings;
@@ -66,6 +68,7 @@ namespace GV23_Notice.Controllers
             _s49Roll = s49Roll;
             _audit = audit;
             _previewRepo = previewDb;
+            _snap=_snap;
 
             _tempFiles = tempFiles;     // ✅ assign
         }
@@ -902,191 +905,55 @@ namespace GV23_Notice.Controllers
             };
         }
 
-        [HttpPost("Step2Approve")]
+        [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Step2Approve(
-     int settingsId,
-     string? variant = null,
-     string? mode = null,
-     CancellationToken ct = default)
+        public async Task<IActionResult> Step2Approve(Step2ApproveDto dto, CancellationToken ct)
         {
-            if (settingsId <= 0) return BadRequest("settingsId is required.");
+            var approvedBy = User?.Identity?.Name ?? "Unknown";
 
-            var user = User?.Identity?.Name ?? "UNKNOWN";
+            // rebuild preview to get the latest subject/body/pdf
+            var pv = await _preview.BuildPreviewAsync(dto.SettingsId, dto.Variant, dto.Mode, dto.AppealNo, ct);
 
-            // Load for validation
-            var s = await _settings.GetByIdAsync(settingsId, ct);
-            if (s is null) return NotFound();
-
-            if (!s.IsConfirmed)
-            {
-                TempData["Error"] = "Please Confirm Step 1 settings before approving in Step 2.";
-                return RedirectToAction(nameof(Step1), new { settingsId });
-            }
-
-            // Required validations
-            if (s.Notice == NoticeKind.S49 && string.IsNullOrWhiteSpace(s.SignaturePath))
-            {
-                TempData["Error"] = "Signature is required for Section 49 before approval.";
-                return RedirectToAction(nameof(Step2), new { settingsId, variant, mode });
-            }
-
-            if (s.Notice == NoticeKind.S53 && !string.IsNullOrWhiteSpace(s.AppealCloseOverrideReason) &&
-                string.IsNullOrWhiteSpace(s.AppealCloseOverrideEvidencePath))
-            {
-                TempData["Error"] = "Override evidence is required for Section 53 approval.";
-                return RedirectToAction(nameof(Step2), new { settingsId, variant, mode });
-            }
-
-            // Approve + persist email archive + key
-            await _settings.ApproveAsync(settingsId, user, "Data Team approved in Step2.", ct);
-
-            var sUp = await _settings.GetByIdForUpdateAsync(settingsId, ct);
-            if (sUp is null) return NotFound();
-
-            var roll = await _db.RollRegistry.AsNoTracking().FirstOrDefaultAsync(r => r.RollId == sUp.RollId, ct);
-            if (roll is null) return NotFound();
-
-            if (sUp.ApprovalKey == Guid.Empty)
-                sUp.ApprovalKey = Guid.NewGuid();
-
-            var baseUrl = (_emailOpt.Value.BaseUrl ?? "").Trim().TrimEnd('/');
-            var kickoffUrl = $"{baseUrl}/Workflow/Step3Kickoff?settingsId={sUp.Id}&key={sUp.ApprovalKey:D}";
-
-            var (subject, bodyHtml) = _wfEmails.BuildApprovalEmail(sUp, roll, user, kickoffUrl);
-
-            var domain = ResolveDomain(sUp.Notice);
-
-            var savedPath = await _emailArchive.SaveAsync(
-                rollId: roll.RollId,
-                domain: domain,
-                rollShortCode: roll.ShortCode ?? "",
-                notice: sUp.Notice.ToString(),
-                version: sUp.Version,
-                category: "Approval",
-                fileStem: $"Approval_{roll.ShortCode}_{sUp.Notice}_{sUp.Mode}_SettingsId{sUp.Id}",
-                subject: subject,
-                bodyHtml: bodyHtml,
-                meta: new
-                {
-                    Type = "Approval",
-                    SettingsId = sUp.Id,
-                    RollId = roll.RollId,
-                    RollShortCode = roll.ShortCode,
-                    Notice = sUp.Notice.ToString(),
-                    Mode = sUp.Mode.ToString(),
-                    Version = sUp.Version,
-                    ApprovalKey = sUp.ApprovalKey,
-                    KickoffUrl = kickoffUrl,
-                    ApprovedBy = user,
-                    ApprovedAtUtc = DateTime.UtcNow,
-
-                    // snapshot of Step1
-                    LetterDate = sUp.LetterDate,
-                    ObjectionStartDate = sUp.ObjectionStartDate,
-                    ObjectionEndDate = sUp.ObjectionEndDate,
-                    ExtensionDate = sUp.ExtensionDate,
-                    EvidenceCloseDate = sUp.EvidenceCloseDate,
-                    BulkFromDate = sUp.BulkFromDate,
-                    BulkToDate = sUp.BulkToDate,
-                    BatchDate = sUp.BatchDate,
-                    AppealCloseDate = sUp.AppealCloseDate,
-                    SignaturePath = sUp.SignaturePath,
-                    OverrideReason = sUp.AppealCloseOverrideReason,
-                    OverrideEvidencePath = sUp.AppealCloseOverrideEvidencePath
-                },
+            await _snap.SaveApprovalAsync(
+                settingsId: dto.SettingsId,
+                variant: dto.Variant,
+                mode: dto.Mode,
+                approvedBy: approvedBy,
+                emailSubject: pv.EmailSubject ?? "",
+                emailBodyHtml: pv.EmailBodyHtml ?? "",
+                pdfBytes: pv.PdfBytes ?? Array.Empty<byte>(),
+                pdfFileName: pv.PdfFileName ?? "",
                 ct: ct);
 
-            sUp.ApprovedEmailSavedPath = savedPath;
-            sUp.ApprovedEmailSentAtUtc = null;
-            await _settings.SaveDraftAsync(sUp, ct);
-
-            var parsedVariant = ParseVariantOrDefault(variant);
-            var parsedMode = ParseModeOrDefault(mode);
-            var uiMode = ToUiMode(parsedMode);
-
-            TempData["Success"] = "Approved in Step 2. Approval email was generated and saved for Data Team handover.";
-            return RedirectToAction(nameof(Step2), new { settingsId, variant = parsedVariant.ToString(), mode = uiMode });
-
-
-       
+            TempData["Success"] = "Step 2 approved and snapshot saved.";
+            return RedirectToAction("Step2", new { settingsId = dto.SettingsId });
         }
-
         // POST: /Workflow/Step2RequestCorrection
-        [HttpPost("Step2RequestCorrection")]
+
+        [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Step2RequestCorrection(
-            int settingsId,
-            string correctionComment,
-            string? variant,
-            string? mode,
-            CancellationToken ct)
+        public async Task<IActionResult> Step2RequestCorrection(Step2CorrectionDto dto, CancellationToken ct)
         {
-            var user = User?.Identity?.Name ?? "UNKNOWN";
-            var isMulti = string.Equals(mode?.Trim(), "multi", StringComparison.OrdinalIgnoreCase);
-            var parsedVariant = ParseVariantOrDefault(variant);
+            var requestedBy = User?.Identity?.Name ?? "Unknown";
 
-            if (string.IsNullOrWhiteSpace(correctionComment))
-            {
-                TempData["Error"] = "Please provide a correction comment.";
-                return RedirectToAction(nameof(Step2), new { settingsId, variant = parsedVariant.ToString(), mode = isMulti ? "multi" : "single" });
-            }
+            var pv = await _preview.BuildPreviewAsync(dto.SettingsId, dto.Variant, dto.Mode, dto.AppealNo, ct);
 
-            var s = await _settings.GetByIdForUpdateAsync(settingsId, ct);
-            if (s is null) return NotFound();
-
-            var roll = await _db.RollRegistry.AsNoTracking().FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
-            if (roll is null) return NotFound();
-
-            var (subject, bodyHtml) = _wfEmails.BuildCorrectionEmail(s, roll, user, correctionComment);
-
-            var domain = ResolveDomain(s.Notice);
-
-            var savedPath = await _emailArchive.SaveAsync(
-                rollId: roll.RollId,
-                domain: domain,
-                rollShortCode: roll.ShortCode ?? "",
-                notice: s.Notice.ToString(),
-                version: s.Version,
-                category: "Correction",
-                fileStem: $"Correction_{roll.ShortCode}_{s.Notice}_{s.Mode}_SettingsId{s.Id}",
-                subject: subject,
-                bodyHtml: bodyHtml,
-                meta: new
-                {
-                    Type = "Correction",
-                    SettingsId = s.Id,
-                    RollId = roll.RollId,
-                    RollShortCode = roll.ShortCode,
-                    Notice = s.Notice.ToString(),
-                    Mode = s.Mode.ToString(),
-                    Version = s.Version,
-                    RequestedBy = user,
-                    Reason = correctionComment,
-                    RequestedAtUtc = DateTime.UtcNow,
-                    Variant = parsedVariant.ToString(),
-                    UiMode = isMulti ? "multi" : "single",
-                    SignaturePath = s.SignaturePath
-                },
+            await _snap.SaveCorrectionAsync(
+                settingsId: dto.SettingsId,
+                variant: dto.Variant,
+                mode: dto.Mode,
+                requestedBy: requestedBy,
+                reason: dto.Reason ?? "",
+                emailSubject: pv.EmailSubject ?? "",
+                emailBodyHtml: pv.EmailBodyHtml ?? "",
+                pdfBytes: pv.PdfBytes ?? Array.Empty<byte>(),
+                pdfFileName: pv.PdfFileName ?? "",
                 ct: ct);
 
-            s.CorrectionEmailSavedPath = savedPath;
-            s.CorrectionEmailSentAtUtc = null;
-            await _settings.SaveDraftAsync(s, ct);
-
-            var parsedMode = ParseModeOrDefault(mode);
-            var uiMode = ToUiMode(parsedMode);
-            TempData["Success"] = "Correction email generated and saved to folder.";
-
-            return RedirectToAction(nameof(Step2), new { settingsId, variant = parsedVariant.ToString(), mode = uiMode });
-
-
-
-           
-           
+            TempData["Success"] = "Correction request saved with snapshot.";
+            return RedirectToAction("Step2", new { settingsId = dto.SettingsId });
         }
-
-
+    
         [HttpGet("Step3Kickoff")]
         public async Task<IActionResult> Step3Kickoff(int settingsId, Guid key, CancellationToken ct)
         {

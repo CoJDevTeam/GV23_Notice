@@ -4,6 +4,7 @@ using GV23_Notice.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GV23_Notice.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260220043815_AddTablesToLocal")]
+    partial class AddTablesToLocal
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -219,19 +222,6 @@ namespace GV23_Notice.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime?>("ApprovedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ApprovedBy")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateTime>("BatchDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("BatchKind")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("BatchName")
                         .IsRequired()
                         .HasMaxLength(80)
@@ -251,35 +241,17 @@ namespace GV23_Notice.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<bool>("IsApproved")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("Mode")
-                        .HasColumnType("int");
-
                     b.Property<int>("Notice")
                         .HasColumnType("int");
 
                     b.Property<int>("NoticeSettingsId")
                         .HasColumnType("int");
 
-                    b.Property<int>("NumberOfRecords")
-                        .HasColumnType("int");
-
                     b.Property<int>("Roll")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RollId")
                         .HasColumnType("int");
 
                     b.Property<int>("SettingsVersionUsed")
                         .HasColumnType("int");
-
-                    b.Property<string>("Version")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("WorkflowKey")
-                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -563,32 +535,10 @@ namespace GV23_Notice.Migrations
                         .HasMaxLength(260)
                         .HasColumnType("nvarchar(260)");
 
-                    b.Property<bool>("Step2Approved")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("Step2ApprovedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<DateTime?>("Step2ApprovedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Step2ApprovedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Step2ApprovedKeyVersion")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("Step2CorrectionReason")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("Step2CorrectionRequested")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime?>("Step2CorrectionRequestedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Step2CorrectionRequestedBy")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ValuationPeriodCode")
@@ -603,9 +553,6 @@ namespace GV23_Notice.Migrations
                     b.Property<int>("Version")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("WorkflowKey")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
 
                     b.HasIndex("Roll", "Notice", "Mode", "Version")
@@ -614,139 +561,6 @@ namespace GV23_Notice.Migrations
                     b.HasIndex("Roll", "Notice", "Mode", "IsApproved", "ApprovedAtUtc");
 
                     b.ToTable("NoticeSettings");
-                });
-
-            modelBuilder.Entity("GV23_Notice.Domain.Workflow.Entities.NoticeStep2CorrectionRequest", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("EmailBodyHtmlSnapshot")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("EmailSubjectSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("Mode")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Notice")
-                        .HasColumnType("int");
-
-                    b.Property<int>("NoticeSettingsId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("PdfFileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("PdfSha256")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<DateTime>("RequestedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("RequestedBy")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("RollId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SettingsJsonSnapshot")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Variant")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Version")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("NoticeStep2CorrectionRequests");
-                });
-
-            modelBuilder.Entity("GV23_Notice.Domain.Workflow.Entities.NoticeStep2Snapshot", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("EmailBodyHtmlSnapshot")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("EmailSubjectSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<int>("Mode")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Notice")
-                        .HasColumnType("int");
-
-                    b.Property<int>("NoticeSettingsId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("PdfFileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("PdfSha256")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<int>("RollId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SettingsJsonSnapshot")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("Variant")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Version")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("NoticeStep2Snapshots");
                 });
 
             modelBuilder.Entity("GV23_Notice.Domain.Workflow.Entities.NoticeTemplateApproval", b =>

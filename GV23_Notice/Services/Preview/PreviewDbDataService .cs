@@ -1,5 +1,9 @@
-﻿using GV23_Notice.Models.DTOs;
+﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Workflow;
+using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Models.DTOs;
 using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.Data;
 
 namespace GV23_Notice.Services.Preview
@@ -7,9 +11,12 @@ namespace GV23_Notice.Services.Preview
     public sealed class PreviewDbDataService : IPreviewDbDataService
     {
         private readonly string _noticeDbConnStr;
+        private readonly AppDbContext _db;
 
-        public PreviewDbDataService(IConfiguration cfg)
+      
+        public PreviewDbDataService(IConfiguration cfg,AppDbContext db)
         {
+            _db = db;
             _noticeDbConnStr = cfg.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException("Missing DefaultConnection for Notice_DB.");
         }
@@ -355,6 +362,104 @@ namespace GV23_Notice.Services.Preview
                 return null;
             }
         }
+
+
+        public async Task<NoticePreviewSnapshot> GetSnapshotForRunLogAsync(int runLogId, CancellationToken ct)
+        {
+            var snap = await _db.NoticePreviewSnapshots
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.NoticeRunLogId == runLogId, ct);
+
+            if (snap is null)
+                throw new InvalidOperationException($"Snapshot not found for RunLogId={runLogId}. (Create snapshots in Step3-Step2 first)");
+
+            return snap;
+        }
+
+        public async Task<NoticePreviewSnapshot?> TryGetSnapshotForRunLogAsync(int runLogId, CancellationToken ct)
+        {
+            return await _db.NoticePreviewSnapshots
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.NoticeRunLogId == runLogId, ct);
+        }
+
+        public async Task<NoticePreviewSnapshot> S49ByPremiseIdAsync(int settingsId, string premiseId, CancellationToken ct)
+      => await FindByKeyAsync(settingsId, NoticeKind.S49, premiseId: premiseId, ct: ct);
+
+        public async Task<NoticePreviewSnapshot> S51ByObjectionNoAsync(int settingsId, string objectionNo, CancellationToken ct)
+            => await FindByKeyAsync(settingsId, NoticeKind.S51, objectionNo: objectionNo, ct: ct);
+
+        public async Task<NoticePreviewSnapshot> S53ByObjectionNoAsync(int settingsId, string objectionNo, CancellationToken ct)
+            => await FindByKeyAsync(settingsId, NoticeKind.S53, objectionNo: objectionNo, ct: ct);
+
+        public async Task<NoticePreviewSnapshot> DJByObjectionNoAsync(int settingsId, string objectionNo, CancellationToken ct)
+            => await FindByKeyAsync(settingsId, NoticeKind.DJ, objectionNo: objectionNo, ct: ct);
+        public async Task<NoticePreviewSnapshot> S52ByAppealNoAsync(int settingsId, string appealNo, bool isReview, CancellationToken ct)
+        {
+            // Variant must distinguish review vs appeal-decision
+            var variant = isReview ? "S52Review" : "AppealDecision";
+            var snap = await _db.NoticePreviewSnapshots
+                .AsNoTracking()
+                .Where(x => x.SettingsId == settingsId
+                         && x.Notice == NoticeKind.S52
+                         && x.Variant == variant
+                         && x.AppealNo == appealNo)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (snap is null)
+                throw new InvalidOperationException($"Snapshot not found for SettingsId={settingsId}, AppealNo={appealNo}, Variant={variant}.");
+
+            return snap;
+        }
+
+      
+        public async Task<NoticePreviewSnapshot> InvalidByObjectionNoAsync(int settingsId, string objectionNo, bool isOmission, CancellationToken ct)
+        {
+            var variant = isOmission ? "InvalidOmission" : "InvalidObjection";
+            var snap = await _db.NoticePreviewSnapshots
+                .AsNoTracking()
+                .Where(x => x.SettingsId == settingsId
+                         && x.Notice == NoticeKind.IN
+                         && x.Variant == variant
+                         && x.ObjectionNo == objectionNo)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+
+            if (snap is null)
+                throw new InvalidOperationException($"Snapshot not found for SettingsId={settingsId}, ObjectionNo={objectionNo}, Variant={variant}.");
+
+            return snap;
+        }
+
+        private async Task<NoticePreviewSnapshot> FindByKeyAsync(
+            int settingsId,
+            NoticeKind notice,
+            string? objectionNo = null,
+            string? appealNo = null,
+            string? premiseId = null,
+            CancellationToken ct = default)
+        {
+            var q = _db.NoticePreviewSnapshots.AsNoTracking()
+                .Where(x => x.SettingsId == settingsId && x.Notice == notice);
+
+            if (!string.IsNullOrWhiteSpace(objectionNo))
+                q = q.Where(x => x.ObjectionNo == objectionNo);
+
+            if (!string.IsNullOrWhiteSpace(appealNo))
+                q = q.Where(x => x.AppealNo == appealNo);
+
+            if (!string.IsNullOrWhiteSpace(premiseId))
+                q = q.Where(x => x.PremiseId == premiseId);
+
+            var snap = await q.OrderByDescending(x => x.Id).FirstOrDefaultAsync(ct);
+
+            if (snap is null)
+                throw new InvalidOperationException($"Snapshot not found for SettingsId={settingsId}, Notice={notice}, key(s).");
+
+            return snap;
+        }
+
     }
 }
 

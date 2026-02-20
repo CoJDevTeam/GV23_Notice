@@ -1,0 +1,92 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3Step2Vm
+@using System.Globalization
+
+@{
+    ViewData["Title"] = "Step 3 / Step 2 - Create Batch";
+    string DT(DateTime d) => d.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+}
+
+<div class="page-header">
+    <h1>Step 3 – Step 2 (Create Batch)</h1>
+    <p>
+        <b>Roll:</b> @Model.RollShortCode - @Model.RollName
+        &nbsp;|&nbsp;
+        <b>Notice:</b> @Model.Notice
+        &nbsp;|&nbsp;
+        <b>Version:</b> @Model.VersionText
+        &nbsp;|&nbsp;
+        <b>Workflow Key:</b> @Model.WorkflowKey
+    </p>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+<div class="card">
+    <div class="card-body">
+        <h4>Create New Batch</h4>
+        <form asp-action="Step2CreateBatch" asp-controller="Step3" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="key" value="@Model.WorkflowKey" />
+
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Batch Date</label>
+                    <input class="form-control" type="date" name="batchDate"
+                           value="@Model.BatchDate.ToString("yyyy-MM-dd")" required />
+                </div>
+                <div class="col-md-8" style="display:flex;align-items:end">
+                    <button class="btn btn-primary" type="submit">Create Batch (Top 500)</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<hr />
+
+<h4>Existing Step 3 Batches</h4>
+
+@if (Model.Batches.Count == 0)
+{
+    <div class="alert alert-secondary">No batches created yet.</div>
+}
+else
+{
+    <table class="table table-bordered table-sm">
+        <thead>
+            <tr>
+                <th>Batch Name</th>
+                <th style="width:120px">Batch Date</th>
+                <th style="width:130px">Records</th>
+                <th>Created By</th>
+                <th style="width:180px">Created At (UTC)</th>
+                <th style="width:120px">Approved</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var b in Model.Batches)
+            {
+                <tr>
+                    <td>@b.BatchName</td>
+                    <td>@b.BatchDate.ToString("yyyy-MM-dd")</td>
+                    <td>@b.NumberOfRecords</td>
+                    <td>@b.CreatedBy</td>
+                    <td>@DT(b.CreatedAtUtc)</td>
+                    <td>
+                        @if (b.IsApproved)
+                        {
+                            <span class="badge bg-success">YES</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">NO</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

@@ -59,11 +59,11 @@ namespace GV23_Notice.Services.Notices
         }
 
         public async Task<NoticePreviewResult> BuildPreviewAsync(
-            int settingsId,
-            PreviewVariant variant,
-            PreviewMode mode,
-            string? appealNo,
-            CancellationToken ct)
+      int settingsId,
+      PreviewVariant variant,
+      PreviewMode mode,
+      string? appealNo,
+      CancellationToken ct)
         {
             var settings = await _db.NoticeSettings
                 .AsNoTracking()
@@ -86,7 +86,7 @@ namespace GV23_Notice.Services.Notices
 
             // Mode flags
             var isSplitPdf = mode == PreviewMode.SplitPdf;
-            var isEmailMulti = mode == PreviewMode.EmailMulti; // only affects email grouping
+            var isEmailMulti = mode == PreviewMode.EmailMulti;
 
             // =========================
             // 1) Load DB data per notice
@@ -98,9 +98,11 @@ namespace GV23_Notice.Services.Notices
             string recipientName;
             string recipientEmail;
             string addressLine;
+
             string sampleObjectionNo = "";
             string sampleAppealNo = "";
             string valuationKey = "";
+            string samplePropertyDesc = ""; // ✅ NEW
 
             switch (settings.Notice)
             {
@@ -109,6 +111,8 @@ namespace GV23_Notice.Services.Notices
                         var db = await _previewDb.S49PreviewDbDataAsync(roll.RollId, split: isSplitPdf, ct);
 
                         valuationKey = db.ValuationKey ?? "";
+                        // ✅ S49 doesn't have PropertyDesc, use addresses as "property"
+                        samplePropertyDesc = FirstNonEmpty(db.PremiseAddress, db.LisStreetAddress, "");
 
                         var ctx = new Section49NoticeContext
                         {
@@ -129,7 +133,8 @@ namespace GV23_Notice.Services.Notices
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
                         addressLine = FirstNonEmpty(db.PremiseAddress, db.LisStreetAddress, "");
-                        sampleObjectionNo = ""; // S49 doesn’t use objection no in roll table
+                        sampleObjectionNo = "";
+                        sampleAppealNo = "";
                         break;
                     }
 
@@ -138,7 +143,8 @@ namespace GV23_Notice.Services.Notices
                         var db = await _previewDb.S51PreviewDbDataAsync(roll.RollId, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
-                        valuationKey = ""; // if you later add it to the query, map it here
+                        valuationKey = ""; // add later if in query
+                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
 
                         var ctx = new Section51NoticeContext
                         {
@@ -157,6 +163,7 @@ namespace GV23_Notice.Services.Notices
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
                         addressLine = BuildAddrLine(db.Addr2, db.Addr3, db.Addr4, db.Addr5);
+                        sampleAppealNo = "";
                         break;
                     }
 
@@ -172,6 +179,7 @@ namespace GV23_Notice.Services.Notices
                         sampleAppealNo = db.AppealNo ?? appealNo!;
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
+                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
 
                         var ctx = new Section52PdfContext
                         {
@@ -195,6 +203,7 @@ namespace GV23_Notice.Services.Notices
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
+                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
 
                         var row = MapS53ToRow(db, settings);
                         pdfBytes = _s53.BuildNoticePdf(row, DateOnly.FromDateTime(settings.LetterDate));
@@ -203,6 +212,8 @@ namespace GV23_Notice.Services.Notices
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
                         addressLine = BuildAddrLine(db.Addr2, db.Addr3, db.Addr4, db.Addr5);
+
+                        sampleAppealNo = "";
                         break;
                     }
 
@@ -211,7 +222,8 @@ namespace GV23_Notice.Services.Notices
                         var db = await _previewDb.DJPreviewDbDataAsync(roll.RollId, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
-                        valuationKey = ""; // add later if you store it in source for DJ
+                        valuationKey = ""; // add later if in source
+                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
 
                         var ctx = new DearJonnyPdfContext
                         {
@@ -237,6 +249,8 @@ namespace GV23_Notice.Services.Notices
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
                         addressLine = BuildAddrLine(db.Addr2, db.Addr3, db.Addr4, db.Addr5);
+
+                        sampleAppealNo = "";
                         break;
                     }
 
@@ -247,7 +261,8 @@ namespace GV23_Notice.Services.Notices
                         var db = await _previewDb.InvalidPreviewDbDataAsync(roll.RollId, isOmission, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
-                        valuationKey = ""; // add later if your source has it
+                        valuationKey = ""; // add later if in source
+                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
 
                         var ctx = new InvalidNoticePdfContext
                         {
@@ -270,6 +285,8 @@ namespace GV23_Notice.Services.Notices
                         recipientName = FirstNonEmpty(db.Addr1, "Sir/Madam");
                         recipientEmail = db.Email ?? "";
                         addressLine = BuildAddrLine(db.Addr2, db.Addr3, db.Addr4, db.Addr5);
+
+                        sampleAppealNo = "";
                         break;
                     }
 
@@ -287,6 +304,7 @@ namespace GV23_Notice.Services.Notices
                 recipientEmail,
                 sampleObjectionNo,
                 sampleAppealNo,
+                samplePropertyDesc,  // ✅ NEW
                 valuationKey,
                 variant,
                 isEmailMulti);
@@ -486,15 +504,16 @@ namespace GV23_Notice.Services.Notices
         }
 
         private static NoticeEmailRequest BuildEmailReqFromReal(
-            NoticeSettings s,
-            RollRegistry roll,
-            string recipientName,
-            string recipientEmail,
-            string objectionNo,
-            string appealNo,
-            string valuationKey,
-            PreviewVariant variant,
-            bool isMulti)
+      NoticeSettings s,
+      RollRegistry roll,
+      string recipientName,
+      string recipientEmail,
+      string objectionNo,
+      string appealNo,
+      string propertyDesc,
+      string valuationKey,
+      PreviewVariant variant,
+      bool isMulti)
         {
             var req = new NoticeEmailRequest
             {
@@ -505,14 +524,14 @@ namespace GV23_Notice.Services.Notices
                 RecipientEmail = recipientEmail ?? "",
                 IsMulti = isMulti,
                 Items = new List<NoticeEmailPropertyItem>
-                {
-                    new NoticeEmailPropertyItem
-                    {
-                        PropertyDesc = valuationKey.Length > 0 ? $"Valuation Key: {valuationKey}" : "",
-                        ObjectionNo = objectionNo,
-                        AppealNo = appealNo
-                    }
-                }
+        {
+            new NoticeEmailPropertyItem
+            {
+                PropertyDesc = BuildItemPropertyDesc(propertyDesc, valuationKey),
+                ObjectionNo = objectionNo ?? "",
+                AppealNo = appealNo ?? ""
+            }
+        }
             };
 
             if (s.Notice == NoticeKind.S52)
@@ -528,11 +547,29 @@ namespace GV23_Notice.Services.Notices
 
             return req;
         }
-
         private static string FirstNonEmpty(params string?[] values)
             => values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim() ?? "";
 
         private static string BuildAddrLine(params string?[] parts)
             => string.Join(", ", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+
+        private static string BuildItemPropertyDesc(string? propertyDesc, string? valuationKey)
+        {
+            var p = (propertyDesc ?? "").Trim();
+            var vk = (valuationKey ?? "").Trim();
+
+            if (!string.IsNullOrWhiteSpace(p) &&
+                !string.IsNullOrWhiteSpace(vk) &&
+                !p.Contains(vk, StringComparison.OrdinalIgnoreCase))
+                return $"{p} (Valuation Key: {vk})";
+
+            if (!string.IsNullOrWhiteSpace(p))
+                return p;
+
+            if (!string.IsNullOrWhiteSpace(vk))
+                return $"Valuation Key: {vk}";
+
+            return "";
+        }
     }
 }

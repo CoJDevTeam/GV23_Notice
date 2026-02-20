@@ -116,6 +116,9 @@ namespace GV23_Notice.Services.Email
             var mid = new StringBuilder();
             mid.Append($"<p>{greeting}</p>");
 
+            // ✅ NEW: show property + objection/appeal refs
+            mid.Append(PropertyBlock(req, includeRefs: true));
+
             mid.Append("<p>");
             mid.Append("The decision will be adjusted accordingly to the implementation date being, 1 July 2023. The decision ");
             mid.Append("will reflect on your account within 30 days, the adjustments to the account if any will be made by the ");
@@ -131,7 +134,6 @@ namespace GV23_Notice.Services.Email
 
             return (subject, WrapHtml(req, mid.ToString()));
         }
-
         // =========================
         // S53 (your body already strong; we keep it)
         // =========================
@@ -324,6 +326,9 @@ namespace GV23_Notice.Services.Email
 
             var sb = new StringBuilder();
 
+            // -------------------------
+            // Single property
+            // -------------------------
             if (list.Count == 1)
             {
                 sb.Append("<p><b>Property Description:</b> ");
@@ -332,14 +337,23 @@ namespace GV23_Notice.Services.Email
 
                 if (includeRefs)
                 {
-                    var o = items.FirstOrDefault()?.ObjectionNo ?? "";
+                    var first = items.FirstOrDefault();
+
+                    var o = first?.ObjectionNo ?? "";
                     if (!string.IsNullOrWhiteSpace(o))
                         sb.Append($"<p><b>Objection No:</b> {H(o)}</p>");
+
+                    var a = first?.AppealNo ?? "";
+                    if (!string.IsNullOrWhiteSpace(a))
+                        sb.Append($"<p><b>Appeal No:</b> {H(a)}</p>");
                 }
 
                 return sb.ToString();
             }
 
+            // -------------------------
+            // Multiple properties
+            // -------------------------
             sb.Append("<p><b>Property Descriptions:</b></p>");
             sb.Append("<ul style=\"margin-top:6px;\">");
             foreach (var p in list)
@@ -352,18 +366,33 @@ namespace GV23_Notice.Services.Email
 
             if (includeRefs)
             {
-                var obs = items.Select(x => x.ObjectionNo).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+                var obs = items.Select(x => x.ObjectionNo)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
                 if (obs.Count > 0)
                 {
                     sb.Append("<p><b>Objection numbers attached:</b></p><ul>");
                     foreach (var o in obs) sb.Append($"<li>{H(o!)}</li>");
                     sb.Append("</ul>");
                 }
+
+                var appeals = items.Select(x => x.AppealNo)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (appeals.Count > 0)
+                {
+                    sb.Append("<p><b>Appeal numbers attached:</b></p><ul>");
+                    foreach (var a in appeals) sb.Append($"<li>{H(a!)}</li>");
+                    sb.Append("</ul>");
+                }
             }
 
             return sb.ToString();
         }
-
         private string EnquiriesBlock()
         {
             var e = _opt.Enquiries;

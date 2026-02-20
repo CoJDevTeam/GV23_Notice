@@ -25,6 +25,32 @@ namespace GV23_Notice.Domain.Workflow.Entities
         public DateTime? BulkFromDate { get; set; }
         public DateTime? BulkToDate { get; set; }
 
+
+        public string? BatchKind { get; set; } // e.g. "S52 Bulk" or "S53 Batch"
+
+        public Guid WorkflowKey { get; set; }
+
+        public int RollId { get; set; }
+
+        public BatchMode Mode { get; set; }
+
+        public string? Version { get; set; }
+
         public ICollection<NoticeRunLog> Runs { get; set; } = new List<NoticeRunLog>();
+
+      
+
+
+        public DateTime BatchDate { get; set; } = DateTime.Today;
+
+      
+
+        public int NumberOfRecords { get; set; }
+
+        // backup / approval details
+        public bool IsApproved { get; set; }
+        [MaxLength(256)]
+        public string? ApprovedBy { get; set; }
+        public DateTime? ApprovedAtUtc { get; set; }
     }
 }

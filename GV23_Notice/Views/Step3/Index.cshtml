@@ -1,0 +1,119 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3SelectVm
+@using System.Globalization
+
+@{
+    ViewData["Title"] = "Step 3 - Step 1 (Select Workflow)";
+    string D(DateTime d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+}
+
+<div class="page-header">
+    <div class="content-wrapper">
+        <h1 class="main-title">Step 3 - Step 1 (Select Approved Workflow)</h1>
+    </div>
+</div>
+
+<div class="content-wrapper">
+    <div class="premium-card">
+        <h3 class="card-title">Select Roll & Notice</h3>
+
+        <form method="get" asp-action="Index" asp-controller="Step3">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Roll</label>
+                    <select class="form-select" name="rollId" required>
+                        <option value="">-- Select Roll --</option>
+                        @foreach (var r in Model.Rolls)
+                        {
+                            <option value="@r.Value" selected="@r.Selected">@r.Text</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label">Notice</label>
+                    <select class="form-select" name="notice" required>
+                        <option value="">-- Select Notice --</option>
+                        @foreach (var n in Model.Notices)
+                        {
+                            <option value="@n.Value" selected="@n.Selected">@n.Text</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-12" style="margin-top:10px">
+                    <button class="btn btn-primary" type="submit">Load Approved Workflows</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <hr />
+
+    @if (Model.RollId is null || Model.Notice is null)
+    {
+        <div class="alert alert-secondary">
+            Select a Roll and Notice to view the approved workflows.
+        </div>
+    }
+    else if (Model.Rows.Count == 0)
+    {
+        <div class="alert alert-warning">
+            No approved workflows found for this Roll + Notice.
+            (Need: Step 1 Approved + WorkflowKey + Step 2 Approved OR Correction Requested)
+        </div>
+    }
+    else
+    {
+        <div class="premium-card">
+            <h3 class="card-title">Approved Workflows</h3>
+
+            <table class="table table-bordered table-sm">
+                <thead>
+                    <tr>
+                        <th style="width:140px">Step2 Status</th>
+                        <th>Roll</th>
+                        <th>Notice</th>
+                        <th style="width:120px">Mode</th>
+                        <th style="width:100px">Version</th>
+                        <th style="width:120px">Letter Date</th>
+                        <th style="width:250px">Workflow Key</th>
+                        <th style="width:110px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.Rows)
+                    {
+                        <tr>
+                            <td>
+                                @if (r.Step2Approved)
+                                {
+                                    <span class="badge bg-success">APPROVED</span>
+                                }
+                                else if (r.Step2CorrectionRequested)
+                                {
+                                    <span class="badge bg-warning text-dark">CORRECTION</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">PENDING</span>
+                                }
+                            </td>
+                            <td>@r.RollShortCode - @r.RollName</td>
+                            <td>@r.Notice</td>
+                            <td>@r.Mode</td>
+                            <td>@r.VersionText</td>
+                            <td>@D(r.LetterDate)</td>
+                            <td><small>@r.WorkflowKey</small></td>
+                            <td>
+                                <a class="btn btn-sm btn-primary"
+                                   href="@Url.Action("Open", "Step3", new { key = r.WorkflowKey })">
+                                    Open
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

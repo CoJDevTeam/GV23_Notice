@@ -1,42 +1,224 @@
 ﻿@model List<GV23_Notice.Models.Workflow.ViewModels.SettingsLibraryRowVm>
+@{
+    ViewData["Title"] = "Approved Settings Library";
+}
 
-<h2>Approved Settings Library (Admin)</h2>
 
-<table class="table table-sm table-striped">
-    <thead>
-        <tr>
-            <th>SettingsId</th>
-            <th>Roll</th>
-            <th>Notice</th>
-            <th>Mode</th>
-            <th>Version</th>
-            <th>LetterDate</th>
-            <th>Signature</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-        @foreach (var r in Model)
-        {
-            <tr>
-                <td>@r.SettingsId</td>
-                <td>@r.RollShortCode</td>
-                <td>@r.Notice</td>
-                <td>@r.Mode</td>
-                <td>@r.Version</td>
-                <td>@r.LetterDate.ToString("yyyy-MM-dd")</td>
-                <td>@(string.IsNullOrWhiteSpace(r.SignaturePath) ? "Missing" : "Uploaded")</td>
-                <td>
-                    <a class="btn btn-sm btn-primary"
-                       href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
-                        Reuse / Edit
-                    </a>
-                    <a class="btn btn-sm btn-secondary"
-                       href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
-                        Summary
-                    </a>
-                </td>
-            </tr>
-        }
-    </tbody>
-</table>
+<link href="~/css/admincss/settinglibarycss.css" rel="stylesheet" />
+<!-- Loader -->
+<div id="wf-loader" role="status">
+    <div class="wf-spinner"></div>
+    <div>
+        <div class="wf-loader-text" id="wf-loader-text">Loading…</div>
+        <div class="wf-loader-sub" id="wf-loader-sub">Please wait</div>
+    </div>
+</div>
+
+<!-- Toast container -->
+<div id="wf-toast-container" aria-live="polite"></div>
+
+<div class="wf-wrap">
+
+    <!-- Title bar -->
+    <div class="wf-titlebar">
+        <div class="logo-mark">GV</div>
+        <h2>Approved Settings Library</h2>
+        <span class="admin-badge">Admin</span>
+    </div>
+
+    <!-- Step progress -->
+    <div class="wf-steps">
+        <div class="wf-step active"><div class="sn">1</div><span>Configure</span></div>
+        <div class="wf-sep"></div>
+        <div class="wf-step"><div class="sn">2</div><span>Review Summary</span></div>
+        <div class="wf-sep"></div>
+        <div class="wf-step"><div class="sn">3</div><span>Approve</span></div>
+        <div class="wf-sep"></div>
+        <div class="wf-step"><div class="sn">4</div><span>Generate</span></div>
+    </div>
+
+    <div class="wf-body">
+
+        <!-- Stats -->
+        <div class="wf-stats">
+            <div class="wf-stat gold-accent">
+                <div class="wf-stat-label">Total Settings</div>
+                <div class="wf-stat-value">@Model.Count</div>
+                <div class="wf-stat-sub">Approved configurations</div>
+            </div>
+            <div class="wf-stat">
+                <div class="wf-stat-label">With Signature</div>
+                <div class="wf-stat-value">@Model.Count(x => !string.IsNullOrWhiteSpace(x.SignaturePath))</div>
+                <div class="wf-stat-sub">Ready for generation</div>
+            </div>
+            <div class="wf-stat">
+                <div class="wf-stat-label">Missing Signature</div>
+                <div class="wf-stat-value">@Model.Count(x => string.IsNullOrWhiteSpace(x.SignaturePath))</div>
+                <div class="wf-stat-sub">Requires upload</div>
+            </div>
+            <div class="wf-stat">
+                <div class="wf-stat-label">Notice Types</div>
+                <div class="wf-stat-value">@Model.Select(x => x.Notice).Distinct().Count()</div>
+                <div class="wf-stat-sub">Distinct notices used</div>
+            </div>
+        </div>
+
+        <!-- Table card -->
+        <div class="wf-card">
+            <div class="wf-card-header">
+                <div class="wf-card-title">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
+                    Approved Configurations
+                </div>
+                <span class="wf-card-meta">Click a column header to sort · Use the search box to filter</span>
+            </div>
+
+            @if (!Model.Any())
+            {
+                <div class="wf-empty">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                    <p>No approved settings found.<br />Create a new configuration from Step 1.</p>
+                </div>
+            }
+            else
+            {
+                <table id="settingsTable" class="table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Roll</th>
+                            <th>Notice</th>
+                            <th>Mode</th>
+                            <th>Version</th>
+                            <th>Letter Date</th>
+                            <th>Signature</th>
+                            <th style="width:160px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Model)
+                        {
+                            <tr>
+                                <td>
+                                    <span style="font-size:11px;font-weight:700;color:var(--grey-light);font-family:monospace;">
+                                        #@r.SettingsId
+                                    </span>
+                                </td>
+                                <td style="font-weight:600;">@r.RollShortCode</td>
+                                <td><span class="wf-badge badge-notice">@r.Notice</span></td>
+                                <td>
+                                    @if (r.Mode.ToString().ToLower() == "bulk")
+                                    {
+                                        <span class="wf-badge badge-bulk">Bulk</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="wf-badge badge-single">Single</span>
+                                    }
+                                </td>
+                                <td style="color:var(--grey-mid);font-size:12px;">v@r.Version</td>
+                                <td style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--grey-dark);">
+                                    @r.LetterDate.ToString("yyyy-MM-dd")
+                                </td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(r.SignaturePath))
+                                    {
+                                        <span class="wf-badge badge-sig-miss">⚠ Missing</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="wf-badge badge-sig-ok">✓ Uploaded</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                        <a class="wf-btn wf-btn-primary"
+                                           href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                            Reuse
+                                        </a>
+                                        <a class="wf-btn wf-btn-secondary"
+                                           href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+                                            Summary
+                                        </a>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        /* ── Toast ── */
+        const WfToast = (() => {
+            const c = document.getElementById("wf-toast-container");
+            const ICONS={success:"✓",error:"✕",warning:"!",info:"i"};
+            const TITLES={success:"Success",error:"Error",warning:"Warning",info:"Info"};
+            const DUR=5000;
+            function show(type,msg,title){
+                const t=document.createElement("div");
+                t.className=`wf-toast t-${type}`;
+                t.innerHTML=`<div class="wf-toast-main"><div class="wf-toast-stripe"></div><div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div><div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div><div class="wf-toast-msg">${msg}</div></div></div><button class="wf-toast-close">×</button></div><div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
+                c.appendChild(t);
+                requestAnimationFrame(()=>requestAnimationFrame(()=>t.classList.add("show")));
+                const bar=t.querySelector(".wf-toast-bar");
+                requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition=`transform ${DUR}ms linear`;bar.style.transform="scaleX(0)";}));
+                const tm=setTimeout(()=>dismiss(t),DUR);
+                t.querySelector(".wf-toast-close").addEventListener("click",()=>{clearTimeout(tm);dismiss(t);});
+            }
+            function dismiss(t){t.classList.remove("show");t.classList.add("hide");t.addEventListener("transitionend",()=>t.remove(),{once:true});}
+            return{success:(m,t)=>show("success",m,t),error:(m,t)=>show("error",m,t),warning:(m,t)=>show("warning",m,t),info:(m,t)=>show("info",m,t)};
+        })();
+
+        /* ── Loader ── */
+        const WfLoader={
+            show:(msg,hint)=>{
+                document.getElementById("wf-loader-text").textContent=msg||"Loading…";
+                document.getElementById("wf-loader-sub").textContent=hint||"Please wait";
+                document.getElementById("wf-loader").classList.add("active");
+            },
+            hide:()=>document.getElementById("wf-loader").classList.remove("active")
+        };
+
+        /* ── DataTable init ── */
+        document.addEventListener("DOMContentLoaded", () => {
+            if (typeof $.fn.DataTable === "undefined") return;
+
+            $('#settingsTable').DataTable({
+                pageLength: 15,
+                lengthMenu: [10, 15, 25, 50, 100],
+                order: [[5, 'desc']],   // default sort by LetterDate desc
+                columnDefs: [
+                    { orderable: false, targets: 7 }   // disable sort on Actions column
+                ],
+                language: {
+                    search: "",
+                    searchPlaceholder: "Search settings…",
+                    lengthMenu: "Show _MENU_ rows",
+                    info: "Showing _START_–_END_ of _TOTAL_ settings",
+                    infoEmpty: "No settings found",
+                    paginate: { previous: "‹", next: "›" }
+                },
+                dom: "<'dt-toolbar'<'dataTables_length'l><'dataTables_filter'f>>t<'row'<'col-sm-6'i><'col-sm-6'p>>",
+                initComplete: function () {
+                    WfToast.info(`${this.api().data().length} approved setting(s) loaded.`, "Library Ready");
+                }
+            });
+        });
+
+        /* ── Track navigation clicks ── */
+        document.querySelectorAll(".wf-btn").forEach(btn => {
+            btn.addEventListener("click", function () {
+                const label = this.textContent.trim();
+                WfLoader.show(`Opening ${label}…`, "Loading configuration");
+            });
+        });
+    </script>
+}

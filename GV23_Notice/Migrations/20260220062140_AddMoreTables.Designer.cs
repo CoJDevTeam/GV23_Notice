@@ -4,6 +4,7 @@ using GV23_Notice.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace GV23_Notice.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260220062140_AddMoreTables")]
+    partial class AddMoreTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -219,16 +222,6 @@ namespace GV23_Notice.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<DateTime?>("ApprovedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ApprovedBy")
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<DateTime>("BatchDate")
-                        .HasColumnType("datetime2");
-
                     b.Property<string>("BatchKind")
                         .HasColumnType("nvarchar(max)");
 
@@ -251,9 +244,6 @@ namespace GV23_Notice.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<bool>("IsApproved")
-                        .HasColumnType("bit");
-
                     b.Property<int>("Mode")
                         .HasColumnType("int");
 
@@ -261,9 +251,6 @@ namespace GV23_Notice.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("NoticeSettingsId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("NumberOfRecords")
                         .HasColumnType("int");
 
                     b.Property<int>("Roll")

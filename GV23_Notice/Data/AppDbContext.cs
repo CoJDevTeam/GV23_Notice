@@ -28,6 +28,9 @@ namespace GV23_Notice.Data
         public DbSet<S49BatchItem> S49BatchItems => Set<S49BatchItem>();
 
         public DbSet<NoticeSettingsAudit> NoticeSettingsAudits => Set<NoticeSettingsAudit>();
+        public DbSet<NoticeStep2Snapshot> NoticeStep2Snapshots => Set<NoticeStep2Snapshot>();
+        public DbSet<NoticeStep2CorrectionRequest> NoticeStep2CorrectionRequests => Set<NoticeStep2CorrectionRequest>();
+
 
 
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();

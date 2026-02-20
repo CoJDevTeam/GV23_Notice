@@ -27,11 +27,24 @@
         : Model.SelectedVariant.Trim();
 
     string Step2Link(string variant, string mode)
-        => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = variant, mode = mode }) ?? "#";
+     => Url.Action("Step2", "Workflow", new
+     {
+         settingsId = Model.SettingsId,
+         variant = variant,
+         mode = mode,
+         appealNo = Model.AppealNo // add this property to WorkflowStep2Vm
+     }) ?? "#";
 
     string Step2LinkKeepVariant(string mode)
-        => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = selectedVariant, mode = mode }) ?? "#";
+        => Url.Action("Step2", "Workflow", new
+        {
+            settingsId = Model.SettingsId,
+            variant = selectedVariant,
+            mode = mode,
+            appealNo = Model.AppealNo
+        }) ?? "#";
 
+   
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
 
     bool isDJ = Model.Notice == NoticeKind.DJ;

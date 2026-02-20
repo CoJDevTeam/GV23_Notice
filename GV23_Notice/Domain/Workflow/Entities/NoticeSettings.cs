@@ -109,9 +109,26 @@ namespace GV23_Notice.Domain.Workflow.Entities
         public DateTime? FinancialYearStart { get; set; }   // 2025-07-01
         public DateTime? FinancialYearEnd { get; set; }     // 2026-06-30
 
-      
 
-     
-      
+
+        public bool Step2Approved { get; set; }
+        public DateTime? Step2ApprovedAt { get; set; }
+       
+
+        public bool Step2CorrectionRequested { get; set; }
+        public DateTime? Step2CorrectionRequestedAt { get; set; }
+        public string? Step2CorrectionRequestedBy { get; set; }
+        public string? Step2CorrectionReason { get; set; }
+
+        public Guid? WorkflowKey { get; set; }  // ✅ the key Step3 will use
+
+        // optional: lock per key/version
+        [MaxLength(50)]
+        public string? Step2ApprovedKeyVersion { get; set; }
+
+        public bool IsSection52Review { get; set; }
+
+        public bool? IsInvalidOmission { get; set; } // only used when Notice = IN
+
     }
 }

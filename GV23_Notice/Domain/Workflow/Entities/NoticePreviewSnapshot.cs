@@ -27,17 +27,34 @@
         public string CreatedBy { get; set; } = "";
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
-        
+
         public string UiMode { get; set; } = "single";   // single|multi|split
 
         public string RecipientName { get; set; } = "";
         public string RecipientEmail { get; set; } = "";
 
-     
+
 
         // Option A (recommended): store PDF bytes for exact audit replay
-      
+
         public string PdfFileName { get; set; } = "";
+
+
+        public int? NoticeBatchId { get; set; }          // link to batch
+        public int? NoticeRunLogId { get; set; }         // link to runlog
+
+        public string? ObjectionNo { get; set; }
+        public string? AppealNo { get; set; }
+        public string? PremiseId { get; set; }
+
+        // For double print rules
+        public string? ObjectorType { get; set; }        // Representative/Third_Party/Owner-Rep...
+        public string? CopyRole { get; set; }            // "OWNER" or "REP" (or null)
+
+        public string? PropertyDesc { get; set; }        // for filename/subject, etc. Optional but recommended to avoid issues with missing data in related entities at print time.    
 
     }
 }
+
+
+

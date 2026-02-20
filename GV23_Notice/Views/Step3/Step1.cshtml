@@ -1,0 +1,188 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3Step1Vm
+@using System.Globalization
+
+@{
+    ViewData["Title"] = "Step 3 / Step 1 - Handover";
+    string D(DateTime? d) => d.HasValue ? d.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "-";
+    string DT(DateTime? d) => d.HasValue ? d.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "-";
+}
+
+<div class="page-header">
+    <h1>Step 3 – Step 1 (Handover)</h1>
+    <p>
+        <b>Workflow Key:</b> @Model.WorkflowKey
+        &nbsp;|&nbsp;
+        <b>Roll:</b> @Model.RollShortCode - @Model.RollName
+        &nbsp;|&nbsp;
+        <b>Notice:</b> @Model.Notice
+        &nbsp;|&nbsp;
+        <b>Version:</b> @Model.VersionText
+    </p>
+</div>
+
+<hr />
+
+<div class="row">
+    <div class="col-md-6">
+        <h3>Confirmed Step 1 Dates / Settings</h3>
+
+        <table class="table table-sm table-bordered">
+            <tbody>
+                <tr><th style="width:38%">Letter Date</th><td>@Model.LetterDate.ToString("yyyy-MM-dd")</td></tr>
+                <tr><th>City Manager Sign Date</th><td>@D(Model.CityManagerSignDate)</td></tr>
+                <tr><th>Objection Start</th><td>@D(Model.ObjectionStartDate)</td></tr>
+                <tr><th>Objection End</th><td>@D(Model.ObjectionEndDate)</td></tr>
+                <tr><th>Extension Date</th><td>@D(Model.ExtensionDate)</td></tr>
+                <tr><th>Evidence Close Date</th><td>@D(Model.EvidenceCloseDate)</td></tr>
+                <tr><th>Bulk From</th><td>@D(Model.BulkFromDate)</td></tr>
+                <tr><th>Bulk To</th><td>@D(Model.BulkToDate)</td></tr>
+                <tr><th>Batch Date</th><td>@D(Model.BatchDate)</td></tr>
+                <tr><th>Appeal Close Date</th><td>@D(Model.AppealCloseDate)</td></tr>
+                <tr><th>Portal URL</th><td>@(string.IsNullOrWhiteSpace(Model.PortalUrl) ? "-" : Model.PortalUrl)</td></tr>
+                <tr><th>Enquiries</th><td>@(string.IsNullOrWhiteSpace(Model.EnquiriesLine) ? "-" : Model.EnquiriesLine)</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="col-md-6">
+        <h3>Approvals & Status</h3>
+
+        <table class="table table-sm table-bordered">
+            <tbody>
+                <tr>
+                    <th style="width:38%">Step 1 Approved</th>
+                    <td>
+                        @(Model.Step1Approved ? "YES" : "NO")
+                        <div><small><b>By:</b> @Model.Step1ApprovedBy</small></div>
+                        <div><small><b>At:</b> @DT(Model.Step1ApprovedAtUtc) UTC</small></div>
+                    </td>
+                </tr>
+                <tr>
+                    <th>Step 2 Status</th>
+                    <td>
+                        @if (Model.Step2Approved)
+                        {
+                            <span class="badge bg-success">APPROVED</span>
+                            <div style="margin-top:6px">
+                                <small><b>By:</b> @Model.Step2ApprovedBy</small><br />
+                                <small><b>At:</b> @DT(Model.Step2ApprovedAtUtc) UTC</small>
+                            </div>
+                        }
+                        else if (Model.Step2CorrectionRequested)
+                        {
+                            <span class="badge bg-warning text-dark">CORRECTION REQUESTED</span>
+                            <div style="margin-top:6px">
+                                <small><b>By:</b> @Model.Step2CorrectionRequestedBy</small><br />
+                                <small><b>At:</b> @DT(Model.Step2CorrectionRequestedAtUtc) UTC</small>
+                                <div style="margin-top:6px">
+                                    <small><b>Reason:</b> @Model.Step2CorrectionReason</small>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">PENDING</span>
+                        }
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>Latest Workflow Email</h3>
+
+        @if (Model.LatestWorkflowEmail is null)
+        {
+            <div class="alert alert-secondary">No workflow email found yet.</div>
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-body">
+                    <div><b>To:</b> @Model.LatestWorkflowEmail.To</div>
+                    <div><b>Subject:</b> @Model.LatestWorkflowEmail.Subject</div>
+                    <div><b>Created:</b> @Model.LatestWorkflowEmail.CreatedAtUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</div>
+                    <hr />
+                    <div style="border:1px solid #eee;padding:10px;border-radius:8px;background:#fff">
+                        @Html.Raw(Model.LatestWorkflowEmail.BodyHtml)
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<hr />
+
+<h3>Correction Tickets</h3>
+@if (Model.Tickets.Count == 0)
+{
+    <div class="alert alert-secondary">No correction tickets found.</div>
+}
+else
+{
+    <table class="table table-bordered table-sm">
+        <thead>
+            <tr>
+                <th style="width:70px">Id</th>
+                <th style="width:140px">Status</th>
+                <th>Title</th>
+                <th>Requested By</th>
+                <th>Requested At (UTC)</th>
+                <th>Comment</th>
+                <th>Resolved By</th>
+                <th>Resolved At (UTC)</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var t in Model.Tickets)
+            {
+                <tr>
+                    <td>@t.Id</td>
+                    <td>@t.Status</td>
+                    <td>@t.Title</td>
+                    <td>@t.RequestedBy</td>
+                    <td>@t.RequestedAtUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
+                    <td>@t.RequestComment</td>
+                    <td>@(t.ResolvedBy ?? "-")</td>
+                    <td>@(t.ResolvedAtUtc.HasValue? t.ResolvedAtUtc.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "-")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<hr />
+
+<h3>Audit Logs (NoticeRunLogs)</h3>
+@if (Model.AuditLogs.Count == 0)
+{
+    <div class="alert alert-secondary">No audit logs found.</div>
+}
+else
+{
+    <table class="table table-bordered table-sm">
+        <thead>
+            <tr>
+                <th style="width:180px">At (UTC)</th>
+                <th style="width:120px">Status</th>
+                <th>To</th>
+                <th>PDF</th>
+                <th>EML</th>
+                <th>Error</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in Model.AuditLogs)
+            {
+                <tr>
+                    <td>@a.AtUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td>
+                    <td>@a.Status</td>
+                    <td>@a.To</td>
+                    <td><small>@(string.IsNullOrWhiteSpace(a.PdfPath) ? "-" : a.PdfPath)</small></td>
+                    <td><small>@(string.IsNullOrWhiteSpace(a.EmlPath) ? "-" : a.EmlPath)</small></td>
+                    <td><small>@(string.IsNullOrWhiteSpace(a.Error) ? "-" : a.Error)</small></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
