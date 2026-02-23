@@ -53,7 +53,7 @@ namespace GV23_Notice.Controllers
      IS49RollRepository s49Roll,
      INoticeSettingsAuditService audit,
      IPreviewDbDataService previewDb,
-     ITempFileStore tempFiles, INoticeStep2SnapshotService _snap)   // ✅ add
+     ITempFileStore tempFiles, INoticeStep2SnapshotService snap)   // ✅ add
         {
             _db = db;
             _settings = settings;
@@ -68,7 +68,7 @@ namespace GV23_Notice.Controllers
             _s49Roll = s49Roll;
             _audit = audit;
             _previewRepo = previewDb;
-            _snap=_snap;
+            _snap=snap;
 
             _tempFiles = tempFiles;     // ✅ assign
         }
@@ -905,13 +905,95 @@ namespace GV23_Notice.Controllers
             };
         }
 
-        [HttpPost]
+
+        private sealed record Recipients(string[] To, string[] Cc);
+
+        private Recipients GetApprovalRecipients()
+        {
+            var opt = _emailOpt.Value;
+
+            // Support both new structure and your older nested structure if it exists
+            var to = (opt.ApprovalRecipients?.Length > 0 ? opt.ApprovalRecipients : Array.Empty<string>());
+            var cc = (opt.ApprovalCcRecipients?.Length > 0 ? opt.ApprovalCcRecipients : Array.Empty<string>());
+
+            return new Recipients(to, cc);
+        }
+
+        private Recipients GetCorrectionRecipients()
+        {
+            var opt = _emailOpt.Value;
+
+            var to = (opt.CorrectionRecipients?.Length > 0 ? opt.CorrectionRecipients : Array.Empty<string>());
+            var cc = (opt.CorrectionCcRecipients?.Length > 0 ? opt.CorrectionCcRecipients : Array.Empty<string>());
+
+            return new Recipients(to, cc);
+        }
+
+        private async Task SendWorkflowEmailAsync(
+            string subject,
+            string bodyHtml,
+            string[] to,
+            string[] cc,
+            CancellationToken ct)
+        {
+            var opt = _emailOpt.Value;
+
+            // No recipients -> don't fail the workflow (but warn)
+            if ((to == null || to.Length == 0) && (cc == null || cc.Length == 0))
+                return;
+
+            using var msg = new System.Net.Mail.MailMessage
+            {
+                From = new System.Net.Mail.MailAddress(
+                    opt.FromAddress ?? "Propertyinfo@Joburg.org.za",
+                    opt.FromName ?? "City of Johannesburg Valuation Services"),
+                Subject = subject,
+                Body = bodyHtml,
+                IsBodyHtml = true
+            };
+
+            foreach (var addr in (to ?? Array.Empty<string>()).Where(x => !string.IsNullOrWhiteSpace(x)))
+                msg.To.Add(addr.Trim());
+
+            foreach (var addr in (cc ?? Array.Empty<string>()).Where(x => !string.IsNullOrWhiteSpace(x)))
+                msg.CC.Add(addr.Trim());
+
+            // ✅ if still empty, do nothing
+            if (msg.To.Count == 0 && msg.CC.Count == 0)
+                return;
+
+            if (opt.Smtp == null || string.IsNullOrWhiteSpace(opt.Smtp.Host))
+                throw new InvalidOperationException("Email:Smtp:Host is missing in appsettings.");
+
+            using var smtp = new System.Net.Mail.SmtpClient(opt.Smtp.Host, opt.Smtp.Port)
+            {
+                EnableSsl = opt.Smtp.EnableSsl,
+                Credentials = new System.Net.NetworkCredential(opt.Smtp.Username, opt.Smtp.Password)
+            };
+
+            // SmtpClient doesn't accept CancellationToken directly
+            await Task.Run(() => smtp.Send(msg), ct);
+        }
+        // POST: /Workflow/Step2Approve
+        [HttpPost("Step2Approve")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step2Approve(Step2ApproveDto dto, CancellationToken ct)
         {
             var approvedBy = User?.Identity?.Name ?? "Unknown";
 
-            // rebuild preview to get the latest subject/body/pdf
+            var s = await _db.NoticeSettings.FirstOrDefaultAsync(x => x.Id == dto.SettingsId, ct);
+            if (s is null) return NotFound();
+
+            var roll = await _db.RollRegistry.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+            if (roll is null) return NotFound();
+
+            if (!s.ApprovalKey.HasValue || s.ApprovalKey.Value == Guid.Empty)
+            {
+                s.ApprovalKey = Guid.NewGuid();
+                await _db.SaveChangesAsync(ct);
+            }
+
             var pv = await _preview.BuildPreviewAsync(dto.SettingsId, dto.Variant, dto.Mode, dto.AppealNo, ct);
 
             await _snap.SaveApprovalAsync(
@@ -925,16 +1007,96 @@ namespace GV23_Notice.Controllers
                 pdfFileName: pv.PdfFileName ?? "",
                 ct: ct);
 
-            TempData["Success"] = "Step 2 approved and snapshot saved.";
-            return RedirectToAction("Step2", new { settingsId = dto.SettingsId });
-        }
-        // POST: /Workflow/Step2RequestCorrection
+            var kickoffBaseUrl = Url.Action(
+                action: nameof(Step3Kickoff),
+                controller: "Workflow",
+                values: new { settingsId = s.Id },
+                protocol: Request.Scheme);
 
-        [HttpPost]
+            if (string.IsNullOrWhiteSpace(kickoffBaseUrl))
+                throw new InvalidOperationException("Could not build Step3Kickoff URL.");
+
+            var (approvalSubject, approvalBodyHtml) = _wfEmails.BuildApprovalEmail(
+                s,
+                roll,
+                approvedBy,
+                s.ApprovalKey.Value,
+                kickoffBaseUrl);
+
+            var domain = ResolveDomain(s.Notice);
+
+            var savedPath = await _emailArchive.SaveAsync(
+                rollId: s.RollId,
+                domain: domain,
+                rollShortCode: roll.ShortCode ?? "",
+                notice: s.Notice.ToString(),
+                version: s.Version,
+                category: "Approval",
+                fileStem: $"Step2_{s.Notice}_Settings_{s.Id}",
+                subject: approvalSubject,
+                bodyHtml: approvalBodyHtml,
+                meta: new
+                {
+                    s.Id,
+                    s.RollId,
+                    Roll = roll.ShortCode,
+                    roll.Name,
+                    Notice = s.Notice.ToString(),
+                    Mode = s.Mode.ToString(),
+                    Version = s.Version,
+                    ApprovedBy = approvedBy,
+                    ApprovedAtUtc = DateTime.UtcNow,
+                    dto.Variant,
+                    PreviewMode = dto.Mode,
+                    ApprovalKey = s.ApprovalKey.Value
+                },
+                ct: ct);
+
+            // ✅ SEND to Data Team + CC (from appsettings)
+            try
+            {
+                var r = GetApprovalRecipients();
+                await SendWorkflowEmailAsync(approvalSubject, approvalBodyHtml, r.To, r.Cc, ct);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Failed to send Step2 approval email for SettingsId={SettingsId}", s.Id);
+                TempData["Warning"] = "Approved, but failed to send approval email. Check SMTP/appsettings.";
+            }
+
+            s.ApprovedEmailSavedPath = savedPath;
+            s.ApprovedAtUtc = DateTime.UtcNow;
+            s.ApprovedBy = approvedBy;
+            await _db.SaveChangesAsync(ct);
+
+            TempData["Success"] = "Step 2 approved. Snapshot saved + approval email archived to disk (and sent if configured).";
+            return RedirectToAction("Step2", new
+            {
+                settingsId = dto.SettingsId,
+                variant = dto.Variant.ToString(),
+                mode = ToUiMode(dto.Mode),
+                appealNo = dto.AppealNo
+            });
+        }
+
+        [HttpPost("Step2RequestCorrection")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step2RequestCorrection(Step2CorrectionDto dto, CancellationToken ct)
         {
             var requestedBy = User?.Identity?.Name ?? "Unknown";
+
+            var s = await _db.NoticeSettings.FirstOrDefaultAsync(x => x.Id == dto.SettingsId, ct);
+            if (s is null) return NotFound();
+
+            var roll = await _db.RollRegistry.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+            if (roll is null) return NotFound();
+
+            if (!s.ApprovalKey.HasValue || s.ApprovalKey.Value == Guid.Empty)
+            {
+                s.ApprovalKey = Guid.NewGuid();
+                await _db.SaveChangesAsync(ct);
+            }
 
             var pv = await _preview.BuildPreviewAsync(dto.SettingsId, dto.Variant, dto.Mode, dto.AppealNo, ct);
 
@@ -950,10 +1112,81 @@ namespace GV23_Notice.Controllers
                 pdfFileName: pv.PdfFileName ?? "",
                 ct: ct);
 
-            TempData["Success"] = "Correction request saved with snapshot.";
-            return RedirectToAction("Step2", new { settingsId = dto.SettingsId });
+            var step2Url = Url.Action(
+                action: nameof(Step2),
+                controller: "Workflow",
+                values: new
+                {
+                    settingsId = s.Id,
+                    variant = dto.Variant.ToString(),
+                    mode = ToUiMode(dto.Mode),
+                    appealNo = dto.AppealNo
+                },
+                protocol: Request.Scheme) ?? "";
+
+            var (subject, bodyHtml) = _wfEmails.BuildCorrectionEmail(
+                s,
+                roll,
+                requestedBy,
+                dto.Reason ?? "",
+                s.ApprovalKey.Value,
+                step2Url);
+
+            var domain = ResolveDomain(s.Notice);
+
+            var savedPath = await _emailArchive.SaveAsync(
+                rollId: s.RollId,
+                domain: domain,
+                rollShortCode: roll.ShortCode ?? "",
+                notice: s.Notice.ToString(),
+                version: s.Version,
+                category: "Correction",
+                fileStem: $"Step2Correction_{s.Notice}_Settings_{s.Id}",
+                subject: subject,
+                bodyHtml: bodyHtml,
+                meta: new
+                {
+                    s.Id,
+                    s.RollId,
+                    Roll = roll.ShortCode,
+                    roll.Name,
+                    Notice = s.Notice.ToString(),
+                    Mode = s.Mode.ToString(),
+                    Version = s.Version,
+                    RequestedBy = requestedBy,
+                    RequestedAtUtc = DateTime.UtcNow,
+                    Reason = dto.Reason ?? "",
+                    dto.Variant,
+                    PreviewMode = dto.Mode,
+                    Step2Url = step2Url,
+                    ApprovalKey = s.ApprovalKey.Value
+                },
+                ct: ct);
+
+            // ✅ SEND to Data Team + CC (from appsettings)
+            try
+            {
+                var r = GetCorrectionRecipients();
+                await SendWorkflowEmailAsync(subject, bodyHtml, r.To, r.Cc, ct);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "Failed to send Step2 correction email for SettingsId={SettingsId}", s.Id);
+                TempData["Warning"] = "Correction saved, but failed to send correction email. Check SMTP/appsettings.";
+            }
+
+            s.CorrectionEmailSavedPath = savedPath;
+            await _db.SaveChangesAsync(ct);
+
+            TempData["Success"] = "Correction request saved with snapshot + email archived (and sent if configured).";
+            return RedirectToAction("Step2", new
+            {
+                settingsId = dto.SettingsId,
+                variant = dto.Variant.ToString(),
+                mode = ToUiMode(dto.Mode),
+                appealNo = dto.AppealNo
+            });
         }
-    
         [HttpGet("Step3Kickoff")]
         public async Task<IActionResult> Step3Kickoff(int settingsId, Guid key, CancellationToken ct)
         {
@@ -1278,6 +1511,43 @@ namespace GV23_Notice.Controllers
 
             // For now just return to kickoff.
             return RedirectToAction(nameof(Step3Kickoff), new { settingsId, key });
+        }
+
+
+        private async Task SendWorkflowEmailAsync(
+    string subject,
+    string bodyHtml,
+    IEnumerable<string> to,
+    IEnumerable<string> cc,
+    CancellationToken ct)
+        {
+            var opt = _emailOpt.Value; // EmailTemplateOptions
+
+            if (string.IsNullOrWhiteSpace(opt.Smtp.Host))
+                throw new InvalidOperationException("Email:Smtp:Host is missing.");
+
+            using var msg = new System.Net.Mail.MailMessage
+            {
+                From = new System.Net.Mail.MailAddress(opt.FromAddress, opt.FromName),
+                Subject = subject,
+                Body = bodyHtml,
+                IsBodyHtml = true
+            };
+
+            foreach (var t in to.Where(x => !string.IsNullOrWhiteSpace(x)))
+                msg.To.Add(t.Trim());
+
+            foreach (var c in cc.Where(x => !string.IsNullOrWhiteSpace(x)))
+                msg.CC.Add(c.Trim());
+
+            using var smtp = new System.Net.Mail.SmtpClient(opt.Smtp.Host, opt.Smtp.Port)
+            {
+                EnableSsl = opt.Smtp.EnableSsl,
+                Credentials = new System.Net.NetworkCredential(opt.Smtp.Username, opt.Smtp.Password)
+            };
+
+            // SmtpClient has no SendAsync(ct) in a nice way; use Task.Run to honour ct lightly
+            await Task.Run(() => smtp.Send(msg), ct);
         }
 
     }

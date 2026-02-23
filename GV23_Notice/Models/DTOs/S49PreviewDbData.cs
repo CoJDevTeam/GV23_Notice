@@ -1,4 +1,7 @@
-﻿namespace GV23_Notice.Models.DTOs
+﻿using System.Data;
+using System.Globalization;
+
+namespace GV23_Notice.Models.DTOs
 {
     public sealed class S49PreviewDbData
     {
@@ -24,6 +27,8 @@
         public string? Addr5 { get; set; }
         public string? PremiseAddress { get; set; }
         public string? AccountNo { get; set; }
+        public List<RowMap> RollRows { get; set; } = new();
+
     }
 
     public sealed class S51PreviewDbData
@@ -184,5 +189,114 @@
         public string? Addr5 { get; set; }
 
         public string? ObjectionStatus { get; set; } // Invalid-Objection / Invalid-Omission
+    }
+
+    public sealed class RowMap
+    {
+        private readonly Dictionary<string, object?> _data;
+
+        private RowMap(Dictionary<string, object?> data)
+        {
+            _data = data;
+        }
+
+        // -----------------------------
+        // Factory
+        // -----------------------------
+
+        public static RowMap FromReader(IDataRecord rd)
+        {
+            var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < rd.FieldCount; i++)
+            {
+                dict[rd.GetName(i)] = rd.IsDBNull(i) ? null : rd.GetValue(i);
+            }
+
+            return new RowMap(dict);
+        }
+
+        // -----------------------------
+        // Core access
+        // -----------------------------
+
+        public object? this[string key]
+            => _data.TryGetValue(key, out var v) ? v : null;
+
+        public bool Has(string key)
+            => _data.ContainsKey(key);
+
+        // -----------------------------
+        // Typed helpers (safe)
+        // -----------------------------
+
+        public string? Str(string key)
+        {
+            if (!_data.TryGetValue(key, out var v) || v is null)
+                return null;
+
+            return Convert.ToString(v, CultureInfo.InvariantCulture);
+        }
+
+        public int? Int(string key)
+        {
+            if (!_data.TryGetValue(key, out var v) || v is null)
+                return null;
+
+            if (v is int i) return i;
+
+            return int.TryParse(v.ToString(), out var result)
+                ? result
+                : null;
+        }
+
+        public decimal? Dec(string key)
+        {
+            if (!_data.TryGetValue(key, out var v) || v is null)
+                return null;
+
+            if (v is decimal d) return d;
+
+            return decimal.TryParse(
+                v.ToString(),
+                NumberStyles.Any,
+                CultureInfo.InvariantCulture,
+                out var result)
+                ? result
+                : null;
+        }
+
+        public bool? Bool(string key)
+        {
+            if (!_data.TryGetValue(key, out var v) || v is null)
+                return null;
+
+            if (v is bool b) return b;
+
+            var s = v.ToString()?.Trim().ToLowerInvariant();
+
+            if (s is "1" or "y" or "yes" or "true") return true;
+            if (s is "0" or "n" or "no" or "false") return false;
+
+            return null;
+        }
+
+        public DateTime? Date(string key)
+        {
+            if (!_data.TryGetValue(key, out var v) || v is null)
+                return null;
+
+            if (v is DateTime dt) return dt;
+
+            return DateTime.TryParse(v.ToString(), out var result)
+                ? result
+                : null;
+        }
+
+        // -----------------------------
+        // Debug / diagnostics
+        // -----------------------------
+
+        public IReadOnlyDictionary<string, object?> Raw => _data;
     }
 }

@@ -2,118 +2,173 @@
 @using System.Globalization
 
 @{
-    ViewData["Title"] = "Step 3 - Step 1 (Select Workflow)";
+    ViewData["Title"] = "Step 3 - Select Approved Workflow";
     string D(DateTime d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 }
 
-<div class="page-header">
-    <div class="content-wrapper">
-        <h1 class="main-title">Step 3 - Step 1 (Select Approved Workflow)</h1>
-    </div>
-</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="~/css/step3/index.css" rel="stylesheet" />
+</head>
+<body>
 
-<div class="content-wrapper">
-    <div class="premium-card">
-        <h3 class="card-title">Select Roll & Notice</h3>
+    <!-- ═══════════════ HEADER ═══════════════ -->
+    <header class="page-header">
+        <div class="brand">
+            <span class="brand-badge">GV23</span>
+            <span class="brand-title">Notice Management System</span>
+        </div>
+        <div class="step-indicator">
+            <span style="font-size:11px;color:#888;margin-right:6px;font-weight:600;">STEP 3</span>
+            <div class="step-pip done"></div>
+            <div class="step-pip active"></div>
+            <div class="step-pip"></div>
+            <span style="font-size:11px;color:var(--gold);font-weight:700;margin-left:6px;">3-1 — Select Workflow</span>
+        </div>
+    </header>
 
-        <form method="get" asp-action="Index" asp-controller="Step3">
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">Roll</label>
-                    <select class="form-select" name="rollId" required>
-                        <option value="">-- Select Roll --</option>
-                        @foreach (var r in Model.Rolls)
-                        {
-                            <option value="@r.Value" selected="@r.Selected">@r.Text</option>
-                        }
-                    </select>
-                </div>
+    <!-- ═══════════════ MAIN ═══════════════ -->
+    <div class="main-wrap">
 
-                <div class="col-md-6">
-                    <label class="form-label">Notice</label>
-                    <select class="form-select" name="notice" required>
-                        <option value="">-- Select Notice --</option>
-                        @foreach (var n in Model.Notices)
-                        {
-                            <option value="@n.Value" selected="@n.Selected">@n.Text</option>
-                        }
-                    </select>
-                </div>
+        <!-- TITLE BAR -->
+        <div class="title-bar">
+            <h2>Step 3 — Select Approved Workflow</h2>
+            <span class="step-crumb">Phase <span>3 of 3</span> · Data Team Processing</span>
+        </div>
 
-                <div class="col-md-12" style="margin-top:10px">
-                    <button class="btn btn-primary" type="submit">Load Approved Workflows</button>
+        <!-- FILTER CARD -->
+        <div class="card">
+            <div class="card-header">
+                <div class="header-accent"></div>
+                Select Roll &amp; Notice
+            </div>
+            <div class="card-body">
+                <form method="get" asp-action="Index" asp-controller="Step3">
+                    <div class="form-grid">
+                        <div class="form-field">
+                            <label class="form-label">Roll</label>
+                            <select class="form-select" name="rollId" required>
+                                <option value="">— Select Roll —</option>
+                                @foreach (var r in Model.Rolls)
+                                {
+                                    <option value="@r.Value" selected="@r.Selected">@r.Text</option>
+                                }
+                            </select>
+                        </div>
+
+                        <div class="form-field">
+                            <label class="form-label">Notice</label>
+                            <select class="form-select" name="notice" required>
+                                <option value="">— Select Notice —</option>
+                                @foreach (var n in Model.Notices)
+                                {
+                                    <option value="@n.Value" selected="@n.Selected">@n.Text</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="btn btn-primary" type="submit">
+                            ↻ Load Approved Workflows
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- RESULTS -->
+        @if (Model.RollId is null || Model.Notice is null)
+        {
+            <div class="section-divider">Results</div>
+            <div class="alert alert-info">
+                <span class="alert-icon">ℹ</span>
+                <div>Select a <strong>Roll</strong> and <strong>Notice</strong> above to load the approved workflows available for processing.</div>
+            </div>
+        }
+        else if (Model.Rows.Count == 0)
+        {
+            <div class="section-divider">Results</div>
+            <div class="alert alert-warning">
+                <span class="alert-icon">⚠</span>
+                <div>
+                    No approved workflows found for this Roll + Notice combination.<br />
+                    <small style="opacity:0.8;">Requirements: Step 1 Approved + WorkflowKey generated + Step 2 Approved or Correction Requested.</small>
                 </div>
             </div>
-        </form>
-    </div>
+        }
+        else
+        {
+            <div class="section-divider">Approved Workflows</div>
+            <div class="card">
+                <div class="card-header">
+                    <div class="header-accent"></div>
+                    Workflows Ready for Processing
+                </div>
 
-    <hr />
+                <div class="table-wrap">
+                    <table class="notice-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Roll</th>
+                                <th>Notice</th>
+                                <th>Mode</th>
+                                <th>Version</th>
+                                <th>Letter Date</th>
+                                <th>Workflow Key</th>
+                                <th style="text-align:right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in Model.Rows)
+                            {
+                                <tr>
+                                    <td>
+                                        @if (r.Step2Approved)
+                                        {
+                                            <span class="status-badge status-approved">✓ Approved</span>
+                                        }
+                                        else if (r.Step2CorrectionRequested)
+                                        {
+                                            <span class="status-badge status-correction">✎ Correction</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="status-badge status-pending">⏳ Pending</span>
+                                        }
+                                    </td>
+                                    <td class="td-roll">@r.RollShortCode — @r.RollName</td>
+                                    <td style="font-weight:600;">@r.Notice</td>
+                                    <td style="color:var(--gray-mid);">@r.Mode</td>
+                                    <td><span class="version-tag">@r.VersionText</span></td>
+                                    <td style="font-variant-numeric:tabular-nums;">@D(r.LetterDate)</td>
+                                    <td class="td-key" title="@r.WorkflowKey">@r.WorkflowKey</td>
+                                    <td style="text-align:right;">
+                                        <a class="btn btn-open"
+                                           href="@Url.Action("Open", "Step3", new { key = r.WorkflowKey })">
+                                            Open →
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
 
-    @if (Model.RollId is null || Model.Notice is null)
-    {
-        <div class="alert alert-secondary">
-            Select a Roll and Notice to view the approved workflows.
-        </div>
-    }
-    else if (Model.Rows.Count == 0)
-    {
-        <div class="alert alert-warning">
-            No approved workflows found for this Roll + Notice.
-            (Need: Step 1 Approved + WorkflowKey + Step 2 Approved OR Correction Requested)
-        </div>
-    }
-    else
-    {
-        <div class="premium-card">
-            <h3 class="card-title">Approved Workflows</h3>
+                <div class="table-footer">
+                    <span class="row-count"><strong>@Model.Rows.Count</strong> workflow@(Model.Rows.Count == 1 ? "" : "s") found</span>
+                    <span>Only Step 2 Approved &amp; Correction Requested workflows are listed</span>
+                </div>
+            </div>
+        }
 
-            <table class="table table-bordered table-sm">
-                <thead>
-                    <tr>
-                        <th style="width:140px">Step2 Status</th>
-                        <th>Roll</th>
-                        <th>Notice</th>
-                        <th style="width:120px">Mode</th>
-                        <th style="width:100px">Version</th>
-                        <th style="width:120px">Letter Date</th>
-                        <th style="width:250px">Workflow Key</th>
-                        <th style="width:110px"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var r in Model.Rows)
-                    {
-                        <tr>
-                            <td>
-                                @if (r.Step2Approved)
-                                {
-                                    <span class="badge bg-success">APPROVED</span>
-                                }
-                                else if (r.Step2CorrectionRequested)
-                                {
-                                    <span class="badge bg-warning text-dark">CORRECTION</span>
-                                }
-                                else
-                                {
-                                    <span class="badge bg-secondary">PENDING</span>
-                                }
-                            </td>
-                            <td>@r.RollShortCode - @r.RollName</td>
-                            <td>@r.Notice</td>
-                            <td>@r.Mode</td>
-                            <td>@r.VersionText</td>
-                            <td>@D(r.LetterDate)</td>
-                            <td><small>@r.WorkflowKey</small></td>
-                            <td>
-                                <a class="btn btn-sm btn-primary"
-                                   href="@Url.Action("Open", "Step3", new { key = r.WorkflowKey })">
-                                    Open
-                                </a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    }
-</div>
+    </div><!-- /main-wrap -->
+
+</body>
+</html>

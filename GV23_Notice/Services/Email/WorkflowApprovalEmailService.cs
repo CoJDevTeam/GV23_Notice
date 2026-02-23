@@ -24,7 +24,8 @@ namespace GV23_Notice.Services.Email
         {
             // Kickoff link built from key
             // kickoffBaseUrl example: https://yourdomain/Step3/Kickoff
-            var kickoffUrl = $"{kickoffBaseUrl}?key={workflowKey:D}";
+            var join = kickoffBaseUrl.Contains("?", StringComparison.Ordinal) ? "&" : "?";
+            var kickoffUrl = $"{kickoffBaseUrl}{join}key={workflowKey:D}";
 
             var subject = $"[APPROVED] {roll.ShortCode} {s.Notice} (v{s.Version}) - Step 3 Kickoff";
 
@@ -113,41 +114,69 @@ namespace GV23_Notice.Services.Email
       RollRegistry roll,
       string requestedBy,
       string reason,
-      Guid workflowKey)
+      Guid workflowKey,
+      string step2Url   // 🔹 pass Step2 URL so user can jump back
+  )
         {
-            var subject = $"[CORRECTION REQUEST] {roll.ShortCode} {s.Notice} (v{s.Version}) - Step 1 Settings";
+            var subject =
+                $"[CORRECTION REQUEST] {roll.ShortCode} {s.Notice} (v{s.Version}) – Step 2 Preview";
 
             var sb = new StringBuilder();
-            sb.Append("<div style='font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#111'>");
+
+            sb.Append("<div style='font-family:Segoe UI,Arial,Helvetica,sans-serif;");
+            sb.Append("font-size:13px;line-height:1.6;color:#111'>");
+
             sb.Append("<p>Good day Team,</p>");
+
             sb.Append("<p>");
-            sb.Append("A correction is requested for the <b>Step 1 configuration</b> before Step 3 processing can begin.");
-            sb.Append("</p>");
-
-            sb.Append("<p><b>Workflow Key:</b> ");
-            sb.Append(Html(workflowKey.ToString("D")));
-            sb.Append("</p>");
-
-            sb.Append("<p><b>Requested By:</b> ");
-            sb.Append(Html(requestedBy));
-            sb.Append("</p>");
-
-            sb.Append("<p><b>Reason / Required Changes:</b><br/>");
-            sb.Append(Html(reason).Replace("\n", "<br/>"));
+            sb.Append("A <b>correction has been requested</b> during ");
+            sb.Append("<b>Step 2 (Preview & Approval)</b> of the workflow. ");
+            sb.Append("The configuration must be updated before the process can proceed to Step 3.");
             sb.Append("</p>");
 
             sb.Append("<hr style='border:0;border-top:1px solid #ddd;margin:14px 0'/>");
 
-            sb.Append("<p><b>Context</b></p>");
+            sb.Append("<p><b>Correction Details</b></p>");
             sb.Append("<ul>");
-            sb.Append($"<li><b>Roll:</b> {Html(roll.ShortCode)} - {Html(roll.Name)}</li>");
+            sb.Append($"<li><b>Requested By:</b> {Html(requestedBy)}</li>");
+            sb.Append($"<li><b>Workflow Key:</b> {Html(workflowKey.ToString("D"))}</li>");
+            sb.Append($"<li><b>Requested At:</b> {DateTime.Now:yyyy-MM-dd HH:mm}</li>");
+            sb.Append("</ul>");
+
+            sb.Append("<p><b>Reason / Required Changes</b></p>");
+            sb.Append("<div style='padding:10px;border:1px solid #eee;background:#fafafa'>");
+            sb.Append(Html(reason).Replace("\n", "<br/>"));
+            sb.Append("</div>");
+
+            sb.Append("<hr style='border:0;border-top:1px solid #ddd;margin:14px 0'/>");
+
+            sb.Append("<p><b>Workflow Context</b></p>");
+            sb.Append("<ul>");
+            sb.Append($"<li><b>Roll:</b> {Html(roll.ShortCode)} – {Html(roll.Name)}</li>");
             sb.Append($"<li><b>Notice:</b> {Html(s.Notice.ToString())}</li>");
             sb.Append($"<li><b>Mode:</b> {Html(s.Mode.ToString())}</li>");
             sb.Append($"<li><b>Version:</b> v{s.Version}</li>");
             sb.Append($"<li><b>Letter Date:</b> {s.LetterDate:yyyy-MM-dd}</li>");
             sb.Append("</ul>");
 
-            sb.Append("<p>Regards,<br/>City of Johannesburg<br/>Valuation Services</p>");
+            if (!string.IsNullOrWhiteSpace(step2Url))
+            {
+                sb.Append("<p><b>Step 2 Review Link</b></p>");
+                sb.Append("<p>");
+                sb.Append($"<a href='{Html(step2Url)}' target='_blank'>{Html(step2Url)}</a>");
+                sb.Append("</p>");
+            }
+
+            sb.Append("<p>");
+            sb.Append("Please update the configuration and re-submit for approval once corrected.");
+            sb.Append("</p>");
+
+            sb.Append("<p>");
+            sb.Append("Regards,<br/>");
+            sb.Append("City of Johannesburg<br/>");
+            sb.Append("Valuation Services");
+            sb.Append("</p>");
+
             sb.Append("</div>");
 
             return (subject, sb.ToString());

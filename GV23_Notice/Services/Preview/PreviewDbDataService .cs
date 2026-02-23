@@ -24,46 +24,87 @@ namespace GV23_Notice.Services.Preview
         // -----------------------
         // PUBLIC METHODS
         // -----------------------
+        private async Task<List<RowMap>> ExecListAsync(
+    string proc,
+    Action<SqlCommand> setup,
+    CancellationToken ct)
+        {
+            var rows = new List<RowMap>();
 
+            await using var cn = new SqlConnection(_noticeDbConnStr);
+            await cn.OpenAsync(ct);
+
+            await using var cmd = new SqlCommand(proc, cn)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            setup(cmd);
+
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+
+            while (await rd.ReadAsync(ct))
+            {
+                rows.Add(RowMap.FromReader(rd));
+            }
+
+            return rows;
+        }
         public async Task<S49PreviewDbData> S49PreviewDbDataAsync(int rollId, bool split, CancellationToken ct)
         {
-            // 1) pick a roll row (single or split top1)
-            var proc = split ? "dbo.S49_Preview_SelectSplitTop1" : "dbo.S49_Preview_SelectSingleTop1";
+            // 1) pick one row to discover premiseId
+            var pickProc = split ? "dbo.S49_Preview_SelectSplitTop1" : "dbo.S49_Preview_SelectSingleTop1";
 
-            var rollRow = await ExecSingleAsync(proc, cmd =>
+            var pickRow = await ExecSingleAsync(pickProc, cmd =>
             {
                 cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
             }, ct);
 
-            if (rollRow is null)
+            if (pickRow is null)
                 throw new InvalidOperationException("S49 preview: no roll row found.");
 
-            var premiseId = rollRow.Str("PREMISEID") ?? rollRow.Str("PremiseId") ?? "";
+            var premiseId = pickRow.Str("PREMISEID") ?? pickRow.Str("PremiseId") ?? "";
             if (string.IsNullOrWhiteSpace(premiseId))
                 throw new InvalidOperationException("S49 preview: missing PREMISEID.");
 
-            // 2) fetch sap contact (you SHOULD have a proc for this; if not, create it and I’ll align it)
-            // Expected proc name:
-            // dbo.S49_Preview_SelectSapContactByPremise (@RollId, @PremiseId)
+            // 2) now pull all rows for that premiseId
+            var listProc = split
+                ? "dbo.S49_Preview_SelectSplitByPremise"
+                : "dbo.S49_Preview_SelectSingleByPremise"; // make this too, same idea but no split filter
+
+            var rollRows = await ExecListAsync(listProc, cmd =>
+            {
+                cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
+                cmd.Parameters.Add(new SqlParameter("@PremiseId", SqlDbType.VarChar, 50) { Value = premiseId.Trim() });
+            }, ct);
+
+            if (rollRows.Count == 0)
+                throw new InvalidOperationException("S49 preview: no roll rows found for premise.");
+
+            // 3) sap contact
             var contactRow = await ExecSingleAsync("dbo.S49_Preview_SelectSapContactByPremise", cmd =>
             {
                 cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
-                cmd.Parameters.Add(new SqlParameter("@PremiseId", SqlDbType.VarChar, 50) { Value = premiseId });
+                cmd.Parameters.Add(new SqlParameter("@PremiseId", SqlDbType.VarChar, 50) { Value = premiseId.Trim() });
             }, ct);
+
+            // 4) pick a header row (newest)
+            var header = rollRows[0];
 
             return new S49PreviewDbData
             {
                 RollId = rollId,
-
                 PremiseId = premiseId,
-                PropertyDesc = rollRow.Str("PropertyDesc"),
-                LisStreetAddress = rollRow.Str("LisStreetAddress"),
-                ValuationKey = rollRow.Str("VALUATIONKEY") ?? rollRow.Str("ValuationKey"),
-                CatDesc = rollRow.Str("CatDesc"),
-                RateableArea = rollRow.Dec("RateableArea"),
-                MarketValue = rollRow.Dec("MarketValue"),
-                Reason = rollRow.Str("Reason"),
-                ValuationSplitIndicator = rollRow.Str("ValuationSplitIndicator"),
+
+                // Use header row for summary fields
+                PropertyDesc = header.Str("PropertyDesc") ?? header.Str("Property_Desc"),
+                LisStreetAddress = header.Str("LisStreetAddress"),
+                ValuationKey = header.Str("VALUATIONKEY") ?? header.Str("ValuationKey"),
+                CatDesc = header.Str("CatDesc"),
+                RateableArea = header.Dec("RateableArea"),
+                MarketValue = header.Dec("MarketValue"),
+                Reason = header.Str("Reason"),
+                ValuationSplitIndicator = header.Str("ValuationSplitIndicator"),
 
                 Email = contactRow?.Str("EMAIL_ADDR") ?? contactRow?.Str("Email"),
                 Addr1 = contactRow?.Str("ADDR1"),
@@ -72,10 +113,12 @@ namespace GV23_Notice.Services.Preview
                 Addr4 = contactRow?.Str("ADDR4"),
                 Addr5 = contactRow?.Str("ADDR5"),
                 PremiseAddress = contactRow?.Str("PREMISE_ADDRESS"),
-                AccountNo = contactRow?.Str("ACCOUNT_NO")
+                AccountNo = contactRow?.Str("ACCOUNT_NO"),
+
+                // ✅ THIS is what MapS49ToPdf must use
+                RollRows = rollRows
             };
         }
-
         public async Task<S51PreviewDbData> S51PreviewDbDataAsync(int rollId, CancellationToken ct)
         {
             var row = await ExecSingleAsync("dbo.S51_Preview_SelectTop1", cmd =>

@@ -1,4 +1,6 @@
-﻿namespace GV23_Notice.Domain.Email
+﻿using static GV23_Notice.Domain.Email.EmailOptions;
+
+namespace GV23_Notice.Domain.Email
 {
     public sealed class EmailTemplateOptions
     {
@@ -14,6 +16,15 @@
 
         public string[] ApprovalRecipients { get; set; } = Array.Empty<string>();
         public string[] CorrectionRecipients { get; set; } = Array.Empty<string>();
+
+    
+      
+        public string[] ApprovalCcRecipients { get; set; } = Array.Empty<string>();
+
+
+        public string[] CorrectionCcRecipients { get; set; } = Array.Empty<string>();
+
+        public SmtpOptions Smtp { get; set; } = new();
 
         public sealed class EnquiriesOptions
         {

@@ -112,7 +112,7 @@ namespace GV23_Notice.Services.Notices
 
                         valuationKey = db.ValuationKey ?? "";
                         // ✅ S49 doesn't have PropertyDesc, use addresses as "property"
-                        samplePropertyDesc = FirstNonEmpty(db.PremiseAddress, db.LisStreetAddress, "");
+                        samplePropertyDesc = FirstNonEmpty(db.PropertyDesc, db.LisStreetAddress, "");
 
                         var ctx = new Section49NoticeContext
                         {
@@ -342,19 +342,142 @@ namespace GV23_Notice.Services.Notices
 
         private static Section49PdfData MapS49ToPdf(S49PreviewDbData db, bool forceFourRows)
         {
-            string Money(decimal? v) => v.HasValue ? "R " + v.Value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ") : "";
-            string Num(decimal? v) => v.HasValue ? v.Value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ") : "";
+            static string Money(decimal? v) =>
+                v.HasValue ? "R " + v.Value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ") : "";
 
-            var rows = new List<Section49PropertyRow>
+            static string Num(decimal? v) =>
+                v.HasValue ? v.Value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ") : "";
+
+            static string? FirstNonEmpty(params string?[] values)
             {
-                new Section49PropertyRow
+                foreach (var v in values)
+                    if (!string.IsNullOrWhiteSpace(v))
+                        return v;
+                return null;
+            }
+
+            static string? GetStr(RowMap r, params string[] keys)
+            {
+                foreach (var k in keys)
                 {
-                    Category = db.CatDesc ?? "",
-                    MarketValue = Money(db.MarketValue),
-                    Extent = Num(db.RateableArea),
-                    Remarks = ""
+                    var v = r.Str(k);
+                    if (!string.IsNullOrWhiteSpace(v)) return v;
                 }
-            };
+                return null;
+            }
+
+            static decimal? GetDec(RowMap r, params string[] keys)
+            {
+                foreach (var k in keys)
+                {
+                    var v = r.Dec(k);
+                    if (v.HasValue) return v;
+                }
+                return null;
+            }
+
+            // 1) Source rows
+            var src = (db.RollRows ?? new List<RowMap>())
+                .Where(r => !string.IsNullOrWhiteSpace(GetStr(r, "PREMISEID", "PremiseId", "PREMISE_ID")))
+                .ToList();
+
+            // fallback to single-row mapping if RollRows not populated
+            if (src.Count == 0)
+            {
+                var rowsFallback = new List<Section49PropertyRow>
+        {
+            new Section49PropertyRow
+            {
+                Category = db.CatDesc ?? "",
+                MarketValue = Money(db.MarketValue),
+                Extent = Num(db.RateableArea),
+                Remarks = db.Reason ?? ""
+            }
+        };
+
+                return new Section49PdfData
+                {
+                    Addr1 = db.Addr1 ?? "",
+                    Addr2 = db.Addr2 ?? "",
+                    Addr3 = db.Addr3 ?? "",
+                    Addr4 = db.Addr4 ?? "",
+                    Addr5 = db.Addr5 ?? "",
+                    PropertyDesc = db.PropertyDesc ?? "",
+                    PhysicalAddress = db.LisStreetAddress ?? "",
+                    ValuationKey = db.ValuationKey ?? "",
+                    ForceFourRows = forceFourRows,
+                    PropertyRows = rowsFallback
+                };
+            }
+
+            // ✅ NEW: populate PropertyDesc + PhysicalAddress from header row (so PDF shows them)
+            var headerRow = src[0];
+
+            var propertyDesc = FirstNonEmpty(
+                GetStr(headerRow, "PropertyDesc", "Property_Desc", "PROPERTYDESC"),
+                db.PropertyDesc,
+                ""
+            ) ?? "";
+
+            var physicalAddr = FirstNonEmpty(
+                GetStr(headerRow, "LisStreetAddress", "LIS_STREET_ADDRESS", "PREMISE_ADDRESS", "PhysicalAddress"),
+                db.LisStreetAddress,
+                db.PremiseAddress,
+                ""
+            ) ?? "";
+
+            // 2) Build PDF property rows
+            if (forceFourRows)
+            {
+                if (src.Count > 4) src = src.Take(4).ToList();
+            }
+            else
+            {
+                // ✅ Optional safety: ensure single mode prints ONE row only
+                if (src.Count > 1) src = src.Take(1).ToList();
+            }
+
+            var rows = src.Select(r =>
+            {
+                var cat = FirstNonEmpty(
+                    GetStr(r, "CatDesc", "Category", "Old_Category", "PROPERTY_CATEGORY"),
+                    db.CatDesc,
+                    ""
+                );
+
+                var mv = GetDec(r, "MarketValue", "Market_Value", "Old_Market_Value", "GV_Market_Value") ?? db.MarketValue;
+                var ext = GetDec(r, "RateableArea", "Rateable_Area", "Extent", "RATEABLEAREA") ?? db.RateableArea;
+
+                var splitMark = FirstNonEmpty(GetStr(r, "ValuationSplitIndicator"), "");
+                var reason = FirstNonEmpty(GetStr(r, "Reason", "Remarks"), db.Reason, "");
+
+                var remarks = string.IsNullOrWhiteSpace(splitMark)
+                    ? reason ?? ""
+                    : $"{splitMark} {reason}".Trim();
+
+                return new Section49PropertyRow
+                {
+                    Category = cat ?? "",
+                    MarketValue = Money(mv),
+                    Extent = Num(ext),
+                    Remarks = remarks ?? ""
+                };
+            }).ToList();
+
+            // 3) If ForceFourRows then pad up to 4 (blank lines)
+            if (forceFourRows)
+            {
+                while (rows.Count < 4)
+                {
+                    rows.Add(new Section49PropertyRow
+                    {
+                        Category = "",
+                        MarketValue = "",
+                        Extent = "",
+                        Remarks = ""
+                    });
+                }
+            }
 
             return new Section49PdfData
             {
@@ -363,6 +486,11 @@ namespace GV23_Notice.Services.Notices
                 Addr3 = db.Addr3 ?? "",
                 Addr4 = db.Addr4 ?? "",
                 Addr5 = db.Addr5 ?? "",
+
+                // ✅ NEW: now these will show on the PDF
+                PropertyDesc = propertyDesc,
+                PhysicalAddress = physicalAddr,
+
                 ValuationKey = db.ValuationKey ?? "",
                 ForceFourRows = forceFourRows,
                 PropertyRows = rows

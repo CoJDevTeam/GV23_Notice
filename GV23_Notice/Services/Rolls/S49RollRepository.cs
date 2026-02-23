@@ -64,8 +64,9 @@ namespace GV23_Notice.Services.Rolls
             var sql = $@"
 SELECT TOP (@Top) r.PREMISEID
 FROM [{dbName}].[dbo].[{rollTable}] r
-INNER JOIN [{dbName}].[dbo].[{sapTable}] c ON c.PREMISE_ID = r.PREMISEID
-WHERE ISNULL(r.Email_Sent, 0) = 0
+INNER JOIN [{dbName}].[dbo].[{sapTable}] c 
+    ON c.PREMISE_ID = r.PREMISEID
+WHERE ISNULL(r.Email_Sent, 'No') = 'No'
   AND NULLIF(LTRIM(RTRIM(c.EMAIL_ADDR)), '') IS NOT NULL
 GROUP BY r.PREMISEID
 ORDER BY MIN(r.Id) ASC;";
