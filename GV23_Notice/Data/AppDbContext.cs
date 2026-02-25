@@ -32,6 +32,7 @@ namespace GV23_Notice.Data
         public DbSet<NoticeStep2CorrectionRequest> NoticeStep2CorrectionRequests => Set<NoticeStep2CorrectionRequest>();
 
 
+        public DbSet<S49BatchPickRow> S49BatchPickRows => Set<S49BatchPickRow>();
 
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
 
@@ -179,6 +180,9 @@ namespace GV23_Notice.Data
                     .HasForeignKey(x => x.SettingsId)
                     .OnDelete(DeleteBehavior.Cascade);
             });
+
+            modelBuilder.Entity<S49BatchPickRow>().HasNoKey();
+            modelBuilder.Entity<S49BatchPickRow>().ToView(null);
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.Workflow.ViewModels;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,9 +17,18 @@ namespace GV23_Notice.Services.Step3
         public async Task<Step3Step2Vm> BuildAsync(Guid workflowKey, CancellationToken ct)
         {
             var s = await _db.NoticeSettings
-                .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.WorkflowKey == workflowKey, ct)
-                ?? throw new InvalidOperationException("Workflow not found.");
+                  .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey, ct);
+
+            // fallback (older flows might have WorkflowKey)
+            if (s is null)
+            {
+                s = await _db.NoticeSettings
+                    .FirstOrDefaultAsync(x => x.WorkflowKey == workflowKey, ct);
+            }
+
+            if (s is null)
+                throw new InvalidOperationException("Workflow not found.");
+
 
             var roll = await _db.RollRegistry
                 .AsNoTracking()
@@ -60,6 +70,16 @@ namespace GV23_Notice.Services.Step3
                     ApprovedAtUtc = b.ApprovedAtUtc
                 }).ToList()
             };
+        }
+
+        public async Task<S49PendingCountDto> GetS49PendingAsync(int rollId, CancellationToken ct)
+        {
+            var row = await _db.Set<S49PendingCountDto>()
+                .FromSqlRaw("EXEC dbo.S49_Step3_CountPending @p0", rollId)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(ct);
+
+            return row ?? new S49PendingCountDto();
         }
     }
 }

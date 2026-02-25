@@ -20,15 +20,27 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string? ApprovedBy { get; set; }
         public DateTime? ApprovedAtUtc { get; set; }
 
-        // Step1 snapshot
+        // Step1 snapshot (read-only)
         public DateTime LetterDate { get; set; }
         public DateTime? ObjectionStartDate { get; set; }
         public DateTime? ObjectionEndDate { get; set; }
         public DateTime? ExtensionDate { get; set; }
         public string? FinancialYearsText { get; set; }
-
         public string? SignaturePath { get; set; }
 
+        // ✅ NEW: Step2-like preview fields
+        public string RecipientName { get; set; } = "";
+        public string RecipientEmail { get; set; } = "";
+        public string EmailSubject { get; set; } = "";
+        public string EmailBodyHtml { get; set; } = "";
+        public string PdfUrl { get; set; } = "";
+
+        // ✅ Keep UI selection (optional, but nice)
+        public string SelectedVariant { get; set; } = "Default";
+        public string SelectedMode { get; set; } = "single";
+        public string? AppealNo { get; set; } // for S52 only
+
+      
         // Real DB preview (one premise sample)
         public string? SamplePremiseId { get; set; }
         public string? SampleEmail { get; set; }

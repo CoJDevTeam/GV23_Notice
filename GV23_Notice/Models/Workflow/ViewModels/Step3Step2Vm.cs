@@ -13,6 +13,19 @@ namespace GV23_Notice.Models.Workflow.ViewModels
 
         public DateTime BatchDate { get; set; } = DateTime.Today;
 
+        public int BatchSize { get; set; } = 500;
+        public int TotalPendingRecords { get; set; }
+        public int BatchesCreatedCount { get; set; }
+        public int TotalRecordsInCreatedBatches { get; set; }
+
+        // readonly summary fields
+        public DateTime? LetterDate { get; set; }
+        public string? FinancialYearsText { get; set; }
+        public DateTime? ObjectionStartDate { get; set; }
+        public DateTime? ObjectionEndDate { get; set; }
+        public DateTime? ExtensionDate { get; set; }
+        public string? SignaturePath { get; set; }
+
         public List<Step3BatchRowVm> Batches { get; set; } = new();
     }
 

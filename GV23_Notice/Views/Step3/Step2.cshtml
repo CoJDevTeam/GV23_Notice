@@ -4,11 +4,30 @@
 @{
     ViewData["Title"] = "Step 3 / Step 2 - Create Batch";
     string DT(DateTime d) => d.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+    // ---------- Safe calculations (no crash if null/0) ----------
+    var batchSize = Model.BatchSize <= 0 ? 500 : Model.BatchSize;
+
+    var totalPending = Model.TotalPendingRecords < 0 ? 0 : Model.TotalPendingRecords;
+    var createdBatches = Model.BatchesCreatedCount < 0 ? 0 : Model.BatchesCreatedCount;
+    var createdRecords = Model.TotalRecordsInCreatedBatches < 0 ? 0 : Model.TotalRecordsInCreatedBatches;
+
+    var remaining = Math.Max(0, totalPending - createdRecords);
+
+    // Estimated batches left (ceil)
+    var remainingBatches = (remaining == 0)
+        ? 0
+        : (int)Math.Ceiling(remaining / (decimal)batchSize);
+
+    // Progress %
+    var progressPct = totalPending == 0 ? 0 : (int)Math.Round((createdRecords * 100m) / totalPending);
+    if (progressPct < 0) progressPct = 0;
+    if (progressPct > 100) progressPct = 100;
 }
 
-<div class="page-header">
-    <h1>Step 3 – Step 2 (Create Batch)</h1>
-    <p>
+<div class="page-header mb-3">
+    <h1 class="mb-1">Step 3 – Step 2 (Create Batch)</h1>
+    <div class="text-muted">
         <b>Roll:</b> @Model.RollShortCode - @Model.RollName
         &nbsp;|&nbsp;
         <b>Notice:</b> @Model.Notice
@@ -16,17 +35,124 @@
         <b>Version:</b> @Model.VersionText
         &nbsp;|&nbsp;
         <b>Workflow Key:</b> @Model.WorkflowKey
-    </p>
+    </div>
 </div>
 
 @if (TempData["Success"] != null)
 {
     <div class="alert alert-success">@TempData["Success"]</div>
 }
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-danger">@TempData["Error"]</div>
+}
 
-<div class="card">
+<!-- =========================
+     READONLY WORKFLOW SUMMARY
+     ========================= -->
+<div class="card mb-3">
     <div class="card-body">
-        <h4>Create New Batch</h4>
+        <h4 class="mb-3">Workflow Summary (Readonly)</h4>
+
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="text-muted">Letter Date</div>
+                <div><b>@Model.LetterDate?.ToString("yyyy-MM-dd")</b></div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="text-muted">Financial Years</div>
+                <div><b>@(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "-" : Model.FinancialYearsText)</b></div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="text-muted">Objection Start</div>
+                <div><b>@Model.ObjectionStartDate?.ToString("yyyy-MM-dd")</b></div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="text-muted">Objection End</div>
+                <div><b>@Model.ObjectionEndDate?.ToString("yyyy-MM-dd")</b></div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="text-muted">Extension Date</div>
+                <div><b>@Model.ExtensionDate?.ToString("yyyy-MM-dd")</b></div>
+            </div>
+
+            <div class="col-md-9">
+                <div class="text-muted">Signature</div>
+                <div>
+                    @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
+                    {
+                        <span class="badge bg-success">UPLOADED</span>
+                        <span class="ms-2 text-muted" style="font-size:12px">@Model.SignaturePath</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-danger">MISSING</span>
+                        <span class="ms-2 text-muted">Step 1 signature not found.</span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================
+     BATCH STATS + PROGRESS
+     ========================= -->
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h4 class="mb-0">Batch Status</h4>
+            <span class="badge bg-primary">Batch Size: @batchSize</span>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="text-muted">Total Pending Records</div>
+                <div style="font-size:20px"><b>@totalPending.ToString("N0")</b></div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="text-muted">Created Batches</div>
+                <div style="font-size:20px"><b>@createdBatches.ToString("N0")</b></div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="text-muted">Records in Created Batches</div>
+                <div style="font-size:20px"><b>@createdRecords.ToString("N0")</b></div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="text-muted">Remaining Records</div>
+                <div style="font-size:20px"><b>@remaining.ToString("N0")</b></div>
+                <div class="text-muted" style="font-size:12px">Est. batches left: <b>@remainingBatches</b></div>
+            </div>
+        </div>
+
+        <div class="mb-1 text-muted" style="font-size:12px">Progress</div>
+        <div class="progress" style="height: 22px;">
+            <div class="progress-bar" role="progressbar"
+                 style="width:@progressPct%"
+                 aria-valuenow="@progressPct" aria-valuemin="0" aria-valuemax="100">
+                @progressPct%
+            </div>
+        </div>
+        <div class="text-muted mt-2" style="font-size:12px">
+            Created: @createdRecords.ToString("N0") of @totalPending.ToString("N0")
+        </div>
+    </div>
+</div>
+
+<!-- =========================
+     CREATE BATCH
+     ========================= -->
+<div class="card mb-3">
+    <div class="card-body">
+        <h4 class="mb-3">Create New Batch</h4>
+
         <form asp-action="Step2CreateBatch" asp-controller="Step3" method="post">
             @Html.AntiForgeryToken()
             <input type="hidden" name="key" value="@Model.WorkflowKey" />
@@ -36,9 +162,22 @@
                     <label class="form-label">Batch Date</label>
                     <input class="form-control" type="date" name="batchDate"
                            value="@Model.BatchDate.ToString("yyyy-MM-dd")" required />
+                    <div class="text-muted" style="font-size:12px">
+                        This date will be saved into <b>NoticeBatch.BatchDate</b>
+                        and for <b>S49</b> also written into the roll rows (<b>Batch_Date</b>).
+                    </div>
                 </div>
-                <div class="col-md-8" style="display:flex;align-items:end">
-                    <button class="btn btn-primary" type="submit">Create Batch (Top 500)</button>
+
+                <div class="col-md-8 d-flex align-items-end">
+                    <button class="btn btn-primary" type="submit"
+                            @(remaining == 0 ? "disabled" : "")>
+                        Create Batch (Top @batchSize)
+                    </button>
+
+                    @if (remaining == 0)
+                    {
+                        <span class="ms-3 badge bg-success">Nothing left to batch</span>
+                    }
                 </div>
             </div>
         </form>
@@ -47,20 +186,23 @@
 
 <hr />
 
+<!-- =========================
+     EXISTING BATCHES
+     ========================= -->
 <h4>Existing Step 3 Batches</h4>
 
-@if (Model.Batches.Count == 0)
+@if (Model.Batches == null || Model.Batches.Count == 0)
 {
     <div class="alert alert-secondary">No batches created yet.</div>
 }
 else
 {
-    <table class="table table-bordered table-sm">
+    <table class="table table-bordered table-sm align-middle">
         <thead>
             <tr>
                 <th>Batch Name</th>
                 <th style="width:120px">Batch Date</th>
-                <th style="width:130px">Records</th>
+                <th style="width:120px">Records</th>
                 <th>Created By</th>
                 <th style="width:180px">Created At (UTC)</th>
                 <th style="width:120px">Approved</th>
@@ -72,7 +214,7 @@ else
                 <tr>
                     <td>@b.BatchName</td>
                     <td>@b.BatchDate.ToString("yyyy-MM-dd")</td>
-                    <td>@b.NumberOfRecords</td>
+                    <td>@b.NumberOfRecords.ToString("N0")</td>
                     <td>@b.CreatedBy</td>
                     <td>@DT(b.CreatedAtUtc)</td>
                     <td>

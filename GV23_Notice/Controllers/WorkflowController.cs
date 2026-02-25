@@ -1187,8 +1187,16 @@ namespace GV23_Notice.Controllers
                 appealNo = dto.AppealNo
             });
         }
+
+
         [HttpGet("Step3Kickoff")]
-        public async Task<IActionResult> Step3Kickoff(int settingsId, Guid key, CancellationToken ct)
+        public async Task<IActionResult> Step3Kickoff(
+       int settingsId,
+       Guid key,
+       string? variant,
+       string? mode,
+       string? appealNo,
+       CancellationToken ct)
         {
             var s = await _settings.GetByIdAsync(settingsId, ct);
             if (s is null) return NotFound();
@@ -1196,46 +1204,30 @@ namespace GV23_Notice.Controllers
             if (!s.IsApproved)
                 return BadRequest("Settings are not approved.");
 
-            if (s.ApprovalKey == Guid.Empty || s.ApprovalKey != key)
+            if (!s.ApprovalKey.HasValue || s.ApprovalKey.Value == Guid.Empty || s.ApprovalKey.Value != key)
                 return Unauthorized("Invalid approval link.");
 
-            var roll = await _db.RollRegistry.AsNoTracking().FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+            var roll = await _db.RollRegistry.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
             if (roll is null) return NotFound();
 
-            // ✅ Real DB sample for Section49: pick first pending premiseId (TOP 1)
-            string? samplePremise = null;
-            string? sampleEmail = null;
-            int sampleRowCount = 0;
-            bool sampleIsSplit = false;
+            // Parse like Step2
+            var v = PreviewVariantParser.Parse(variant);
+            var m = PreviewModeParser.Parse(mode);
 
-            if (s.Notice == NoticeKind.S49)
-            {
-                var picks = await _s49Roll.PickNextPremiseIdsAsync(s.RollId, top: 1, ct);
-                samplePremise = picks.FirstOrDefault();
+            // Section 52 requires appealNo
+            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(appealNo))
+                return BadRequest("AppealNo is required for Section 52 in Step 3 kickoff.");
 
-                if (!string.IsNullOrWhiteSpace(samplePremise))
-                {
-                    var (rows, contact) = await _s49Roll.LoadPremiseAsync(s.RollId, samplePremise, ct);
-                    sampleEmail = contact?.Email;
-                    sampleRowCount = rows.Count;
-                    sampleIsSplit = rows.Count > 1; // your rule: group by PremiseId having > 1
-                }
-            }
+            // ✅ Build preview using EXACT same pipeline as Step2
+            var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
 
-            // Build LIVE previews (PDF + Email)
-            var previewMode = PreviewMode.Single; // kickoff always shows “single real preview”
-            var previewVariant = PreviewVariant.Default;
+            // ✅ Save PDF to temp (same as Step2)
+            var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
+                ? $"Step3Kickoff_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
+                : result.PdfFileName;
 
-            var pdfPreviewUrl = Url.Action(nameof(Step3PreviewPdf), "Workflow", new { settingsId, key }) ?? "";
-
-            // Email preview: reuse your template service but with real contact/real property sample.
-            // For now we can show a minimal read-only HTML block, then we’ll wire full template in Step3 service.
-            var emailHtml = $@"
-<div>
-  <p><b>Sample Premise:</b> {samplePremise ?? "-"}</p>
-  <p><b>Sample Email:</b> {sampleEmail ?? "-"}</p>
-  <p>This is a Step 3 kickoff preview (live from DB). Sending happens when you start the batch.</p>
-</div>";
+            var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
 
             var vm = new GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
             {
@@ -1243,32 +1235,35 @@ namespace GV23_Notice.Controllers
                 ApprovalKey = s.ApprovalKey.Value,
 
                 RollId = roll.RollId,
-                RollShortCode = roll.ShortCode ?? "",
-                RollName = roll.Name ?? "",
+                RollShortCode = roll.ShortCode ?? result.RollShortCode ?? "",
+                RollName = roll.Name ?? result.RollName ?? "",
 
                 Notice = s.Notice,
                 Mode = s.Mode,
                 Version = s.Version,
 
                 IsApproved = s.IsApproved,
-                ApprovedBy = s.ApprovedBy,         // ensure exists in NoticeSettings
-                ApprovedAtUtc = s.ApprovedAtUtc,   // ensure exists in NoticeSettings
+                ApprovedBy = s.ApprovedBy,
+                ApprovedAtUtc = s.ApprovedAtUtc,
 
+                // Step1 snapshot fields
                 LetterDate = s.LetterDate,
                 ObjectionStartDate = s.ObjectionStartDate,
                 ObjectionEndDate = s.ObjectionEndDate,
                 ExtensionDate = s.ExtensionDate,
                 FinancialYearsText = s.FinancialYearsText,
-
                 SignaturePath = s.SignaturePath,
 
-                SamplePremiseId = samplePremise,
-                SampleEmail = sampleEmail,
-                SampleRowCount = sampleRowCount,
-                SampleIsSplit = sampleIsSplit,
+                // ✅ Real preview data (recipient + email + pdf)
+                RecipientName = result.RecipientName ?? "",
+                RecipientEmail = result.RecipientEmail ?? "",
+                EmailSubject = result.EmailSubject ?? "",
+                EmailBodyHtml = result.EmailBodyHtml ?? "",
+                PdfUrl = pdfUrl,
 
-                PdfPreviewUrl = pdfPreviewUrl,
-                EmailPreviewHtml = emailHtml
+                SelectedVariant = string.IsNullOrWhiteSpace(variant) ? "Default" : variant!,
+                SelectedMode = string.IsNullOrWhiteSpace(mode) ? "single" : mode!,
+                AppealNo = appealNo
             };
 
             return View(vm);

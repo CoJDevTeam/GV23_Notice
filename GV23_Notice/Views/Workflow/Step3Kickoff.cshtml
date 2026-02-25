@@ -1,246 +1,258 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
 @using GV23_Notice.Domain.Workflow
-
 @{
-    ViewData["Title"] = "Unified Workflow - Step 3 (Kickoff)";
+    ViewData["Title"] = "Step 3 — Kickoff";
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
-    string noticeLabel = Model.Notice.ToString();
+
+    // Build avatar initials from recipient name
+    string initials = "?";
+    if (!string.IsNullOrWhiteSpace(Model.RecipientName))
+    {
+        var parts = Model.RecipientName.Trim().Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
+        initials = parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
+            : Model.RecipientName[..1].ToUpper();
+    }
 }
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link href="~/css/step3/step3kickoffcss.css" rel="stylesheet" />
-</head>
-<body>
 
-    <!-- ═══ HEADER ═══ -->
-    <header class="page-header">
-        <div class="brand">
-            <span class="brand-badge">GV23</span>
-            <span class="brand-title">Notice Management System</span>
+<link href="~/css/step3/step3kickoffcss.css" rel="stylesheet" />
+<!-- PAGE LOADER -->
+<div id="pageLoader">
+    <div class="ld-logo">GV23 <span>Notices</span></div>
+    <div class="ld-spinner"></div>
+    <div class="ld-bar"><div class="ld-bar-fill"></div></div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     FULL-SCREEN SHELL
+════════════════════════════════════════════════════════════ -->
+<div class="s3-fullscreen">
+
+    <!-- META BAR -->
+    <div class="s3-meta-bar">
+        <div class="meta-chip"><span class="meta-chip-label">Roll</span><span class="meta-chip-val">@Model.RollShortCode — @Model.RollName</span></div>
+        <div class="meta-chip"><span class="meta-chip-label">Notice</span><span class="meta-chip-val">@Model.Notice</span></div>
+        <div class="meta-chip"><span class="meta-chip-label">Version</span><span class="meta-chip-val">v@Model.Version</span></div>
+        <div class="meta-chip"><span class="meta-chip-label">Step</span><span class="meta-chip-val">3 — Kickoff</span></div>
+    </div>
+
+    <!-- STATUS / BREADCRUMB BAR -->
+    <div class="s3-status-banner">
+        <div class="s3-step-trail">
+            <div class="s3-bc done">
+                <div class="s3-bc-dot">✓</div>
+                Configure
+            </div>
+            <div class="s3-bc-arrow">›</div>
+            <div class="s3-bc done">
+                <div class="s3-bc-dot">✓</div>
+                Preview
+            </div>
+            <div class="s3-bc-arrow">›</div>
+            <div class="s3-bc active">
+                <div class="s3-bc-dot">3</div>
+                Kickoff
+            </div>
         </div>
-        <div class="step-indicator">
-            <span style="font-size:11px;color:#888;margin-right:6px;font-weight:600;">STEP</span>
-            <div class="step-pip done"></div>
-            <div class="step-pip done"></div>
-            <div class="step-pip active"></div>
-            <span style="font-size:11px;color:var(--gold);font-weight:700;margin-left:6px;">3 of 3 — Kickoff</span>
-        </div>
-    </header>
+        <div class="s3-lock-badge">🔒 Read-only — Locked to approved configuration</div>
+    </div>
 
-    <!-- ═══ MAIN ═══ -->
-    <div class="main-wrap">
+    <!-- BODY: PDF left | Sidebar right -->
+    <div class="s3-body">
 
-        @if (TempData["Success"] != null)
-        {
-            <div class="alert alert-success">✓ @TempData["Success"]</div>
-        }
-        @if (TempData["Error"] != null)
-        {
-            <div class="alert alert-danger">⚠ @TempData["Error"]</div>
-        }
-
-        <!-- META BAR -->
-        <div class="meta-bar">
-            <h2>Step 3 — Kickoff &amp; Data Team Processing</h2>
-            <div class="meta-pills">
-                <div class="meta-pill"><strong>Roll:</strong> @Model.RollShortCode — @Model.RollName</div>
-                <div class="meta-pill"><strong>Notice:</strong> @noticeLabel</div>
-                <div class="meta-pill"><strong>Version:</strong> v@Model.Version</div>
-                <div class="meta-pill"><strong>Key:</strong> <code>@Model.ApprovalKey</code></div>
+        <!-- ── LEFT: PDF PREVIEW ─────────────────────────── -->
+        <div class="s3-pdf-panel">
+            <div class="s3-pdf-header">
+                <div class="s3-pdf-title">
+                    <div class="s3-pdf-icon">📄</div>
+                    PDF Preview
+                </div>
+                <a class="btn-new-tab" href="@Model.PdfUrl" target="_blank">↗ Open in new tab</a>
+            </div>
+            <iframe class="s3-pdf-frame" src="@Model.PdfUrl" title="Approved notice PDF preview"></iframe>
+            <div class="s3-pdf-footer">
+                Approved configuration — preview is locked and read-only
             </div>
         </div>
 
-        <span class="readonly-banner">🔒 Read-Only — Data Team Kickoff View</span>
+        <!-- ── RIGHT: SIDEBAR ────────────────────────────── -->
+        <div class="s3-sidebar">
 
-        <!-- CONTENT GRID -->
-        <div class="content-grid">
-
-            <!-- LEFT: PDF PREVIEW -->
-            <div class="card pdf-card">
-                <div class="card-header">
-                    <div class="header-title">
-                        <div class="header-accent"></div>
-                        Live PDF Preview (from DB)
-                    </div>
-                    <a class="btn-open-pdf" href="@Model.PdfPreviewUrl" target="_blank">↗ Open in New Tab</a>
+            <!-- APPROVED SUMMARY -->
+            <div class="s3-card">
+                <div class="s3-card-header">
+                    <span class="s3-card-icon">✅</span>
+                    <h4>Approved Summary</h4>
                 </div>
-                <div class="card-body">
-                    <iframe src="@Model.PdfPreviewUrl" title="Live Notice PDF Preview"></iframe>
-                </div>
-                <div class="card-footer">
-                    This preview is generated live from the DB using the approved Step 1 settings.
-                    No client sending happens here — this is a Data Team kickoff page.
-                </div>
-            </div>
-
-            <!-- RIGHT: SIDE PANEL -->
-            <div class="side-panel">
-
-                <!-- APPROVAL SUMMARY -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="header-title">
-                            <div class="header-accent"></div>
-                            Approval Summary
+                <div class="s3-card-body">
+                    <div class="s3-approval-grid">
+                        <div>
+                            <div class="s3-af-label">Status</div>
+                            <div class="s3-af-val">
+                                @if (Model.IsApproved)
+                                {
+                                    <span class="s3-badge-ok">✓ Approved</span>
+                                }
+                                else
+                                {
+                                    <span class="s3-badge-warn">⚠ Not Approved</span>
+                                }
+                            </div>
                         </div>
-                        @if (Model.IsApproved)
+                        <div>
+                            <div class="s3-af-label">Approved By</div>
+                            <div class="s3-af-val @(string.IsNullOrWhiteSpace(Model.ApprovedBy) ? "empty" : "")">
+                                @(Model.ApprovedBy ?? "—")
+                            </div>
+                        </div>
+                        <div style="grid-column: span 2;">
+                            <div class="s3-af-label">Approved At (UTC)</div>
+                            <div class="s3-af-val @(Model.ApprovedAtUtc == null ? "empty" : "")">
+                                @(Model.ApprovedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="s3-divider" />
+
+                    <div class="s3-approval-grid">
+                        <div style="grid-column: span 2;">
+                            <div class="s3-af-label">Letter Date</div>
+                            <div class="s3-af-val">@Model.LetterDate.ToString("yyyy-MM-dd")</div>
+                        </div>
+
+                        @if (Model.Notice == NoticeKind.S49)
                         {
-                            <span class="badge badge-success">✓ Approved</span>
-                        }
-                        else
-                        {
-                            <span class="badge badge-muted">Not Approved</span>
-                        }
-                    </div>
-                    <div class="card-body">
-                        <div class="appr-detail-grid">
                             <div>
-                                <span class="ad-label">Approved By</span>
-                                <span class="ad-val">@(Model.ApprovedBy ?? "—")</span>
+                                <div class="s3-af-label">Objection Start</div>
+                                <div class="s3-af-val @(Model.ObjectionStartDate == null ? "empty" : "")">@(Model.ObjectionStartDate?.ToString("yyyy-MM-dd") ?? "—")</div>
                             </div>
                             <div>
-                                <span class="ad-label">Approved At (UTC)</span>
-                                <span class="ad-val">@(Model.ApprovedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")</span>
+                                <div class="s3-af-label">Objection End</div>
+                                <div class="s3-af-val @(Model.ObjectionEndDate == null ? "empty" : "")">@(Model.ObjectionEndDate?.ToString("yyyy-MM-dd") ?? "—")</div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- STEP 1 SNAPSHOT -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="header-title">
-                            <div class="header-accent"></div>
-                            Step 1 Snapshot
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="snapshot-grid">
-                            <div class="snap-item">
-                                <span class="snap-label">Letter Date</span>
-                                <span class="snap-value">@Model.LetterDate.ToString("yyyy-MM-dd")</span>
+                            <div>
+                                <div class="s3-af-label">Extension Date</div>
+                                <div class="s3-af-val @(Model.ExtensionDate == null ? "empty" : "")">@(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "—")</div>
                             </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Financial Years</span>
-                                <span class="snap-value @(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "empty" : "")">
-                                    @(Model.FinancialYearsText ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Objection Start</span>
-                                <span class="snap-value @(Model.ObjectionStartDate == null ? "empty" : "")">
-                                    @(Model.ObjectionStartDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Objection End</span>
-                                <span class="snap-value @(Model.ObjectionEndDate == null ? "empty" : "")">
-                                    @(Model.ObjectionEndDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item snap-full">
-                                <span class="snap-label">Extension Date</span>
-                                <span class="snap-value @(Model.ExtensionDate == null ? "empty" : "")">
-                                    @(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                        </div>
-
-                        <div class="sig-row">
-                            <span class="sig-label">Signature</span>
-                            @if (hasSignature)
-                            {
-                                <span class="badge badge-success">✓ Uploaded</span>
-                                <span class="sig-path" title="@Model.SignaturePath">@Model.SignaturePath</span>
-                            }
-                            else
-                            {
-                                <span class="badge badge-warn">⚠ Not Uploaded</span>
-                            }
-                        </div>
-                    </div>
-                </div>
-
-                <!-- LIVE SAMPLE -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="header-title">
-                            <div class="header-accent"></div>
-                            Live Sample (Roll + SAP)
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="sample-grid">
-                            <div class="sample-item">
-                                <span class="s-label">Premise ID</span>
-                                <span class="s-val mono">@(Model.SamplePremiseId ?? "—")</span>
-                            </div>
-                            <div class="sample-item">
-                                <span class="s-label">Email</span>
-                                <span class="s-val mono">@(Model.SampleEmail ?? "—")</span>
-                            </div>
-                            <div class="sample-item">
-                                <span class="s-label">Row Count</span>
-                                <span class="s-val">@Model.SampleRowCount</span>
-                            </div>
-                            <div class="sample-item">
-                                <span class="s-label">Split</span>
-                                <span class="s-val">
-                                    @if (Model.SampleIsSplit)
+                            <div>
+                                <div class="s3-af-label">Signature</div>
+                                <div class="s3-af-val">
+                                    @if (hasSignature)
                                     {
-                                        <span class="sample-pill">✓ Yes</span>
+                                        <span class="s3-badge-ok">✓ Uploaded</span>
                                     }
                                     else
                                     {
-                                        <span style="color:var(--gray-mid);font-weight:500;font-size:12.5px;">No</span>
+                                        <span class="s3-badge-warn">⚠ Not Uploaded</span>
                                     }
-                                </span>
+                                </div>
+                            </div>
+                        }
+
+                        <div style="grid-column: span 2;">
+                            <div class="s3-af-label">Financial Years</div>
+                            <div class="s3-af-val @(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "empty" : "")">
+                                @(Model.FinancialYearsText ?? "—")
                             </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <!-- EMAIL PREVIEW -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="header-title">
-                            <div class="header-accent"></div>
-                            Email Preview (Live)
+            <!-- RECIPIENT -->
+            <div class="s3-card">
+                <div class="s3-card-header">
+                    <span class="s3-card-icon">👤</span>
+                    <h4>Recipient</h4>
+                </div>
+                <div class="s3-card-body">
+                    <div class="s3-recipient-row">
+                        <div class="s3-avatar">@initials</div>
+                        <div>
+                            <div class="s3-recip-name">@Model.RecipientName</div>
+                            <div class="s3-recip-email">@Model.RecipientEmail</div>
                         </div>
+                        <span class="s3-badge-blue" style="margin-left:auto;">Preview</span>
                     </div>
-                    <div class="card-body">
-                        <div class="email-body-wrap">
-                            @Html.Raw(Model.EmailPreviewHtml)
-                        </div>
+                </div>
+            </div>
+
+            <!-- EMAIL PREVIEW -->
+            <div class="s3-card">
+                <div class="s3-card-header">
+                    <span class="s3-card-icon">✉️</span>
+                    <h4>Email Preview</h4>
+                </div>
+                <div class="s3-card-body">
+                    <div class="s3-email-subject">
+                        <span>Subject</span>@Model.EmailSubject
                     </div>
+                    <div class="s3-email-body">@Html.Raw(Model.EmailBodyHtml)</div>
+                </div>
+            </div>
 
-                    <!-- ACTION BAR -->
-                    <div class="action-bar">
-                        <form asp-action="Step3StartS49Batch" asp-controller="Workflow" method="post" style="margin:0;">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                            <input type="hidden" name="key" value="@Model.ApprovalKey" />
-                            <button type="submit" class="btn btn-start">
-                                ▶ Start Batch (500)
-                            </button>
-                        </form>
+            <div class="s3-sidebar-spacer"></div>
 
-                        <a class="btn btn-back"
-                           href="@Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId })">
-                            ← Back to Step 2
-                        </a>
+            <!-- BATCH ACTION (sticky bottom) -->
+            <div class="s3-batch-card">
+                <div class="s3-batch-label">Batch Action</div>
+
+                <div class="s3-batch-info">
+                    <div class="s3-batch-count">500</div>
+                    <div class="s3-batch-count-label">
+                        <strong>Records per batch</strong>
+                        Data team will process notices in groups of 500
                     </div>
                 </div>
 
-            </div><!-- /side-panel -->
-        </div><!-- /content-grid -->
-    </div><!-- /main-wrap -->
+                <div class="s3-lock-note">
+                    <span>🔒</span>
+                    <span>This action is locked to the approved configuration. Starting the batch cannot be undone.</span>
+                </div>
 
-</body>
-</html>
+                <form asp-action="Step2CreateBatch"
+                      asp-controller="Step3"
+                      method="post">
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden" name="key" value="@Model.ApprovalKey" />
+
+                    <div class="mb-2">
+                        <label class="form-label s3-af-label">Batch Date</label>
+                        <input class="form-control"
+                               type="date"
+                               name="batchDate"
+                               value="@DateTime.Today.ToString("yyyy-MM-dd")"
+                               required />
+                    </div>
+
+                    <button type="submit" class="btn-start-batch">
+                        ▶ Start Batch (500)
+                    </button>
+                </form>
+
+
+
+            </div>
+
+        </div><!-- /s3-sidebar -->
+    </div><!-- /s3-body -->
+</div><!-- /s3-fullscreen -->
+@section Scripts {
+    <script>
+        (function () {
+            function dismissLoader() {
+                var el = document.getElementById('pageLoader');
+                if (el) el.classList.add('hidden');
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function () { setTimeout(dismissLoader, 350); });
+            } else {
+                setTimeout(dismissLoader, 350);
+            }
+            setTimeout(dismissLoader, 2000);
+        })();
+    </script>
+}

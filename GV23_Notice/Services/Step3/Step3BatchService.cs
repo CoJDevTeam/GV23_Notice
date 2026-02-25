@@ -17,10 +17,19 @@ namespace GV23_Notice.Services.Step3
 
         public async Task<int> CreateBatchAsync(Guid workflowKey, DateTime batchDate, string createdBy, CancellationToken ct)
         {
-            // 1) Resolve settings by key
+            // 1) Resolve settings by key (Step3 uses ApprovalKey in emailed link)
             var s = await _db.NoticeSettings
-                .FirstOrDefaultAsync(x => x.WorkflowKey == workflowKey, ct)
-                ?? throw new InvalidOperationException("Workflow not found.");
+                .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey, ct);
+
+            // fallback (older flows might have WorkflowKey)
+            if (s is null)
+            {
+                s = await _db.NoticeSettings
+                    .FirstOrDefaultAsync(x => x.WorkflowKey == workflowKey, ct);
+            }
+
+            if (s is null)
+                throw new InvalidOperationException("Workflow not found.");
 
             if (!s.IsApproved)
                 throw new InvalidOperationException("Step 1 must be approved before creating Step 3 batch.");
@@ -59,18 +68,31 @@ namespace GV23_Notice.Services.Step3
             // 3) Insert batch header now (NumberOfRecords updated after picks)
             var batch = new NoticeBatch
             {
-                WorkflowKey = workflowKey,
+                NoticeSettingsId = s.Id,              // ✅ REQUIRED FK
+                                                      // NoticeSettings = s,                // optional (but FK is enough)
+
+                WorkflowKey = workflowKey,            // this is your kickoff/approval key
                 RollId = s.RollId,
+                Mode = s.Mode,
+
                 Notice = s.Notice,
-                Version = versionText,
+                SettingsVersionUsed = s.Version,      // ✅ you have this field in NoticeBatch
+
                 BatchKind = "STEP3",
                 BatchName = batchName,
                 BatchDate = batchDate.Date,
+
                 CreatedBy = createdBy,
                 CreatedAtUtc = DateTime.UtcNow,
+
+                // Optional snapshot fields if you want
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate,
+
                 NumberOfRecords = 0,
                 IsApproved = false
             };
+
 
             _db.NoticeBatches.Add(batch);
             await _db.SaveChangesAsync(ct);
@@ -319,6 +341,92 @@ namespace GV23_Notice.Services.Step3
             }
             // If we reach here, the notice isn't implemented yet
             throw new NotSupportedException($"Step3 batch creation not implemented for notice: {s.Notice}");
+        }
+
+        public async Task<NoticeBatch> CreateBatchAsync(int settingsId, string createdBy, CancellationToken ct)
+        {
+            var s = await _db.NoticeSettings
+                .FirstOrDefaultAsync(x => x.Id == settingsId, ct);
+
+            if (s is null) throw new InvalidOperationException("NoticeSettings not found.");
+            if (!s.IsApproved) throw new InvalidOperationException("Settings not approved.");
+
+            var roll = await _db.RollRegistry.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+
+            if (roll is null) throw new InvalidOperationException("RollRegistry not found.");
+
+            // Generate batch name like S49_SUPP3_0001
+            var prefix = $"{s.Notice}_{roll.ShortCode}";
+            var last = await _db.NoticeBatches.AsNoTracking()
+                .Where(x => x.NoticeSettingsId == settingsId)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+
+            var nextNo = 1;
+            if (last != null && last.BatchName.StartsWith(prefix + "_", StringComparison.OrdinalIgnoreCase))
+            {
+                var tail = last.BatchName.Substring((prefix + "_").Length);
+                if (int.TryParse(tail, out var parsed)) nextNo = parsed + 1;
+            }
+
+            var batchName = $"{prefix}_{nextNo:0000}";
+            var batchDate = DateTime.Today;
+
+            // Create NoticeBatch first
+            var batch = new NoticeBatch
+            {
+                NoticeSettingsId = s.Id,
+                BatchName = batchName,
+                CreatedBy = createdBy,
+                CreatedAtUtc = DateTime.UtcNow,
+
+                Roll = Enum.TryParse<RollCode>(roll.ShortCode, out var parsedRoll)
+    ? parsedRoll
+    : RollCode.GV23, // or whatever fallback you want                  // if your RollRegistry has RollCode enum mapping
+                Notice = s.Notice,
+                SettingsVersionUsed = s.Version,
+
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate,
+
+                BatchKind = $"{s.Notice} {s.Mode}",
+                WorkflowKey = s.ApprovalKey ?? Guid.NewGuid(),
+                RollId = s.RollId,
+                Mode = s.Mode,
+                Version = $"v{s.Version}",
+
+                BatchDate = batchDate,
+                NumberOfRecords = 0,
+                IsApproved = true,
+                ApprovedBy = s.ApprovedBy,
+                ApprovedAtUtc = s.ApprovedAtUtc
+            };
+
+            _db.NoticeBatches.Add(batch);
+            await _db.SaveChangesAsync(ct);
+
+            // ✅ S49: assign TOP 500 premiseIds in roll table via SP (updates Batch_Name + Batch_Date)
+            if (s.Notice == NoticeKind.S49)
+            {
+                var res = await _db.Set<S49AssignBatchResultDto>()
+                    .FromSqlRaw("EXEC dbo.S49_Step3_AssignTop500PremisesToBatch @p0, @p1, @p2",
+                        s.RollId, batchName, batchDate.Date)
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(ct);
+
+                var pickedPremises = res?.PremiseCount ?? 0;
+                var pickedRows = res?.RowCount ?? 0;
+
+                batch.NumberOfRecords = pickedPremises; // for S49 we count premiseIds as “records”
+                await _db.SaveChangesAsync(ct);
+
+                // OPTIONAL: create a single NoticeRunLog row per premise (recommended)
+                // If you already have a proc to list premiseIds by Batch_Name, we’ll do it properly.
+                // For now you can leave this until we wire "batch details" screen.
+            }
+
+            return batch;
         }
     }
 }
