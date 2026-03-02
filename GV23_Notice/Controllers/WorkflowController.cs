@@ -25,13 +25,13 @@ namespace GV23_Notice.Controllers
     [Route("Workflow")]
     public class WorkflowController : Controller
     {
-       
-            private readonly AppDbContext _db;
-            private readonly INoticeSettingsService _settings;
-            private readonly IWorkflowAssetStorage _assets;
-            private readonly IS53AppealCloseDateCalculator _s53Calc;
-            private readonly ILogger<WorkflowController> _log;
-             private readonly INoticePreviewService _preview;
+
+        private readonly AppDbContext _db;
+        private readonly INoticeSettingsService _settings;
+        private readonly IWorkflowAssetStorage _assets;
+        private readonly IS53AppealCloseDateCalculator _s53Calc;
+        private readonly ILogger<WorkflowController> _log;
+        private readonly INoticePreviewService _preview;
         private readonly IWorkflowApprovalEmailService _wfEmails;
         private readonly INoticeEmailArchiveService _emailArchive;
         private readonly IOptions<EmailTemplateOptions> _emailOpt;
@@ -68,61 +68,61 @@ namespace GV23_Notice.Controllers
             _s49Roll = s49Roll;
             _audit = audit;
             _previewRepo = previewDb;
-            _snap=snap;
+            _snap = snap;
 
             _tempFiles = tempFiles;     // ✅ assign
         }
 
         // GET: /Workflow/Step1
         [HttpGet("Step1")]
-            public async Task<IActionResult> Step1(int? rollId, NoticeKind? notice, BatchMode? mode, int? settingsId, CancellationToken ct)
-            {
-                await PopulateRollsAsync(ct);
-                        ViewBag.ValuationPeriods = Helper.ValuationPeriodCatalog.Periods
-                .Select(p => new SelectListItem
-                {
-                    Value = p.Code,
-                    Text = $"{p.Code} ({p.Start:dd MMM yyyy} – {p.End:dd MMM yyyy})"
-                })
-                .ToList();
+        public async Task<IActionResult> Step1(int? rollId, NoticeKind? notice, BatchMode? mode, int? settingsId, CancellationToken ct)
+        {
+            await PopulateRollsAsync(ct);
+            ViewBag.ValuationPeriods = Helper.ValuationPeriodCatalog.Periods
+    .Select(p => new SelectListItem
+    {
+        Value = p.Code,
+        Text = $"{p.Code} ({p.Start:dd MMM yyyy} – {p.End:dd MMM yyyy})"
+    })
+    .ToList();
 
 
             // If opening an existing draft/version
             if (settingsId.HasValue)
-                {
-                    var s = await _settings.GetByIdAsync(settingsId.Value, ct);
-                    if (s is null) return NotFound();
+            {
+                var s = await _settings.GetByIdAsync(settingsId.Value, ct);
+                if (s is null) return NotFound();
 
-                    var vm = MapToVm(s);
-                    return View(vm);
-                }
-
-                // If user selected roll/notice/mode but no settingsId, load latest or create a draft
-                if (rollId.HasValue && notice.HasValue && mode.HasValue)
-                {
-                    var latest = await _settings.GetLatestDraftOrApprovedAsync(rollId.Value, notice.Value, mode.Value, ct);
-                    if (latest != null)
-                    {
-                        return View(MapToVm(latest));
-                    }
-
-                    // create draft automatically for smooth flow
-                    var user = User?.Identity?.Name ?? "UNKNOWN";
-                    var draft = await _settings.CreateDraftAsync(rollId.Value, notice.Value, mode.Value, user, ct);
-
-                    return View(MapToVm(draft));
-                }
-
-                // Default empty vm
-                return View(new WorkflowStep1Vm
-                {
-                    RollId = rollId ?? 0,
-                    Notice = notice ?? NoticeKind.S49,
-                    Mode = mode ?? BatchMode.Bulk,
-                    LetterDate = DateTime.Today,
-                    BatchDate = DateTime.Today
-                });
+                var vm = MapToVm(s);
+                return View(vm);
             }
+
+            // If user selected roll/notice/mode but no settingsId, load latest or create a draft
+            if (rollId.HasValue && notice.HasValue && mode.HasValue)
+            {
+                var latest = await _settings.GetLatestDraftOrApprovedAsync(rollId.Value, notice.Value, mode.Value, ct);
+                if (latest != null)
+                {
+                    return View(MapToVm(latest));
+                }
+
+                // create draft automatically for smooth flow
+                var user = User?.Identity?.Name ?? "UNKNOWN";
+                var draft = await _settings.CreateDraftAsync(rollId.Value, notice.Value, mode.Value, user, ct);
+
+                return View(MapToVm(draft));
+            }
+
+            // Default empty vm
+            return View(new WorkflowStep1Vm
+            {
+                RollId = rollId ?? 0,
+                Notice = notice ?? NoticeKind.S49,
+                Mode = mode ?? BatchMode.Bulk,
+                LetterDate = DateTime.Today,
+                BatchDate = DateTime.Today
+            });
+        }
 
         private static void ApplyValuationAndFinancialYear(WorkflowStep1Vm vm, NoticeSettings e)
         {
@@ -450,17 +450,17 @@ namespace GV23_Notice.Controllers
 
         // POST: /Workflow/Step1Confirm
         [HttpPost("Step1Confirm")]
-            [ValidateAntiForgeryToken]
-            public async Task<IActionResult> Step1Confirm(WorkflowStep1Vm vm, CancellationToken ct)
-            {
-                if (!vm.SettingsId.HasValue) return BadRequest("SettingsId missing.");
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Step1Confirm(WorkflowStep1Vm vm, CancellationToken ct)
+        {
+            if (!vm.SettingsId.HasValue) return BadRequest("SettingsId missing.");
 
-                var user = User?.Identity?.Name ?? "UNKNOWN";
-                await _settings.ConfirmAsync(vm.SettingsId.Value, user, "Admin confirmed Step1 settings.", ct);
+            var user = User?.Identity?.Name ?? "UNKNOWN";
+            await _settings.ConfirmAsync(vm.SettingsId.Value, user, "Admin confirmed Step1 settings.", ct);
 
-                TempData["Success"] = "Settings confirmed.";
-                return RedirectToAction(nameof(Step1), new { settingsId = vm.SettingsId.Value });
-            }
+            TempData["Success"] = "Settings confirmed.";
+            return RedirectToAction(nameof(Step1), new { settingsId = vm.SettingsId.Value });
+        }
 
 
         // ✅ inside WorkflowController (class-level helper)
@@ -550,133 +550,133 @@ namespace GV23_Notice.Controllers
         // ---------------------------
 
         private async Task PopulateRollsAsync(CancellationToken ct)
-            {
-                var rolls = await _db.RollRegistry
-                    .AsNoTracking()
-                    .Where(r => r.IsActive)
-                    .OrderBy(r => r.RollId)
-                    .Select(r => new SelectListItem
-                    {
-                        Value = r.RollId.ToString(),
-                        Text = $"{r.ShortCode} - {r.Name}"
-                    })
-                    .ToListAsync(ct);
-
-                ViewBag.Rolls = rolls;
-            }
-
-            private static WorkflowStep1Vm MapToVm(NoticeSettings s)
-            {
-                return new WorkflowStep1Vm
+        {
+            var rolls = await _db.RollRegistry
+                .AsNoTracking()
+                .Where(r => r.IsActive)
+                .OrderBy(r => r.RollId)
+                .Select(r => new SelectListItem
                 {
-                    SettingsId = s.Id,
-                    RollId = s.RollId,
-                    Notice = s.Notice,
-                    Mode = s.Mode,
+                    Value = r.RollId.ToString(),
+                    Text = $"{r.ShortCode} - {r.Name}"
+                })
+                .ToListAsync(ct);
 
-                    LetterDate = s.LetterDate,
+            ViewBag.Rolls = rolls;
+        }
 
-                    LetterDateOverridden = s.LetterDateOverridden,
-                    LetterDateOverrideReason = s.LetterDateOverrideReason,
-
-                    PortalUrl = s.PortalUrl,
-                    EnquiriesLine = s.EnquiriesLine,
-                    CityManagerSignDate = s.CityManagerSignDate,
-
-                    // S49
-                    ObjectionStartDate = s.ObjectionStartDate,
-                    ObjectionEndDate = s.ObjectionEndDate,
-                    ExtensionDate = s.ExtensionDate,
-                    ExistingSignaturePath = s.SignaturePath,
-
-                    // S51
-                    EvidenceCloseDate = s.EvidenceCloseDate,
-
-                    // S52
-                    BulkFromDate = s.BulkFromDate,
-                    BulkToDate = s.BulkToDate,
-
-                    // S53
-                    BatchDate = s.BatchDate,
-                    AppealCloseDate = s.AppealCloseDate,
-                    AppealCloseOverridden = !string.IsNullOrWhiteSpace(s.AppealCloseOverrideReason),
-                    AppealCloseOverrideReason = s.AppealCloseOverrideReason,
-                    ExistingOverrideEvidencePath = s.AppealCloseOverrideEvidencePath,
-
-                    // S78
-                    ExtractionDate = s.ExtractionDate,
-                    ExtractPeriodDays = s.ExtractPeriodDays,
-                    ReviewOpenDate = s.ReviewOpenDate,
-                    ReviewCloseDate = s.ReviewCloseDate
-                };
-            }
-
-            private static void ApplyVmToEntity(WorkflowStep1Vm vm, NoticeSettings e)
+        private static WorkflowStep1Vm MapToVm(NoticeSettings s)
+        {
+            return new WorkflowStep1Vm
             {
-                e.RollId = vm.RollId;
-                e.Notice = vm.Notice;
-                e.Mode = vm.Mode;
+                SettingsId = s.Id,
+                RollId = s.RollId,
+                Notice = s.Notice,
+                Mode = s.Mode,
 
-                e.LetterDate = vm.LetterDate.Date;
-                e.LetterDateOverridden = vm.LetterDateOverridden;
-                e.LetterDateOverrideReason = vm.LetterDateOverridden ? vm.LetterDateOverrideReason : null;
+                LetterDate = s.LetterDate,
 
-                e.PortalUrl = vm.PortalUrl;
-                e.EnquiriesLine = vm.EnquiriesLine;
-                e.CityManagerSignDate = vm.CityManagerSignDate;
+                LetterDateOverridden = s.LetterDateOverridden,
+                LetterDateOverrideReason = s.LetterDateOverrideReason,
+
+                PortalUrl = s.PortalUrl,
+                EnquiriesLine = s.EnquiriesLine,
+                CityManagerSignDate = s.CityManagerSignDate,
 
                 // S49
-                e.ObjectionStartDate = vm.ObjectionStartDate?.Date;
-                e.ObjectionEndDate = vm.ObjectionEndDate?.Date;
-                e.ExtensionDate = vm.ExtensionDate?.Date;
+                ObjectionStartDate = s.ObjectionStartDate,
+                ObjectionEndDate = s.ObjectionEndDate,
+                ExtensionDate = s.ExtensionDate,
+                ExistingSignaturePath = s.SignaturePath,
 
                 // S51
-                e.EvidenceCloseDate = vm.EvidenceCloseDate?.Date;
+                EvidenceCloseDate = s.EvidenceCloseDate,
 
                 // S52
-                e.BulkFromDate = vm.BulkFromDate?.Date;
-                e.BulkToDate = vm.BulkToDate?.Date;
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate,
 
                 // S53
-                e.BatchDate = vm.BatchDate?.Date;
-                e.AppealCloseDate = vm.AppealCloseDate?.Date;
-
-                if (vm.AppealCloseOverridden)
-                {
-                    e.AppealCloseOverrideReason = vm.AppealCloseOverrideReason;
-                    e.AppealCloseOverrideBy = null; // optional: set to User in controller if you want
-                    e.AppealCloseOverrideAtUtc = DateTime.UtcNow;
-                }
-                else
-                {
-                    e.AppealCloseOverrideReason = null;
-                    e.AppealCloseOverrideBy = null;
-                    e.AppealCloseOverrideAtUtc = null;
-                    e.AppealCloseOverrideEvidencePath = null; // keep if you prefer, but safer to clear
-                }
+                BatchDate = s.BatchDate,
+                AppealCloseDate = s.AppealCloseDate,
+                AppealCloseOverridden = !string.IsNullOrWhiteSpace(s.AppealCloseOverrideReason),
+                AppealCloseOverrideReason = s.AppealCloseOverrideReason,
+                ExistingOverrideEvidencePath = s.AppealCloseOverrideEvidencePath,
 
                 // S78
-                e.ExtractionDate = vm.ExtractionDate?.Date;
-                e.ExtractPeriodDays = vm.ExtractPeriodDays;
-                e.ReviewOpenDate = vm.ReviewOpenDate?.Date;
-                e.ReviewCloseDate = vm.ReviewCloseDate?.Date;
-            }
+                ExtractionDate = s.ExtractionDate,
+                ExtractPeriodDays = s.ExtractPeriodDays,
+                ReviewOpenDate = s.ReviewOpenDate,
+                ReviewCloseDate = s.ReviewCloseDate
+            };
+        }
 
-            [HttpGet("CalcS53AppealCloseDate")]
-            public async Task<IActionResult> CalcS53AppealCloseDate(int rollId, DateTime letterDate, CancellationToken ct)
+        private static void ApplyVmToEntity(WorkflowStep1Vm vm, NoticeSettings e)
+        {
+            e.RollId = vm.RollId;
+            e.Notice = vm.Notice;
+            e.Mode = vm.Mode;
+
+            e.LetterDate = vm.LetterDate.Date;
+            e.LetterDateOverridden = vm.LetterDateOverridden;
+            e.LetterDateOverrideReason = vm.LetterDateOverridden ? vm.LetterDateOverrideReason : null;
+
+            e.PortalUrl = vm.PortalUrl;
+            e.EnquiriesLine = vm.EnquiriesLine;
+            e.CityManagerSignDate = vm.CityManagerSignDate;
+
+            // S49
+            e.ObjectionStartDate = vm.ObjectionStartDate?.Date;
+            e.ObjectionEndDate = vm.ObjectionEndDate?.Date;
+            e.ExtensionDate = vm.ExtensionDate?.Date;
+
+            // S51
+            e.EvidenceCloseDate = vm.EvidenceCloseDate?.Date;
+
+            // S52
+            e.BulkFromDate = vm.BulkFromDate?.Date;
+            e.BulkToDate = vm.BulkToDate?.Date;
+
+            // S53
+            e.BatchDate = vm.BatchDate?.Date;
+            e.AppealCloseDate = vm.AppealCloseDate?.Date;
+
+            if (vm.AppealCloseOverridden)
             {
-                if (rollId <= 0) return BadRequest("rollId is required.");
-
-                var close = await _s53Calc.CalculateAsync(
-                    rollId,
-                    DateOnly.FromDateTime(letterDate.Date),
-                    45,
-                    ct
-                );
-
-                // Return ISO for input[type=date]
-                return Ok(new { appealCloseDate = close.ToString("yyyy-MM-dd") });
+                e.AppealCloseOverrideReason = vm.AppealCloseOverrideReason;
+                e.AppealCloseOverrideBy = null; // optional: set to User in controller if you want
+                e.AppealCloseOverrideAtUtc = DateTime.UtcNow;
             }
+            else
+            {
+                e.AppealCloseOverrideReason = null;
+                e.AppealCloseOverrideBy = null;
+                e.AppealCloseOverrideAtUtc = null;
+                e.AppealCloseOverrideEvidencePath = null; // keep if you prefer, but safer to clear
+            }
+
+            // S78
+            e.ExtractionDate = vm.ExtractionDate?.Date;
+            e.ExtractPeriodDays = vm.ExtractPeriodDays;
+            e.ReviewOpenDate = vm.ReviewOpenDate?.Date;
+            e.ReviewCloseDate = vm.ReviewCloseDate?.Date;
+        }
+
+        [HttpGet("CalcS53AppealCloseDate")]
+        public async Task<IActionResult> CalcS53AppealCloseDate(int rollId, DateTime letterDate, CancellationToken ct)
+        {
+            if (rollId <= 0) return BadRequest("rollId is required.");
+
+            var close = await _s53Calc.CalculateAsync(
+                rollId,
+                DateOnly.FromDateTime(letterDate.Date),
+                45,
+                ct
+            );
+
+            // Return ISO for input[type=date]
+            return Ok(new { appealCloseDate = close.ToString("yyyy-MM-dd") });
+        }
 
         [HttpGet("Step2")]
         public async Task<IActionResult> Step2(
@@ -1211,23 +1211,38 @@ namespace GV23_Notice.Controllers
                 .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
             if (roll is null) return NotFound();
 
-            // Parse like Step2
             var v = PreviewVariantParser.Parse(variant);
             var m = PreviewModeParser.Parse(mode);
 
-            // Section 52 requires appealNo
             if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(appealNo))
                 return BadRequest("AppealNo is required for Section 52 in Step 3 kickoff.");
 
-            // ✅ Build preview using EXACT same pipeline as Step2
             var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
 
-            // ✅ Save PDF to temp (same as Step2)
             var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
                 ? $"Step3Kickoff_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
                 : result.PdfFileName;
 
             var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
+
+            // ── Compute next batch code ──────────────────────────────────────
+            var shortCode = roll.ShortCode ?? "";
+            var batchPrefix = ComputeBatchPrefix(s, shortCode);
+            var batchesCreated = await _db.NoticeBatches.AsNoTracking()
+                .CountAsync(b => b.WorkflowKey == key && b.BatchKind == "STEP3", ct);
+            var lastBatch = await _db.NoticeBatches.AsNoTracking()
+                .Where(b => b.RollId == s.RollId && b.Notice == s.Notice
+                         && b.BatchKind == "STEP3"
+                         && b.BatchName.StartsWith(batchPrefix))
+                .OrderByDescending(b => b.Id)
+                .FirstOrDefaultAsync(ct);
+            var nextSeq = 1;
+            if (lastBatch != null && lastBatch.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var tail = lastBatch.BatchName[batchPrefix.Length..];
+                if (int.TryParse(tail, out var parsed)) nextSeq = parsed + 1;
+            }
+            var nextBatchCode = $"{batchPrefix}{nextSeq:0000}";
 
             var vm = new GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
             {
@@ -1235,7 +1250,7 @@ namespace GV23_Notice.Controllers
                 ApprovalKey = s.ApprovalKey.Value,
 
                 RollId = roll.RollId,
-                RollShortCode = roll.ShortCode ?? result.RollShortCode ?? "",
+                RollShortCode = shortCode,
                 RollName = roll.Name ?? result.RollName ?? "",
 
                 Notice = s.Notice,
@@ -1246,7 +1261,7 @@ namespace GV23_Notice.Controllers
                 ApprovedBy = s.ApprovedBy,
                 ApprovedAtUtc = s.ApprovedAtUtc,
 
-                // Step1 snapshot fields
+                // Step1 snapshot
                 LetterDate = s.LetterDate,
                 ObjectionStartDate = s.ObjectionStartDate,
                 ObjectionEndDate = s.ObjectionEndDate,
@@ -1254,7 +1269,24 @@ namespace GV23_Notice.Controllers
                 FinancialYearsText = s.FinancialYearsText,
                 SignaturePath = s.SignaturePath,
 
-                // ✅ Real preview data (recipient + email + pdf)
+                // Notice-specific fields for batch panel
+                EvidenceCloseDate = s.EvidenceCloseDate,
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate,
+                IsSection52Review = s.IsSection52Review,
+                S53BatchDate = s.BatchDate,
+                AppealCloseDate = s.AppealCloseDate,
+                ExtractionDate = s.ExtractionDate,
+                ExtractPeriodDays = s.ExtractPeriodDays,
+                ReviewOpenDate = s.ReviewOpenDate,
+                ReviewCloseDate = s.ReviewCloseDate,
+                IsInvalidOmission = s.IsInvalidOmission,
+
+                // Batch panel
+                NextBatchCode = nextBatchCode,
+                BatchesAlreadyCreated = batchesCreated,
+
+                // Preview
                 RecipientName = result.RecipientName ?? "",
                 RecipientEmail = result.RecipientEmail ?? "",
                 EmailSubject = result.EmailSubject ?? "",
@@ -1267,6 +1299,18 @@ namespace GV23_Notice.Controllers
             };
 
             return View(vm);
+        }
+
+        private static string ComputeBatchPrefix(Domain.Workflow.Entities.NoticeSettings s, string rollShortCode)
+        {
+            var code = rollShortCode.Replace(" ", "");
+            return s.Notice switch
+            {
+                NoticeKind.S52 => s.IsSection52Review == true ? $"S52_{code}_" : $"AD_{code}_",
+                NoticeKind.DJ => $"DJ_{code}_",
+                NoticeKind.IN => s.IsInvalidOmission == true ? $"IOM_{code}_" : $"IOBJ_{code}_",
+                _ => $"{s.Notice}_{code}_"
+            };
         }
         [HttpGet("Step3PreviewPdf")]
         public async Task<IActionResult> Step3PreviewPdf(int settingsId, Guid key, CancellationToken ct)
@@ -1364,8 +1408,8 @@ namespace GV23_Notice.Controllers
                 PropertyDesc = first.PropertyDesc ?? "",
                 LisStreetAddress = first.LisStreetAddress ?? contact.PremiseAddress ?? "",
 
-                PremiseId = first.PremiseId ,   // use whichever exists in your DTO
-                ValuationKey = first.ValuationKey ,
+                PremiseId = first.PremiseId,   // use whichever exists in your DTO
+                ValuationKey = first.ValuationKey,
 
                 // if you still display reason text anywhere
                 Reason = first.Reason ?? "",
@@ -1548,8 +1592,3 @@ namespace GV23_Notice.Controllers
     }
 
 }
-
-  
-
-
-

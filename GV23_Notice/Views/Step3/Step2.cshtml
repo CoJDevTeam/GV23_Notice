@@ -1,234 +1,872 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3Step2Vm
 @using System.Globalization
+@using GV23_Notice.Domain.Workflow
 
 @{
-    ViewData["Title"] = "Step 3 / Step 2 - Create Batch";
-    string DT(DateTime d) => d.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    ViewData["Title"] = "Step 3 — Batch Summary & Print";
 
-    // ---------- Safe calculations (no crash if null/0) ----------
     var batchSize = Model.BatchSize <= 0 ? 500 : Model.BatchSize;
-
-    var totalPending = Model.TotalPendingRecords < 0 ? 0 : Model.TotalPendingRecords;
-    var createdBatches = Model.BatchesCreatedCount < 0 ? 0 : Model.BatchesCreatedCount;
-    var createdRecords = Model.TotalRecordsInCreatedBatches < 0 ? 0 : Model.TotalRecordsInCreatedBatches;
-
+    var totalPending = Math.Max(0, Model.TotalPendingRecords);
+    var createdBatches = Math.Max(0, Model.BatchesCreatedCount);
+    var createdRecords = Math.Max(0, Model.TotalRecordsInCreatedBatches);
     var remaining = Math.Max(0, totalPending - createdRecords);
-
-    // Estimated batches left (ceil)
-    var remainingBatches = (remaining == 0)
-        ? 0
-        : (int)Math.Ceiling(remaining / (decimal)batchSize);
-
-    // Progress %
+    var remainingBatches = remaining == 0 ? 0 : (int)Math.Ceiling(remaining / (decimal)batchSize);
     var progressPct = totalPending == 0 ? 0 : (int)Math.Round((createdRecords * 100m) / totalPending);
-    if (progressPct < 0) progressPct = 0;
-    if (progressPct > 100) progressPct = 100;
+    progressPct = Math.Clamp(progressPct, 0, 100);
+
+    bool allDone = remaining == 0 && createdBatches > 0;
 }
 
-<div class="page-header mb-3">
-    <h1 class="mb-1">Step 3 – Step 2 (Create Batch)</h1>
-    <div class="text-muted">
-        <b>Roll:</b> @Model.RollShortCode - @Model.RollName
-        &nbsp;|&nbsp;
-        <b>Notice:</b> @Model.Notice
-        &nbsp;|&nbsp;
-        <b>Version:</b> @Model.VersionText
-        &nbsp;|&nbsp;
-        <b>Workflow Key:</b> @Model.WorkflowKey
+<link href="~/css/step3/step3kickoffcss.css" rel="stylesheet" />
+<style>
+    /* ── FULL-SCREEN SHELL ───────────────────────────────── */
+    .sp-fullscreen {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 500;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #f2f2f2;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    /* ── META BAR ────────────────────────────────────────── */
+    .sp-meta-bar {
+        flex-shrink: 0;
+        background: #111;
+        height: 40px;
+        padding: 0 18px;
+        display: flex;
+        align-items: center;
+        border-bottom: 2px solid #E6B000;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+        .sp-meta-bar::-webkit-scrollbar {
+            display: none;
+        }
+
+    .sp-meta-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0 14px;
+        height: 100%;
+        font-size: .69rem;
+        font-weight: 600;
+        color: rgba(255,255,255,.9);
+        white-space: nowrap;
+        border-right: 1px solid rgba(255,255,255,.08);
+    }
+
+        .sp-meta-chip:last-child {
+            border-right: none;
+        }
+
+    .sp-meta-lbl {
+        color: rgba(255,255,255,.35);
+        font-weight: 400;
+        margin-right: 3px;
+    }
+
+    .sp-meta-val {
+        color: #F5CA3A;
+        font-weight: 700;
+    }
+
+    /* ── STEP BANNER ─────────────────────────────────────── */
+    .sp-step-banner {
+        flex-shrink: 0;
+        background: #fff;
+        border-bottom: 1px solid #e4e4e4;
+        padding: 0 18px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+
+    .sp-step-trail {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .sp-bc {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: .65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #c0c0c0;
+    }
+
+        .sp-bc.done {
+            color: #1a8a4a;
+        }
+
+        .sp-bc.active {
+            color: #E6B000;
+        }
+
+    .sp-bc-dot {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: .62rem;
+        font-weight: 700;
+        background: #f0f0f0;
+        color: #c0c0c0;
+    }
+
+    .sp-bc.done .sp-bc-dot {
+        background: #1a8a4a;
+        color: #fff;
+    }
+
+    .sp-bc.active .sp-bc-dot {
+        background: #E6B000;
+        color: #0d0d0d;
+    }
+
+    .sp-bc-arrow {
+        color: #d8d8d8;
+        font-size: .8rem;
+    }
+
+    .sp-step-label {
+        margin-left: auto;
+        font-size: .7rem;
+        font-weight: 700;
+        color: #1a1a1a;
+    }
+
+        .sp-step-label span {
+            color: #E6B000;
+        }
+
+    /* ── BODY GRID ───────────────────────────────────────── */
+    .sp-body {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 340px 1fr;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    /* ── LEFT PANEL ──────────────────────────────────────── */
+    .sp-left {
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+        background: #f5f5f5;
+        border-right: 1px solid #d8d8d8;
+        scrollbar-width: thin;
+        scrollbar-color: #E6B000 #f0f0f0;
+    }
+
+        .sp-left::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .sp-left::-webkit-scrollbar-thumb {
+            background: #E6B000;
+            border-radius: 2px;
+        }
+
+    /* ── RIGHT PANEL ─────────────────────────────────────── */
+    .sp-right {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #fff;
+    }
+
+    .sp-right-header {
+        flex-shrink: 0;
+        background: #0d0d0d;
+        padding: 12px 20px;
+        border-bottom: 3px solid #E6B000;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .sp-right-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: .78rem;
+        font-weight: 700;
+        color: #fff;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+    }
+
+    .sp-right-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background: linear-gradient(135deg,#F5CA3A,#D4A500);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    .sp-right-body {
+        flex: 1;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #E6B000 #f0f0f0;
+    }
+
+        .sp-right-body::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .sp-right-body::-webkit-scrollbar-thumb {
+            background: #E6B000;
+            border-radius: 2px;
+        }
+
+    /* ── CARD COMPONENT ──────────────────────────────────── */
+    .sp-card {
+        background: #fff;
+        border-bottom: 1px solid #ebebeb;
+        flex-shrink: 0;
+    }
+
+    .sp-card-header {
+        background: #0d0d0d;
+        padding: 9px 16px;
+        border-bottom: 2px solid #E6B000;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+        .sp-card-header h4 {
+            font-size: .7rem;
+            font-weight: 700;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            margin: 0;
+        }
+
+    .sp-card-body {
+        padding: 14px 16px;
+    }
+
+    /* ── FIELD LABEL/VALUE ───────────────────────────────── */
+    .sp-field {
+        margin-bottom: 10px;
+    }
+
+    .sp-fl {
+        font-size: .58rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #9a9a9a;
+        margin-bottom: 2px;
+    }
+
+    .sp-fv {
+        font-size: .78rem;
+        font-weight: 700;
+        color: #1a1a1a;
+    }
+
+        .sp-fv.empty {
+            color: #d0d0d0;
+            font-style: italic;
+            font-weight: 400;
+        }
+
+    .sp-grid-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
+    }
+
+    .sp-divider {
+        border: none;
+        border-top: 1px solid #f0f0f0;
+        margin: 10px 0;
+    }
+
+    /* ── BADGE ───────────────────────────────────────────── */
+    .sp-badge-ok {
+        background: #e8f8ef;
+        color: #1a8a4a;
+        border: 1px solid #b2dfcc;
+        font-size: .65rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 20px;
+        white-space: nowrap;
+    }
+
+    .sp-badge-warn {
+        background: #fff3d6;
+        color: #b06800;
+        border: 1px solid #f0d078;
+        font-size: .65rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 20px;
+        white-space: nowrap;
+    }
+
+    .sp-badge-info {
+        background: #e8f0fe;
+        color: #1a56c4;
+        border: 1px solid #b3c8f8;
+        font-size: .65rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 20px;
+        white-space: nowrap;
+    }
+
+    /* ── STATS ROW ───────────────────────────────────────── */
+    .sp-stats-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 14px 16px;
+        background: #f9f9f9;
+        border-bottom: 1px solid #ebebeb;
+    }
+
+    .sp-stat {
+        background: #fff;
+        border: 1px solid #ebebeb;
+        border-radius: 8px;
+        padding: 10px 12px;
+    }
+
+    .sp-stat-num {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #1a1a1a;
+        line-height: 1;
+        letter-spacing: -.04em;
+    }
+
+        .sp-stat-num.gold {
+            color: #E6B000;
+        }
+
+        .sp-stat-num.green {
+            color: #1a8a4a;
+        }
+
+    .sp-stat-lbl {
+        font-size: .58rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: #9a9a9a;
+        margin-top: 4px;
+    }
+
+    /* ── PROGRESS ────────────────────────────────────────── */
+    .sp-progress-wrap {
+        padding: 10px 16px 14px;
+        background: #f9f9f9;
+        border-bottom: 1px solid #ebebeb;
+    }
+
+    .sp-progress-label {
+        font-size: .6rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: #9a9a9a;
+        margin-bottom: 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .sp-progress-bar-wrap {
+        height: 10px;
+        background: #e8e8e8;
+        border-radius: 99px;
+        overflow: hidden;
+    }
+
+    .sp-progress-bar-fill {
+        height: 100%;
+        width: @(progressPct) %;
+        border-radius: 99px;
+        background: @(progressPct == 100 ? "linear-gradient(90deg,#1a8a4a,#2ebd6c)" : "linear-gradient(90deg,#D4A500,#F5CA3A)");
+        transition: width .5s ease;
+    }
+
+    .sp-progress-sub {
+        font-size: .62rem;
+        color: #9a9a9a;
+        margin-top: 5px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    /* ── ALERT ───────────────────────────────────────────── */
+    .sp-alert {
+        margin: 14px 16px;
+        padding: 10px 14px;
+        border-radius: 7px;
+        font-size: .75rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .sp-alert-ok {
+        background: #e8f8ef;
+        border: 1px solid #b2dfcc;
+        color: #1a6a3a;
+    }
+
+    .sp-alert-err {
+        background: #fff0f0;
+        border: 1px solid #f0b0b0;
+        color: #8a1a1a;
+    }
+
+    /* ── PRINT TABLE ─────────────────────────────────────── */
+    .sp-batch-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Poppins', sans-serif;
+    }
+
+        .sp-batch-table thead tr {
+            background: #0d0d0d;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        .sp-batch-table thead th {
+            padding: 10px 14px;
+            text-align: left;
+            font-size: .6rem;
+            font-weight: 700;
+            color: rgba(255,255,255,.5);
+            text-transform: uppercase;
+            letter-spacing: .07em;
+            white-space: nowrap;
+        }
+
+        .sp-batch-table tbody tr {
+            border-bottom: 1px solid #f0f0f0;
+            transition: background .12s;
+        }
+
+            .sp-batch-table tbody tr:hover {
+                background: #fdf8e0;
+            }
+
+        .sp-batch-table tbody td {
+            padding: 11px 14px;
+            font-size: .76rem;
+            color: #1a1a1a;
+            vertical-align: middle;
+        }
+
+    .sp-bt-seq {
+        color: #bbb;
+        font-size: .68rem;
+        width: 30px;
+    }
+
+    .sp-bt-code {
+        font-family: 'Courier New', monospace;
+        font-size: .78rem;
+        font-weight: 700;
+        color: #0d0d0d;
+        background: #f5f5f5;
+        padding: 3px 7px;
+        border-radius: 5px;
+        white-space: nowrap;
+        display: inline-block;
+    }
+
+    .sp-bt-meta {
+        font-size: .62rem;
+        color: #aaa;
+        margin-top: 2px;
+    }
+
+    .sp-bt-date {
+        font-size: .72rem;
+        color: #555;
+        white-space: nowrap;
+    }
+
+    .sp-bt-records {
+        font-weight: 700;
+    }
+
+    /* Print button */
+    .btn-print {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 14px;
+        border-radius: 7px;
+        background: linear-gradient(135deg,#F5CA3A,#D4A500);
+        border: none;
+        cursor: pointer;
+        font-family: 'Poppins', sans-serif;
+        font-size: .72rem;
+        font-weight: 700;
+        color: #0d0d0d;
+        box-shadow: 0 3px 8px rgba(230,176,0,.35);
+        transition: all .18s;
+    }
+
+        .btn-print:hover {
+            background: linear-gradient(135deg,#ffd700,#E6B000);
+            transform: translateY(-1px);
+            box-shadow: 0 5px 14px rgba(230,176,0,.5);
+        }
+
+        .btn-print:active {
+            transform: translateY(0);
+        }
+
+    /* Printed badge */
+    .sp-printed-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: #e8f8ef;
+        border: 1px solid #b2dfcc;
+        color: #1a8a4a;
+        font-size: .65rem;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 20px;
+    }
+
+    /* Empty state */
+    .sp-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 32px;
+        text-align: center;
+    }
+
+    .sp-empty-icon {
+        font-size: 3rem;
+        opacity: .25;
+        margin-bottom: 16px;
+    }
+
+    .sp-empty-title {
+        font-size: .95rem;
+        font-weight: 800;
+        color: #1a1a1a;
+        margin-bottom: 6px;
+    }
+
+    .sp-empty-sub {
+        font-size: .75rem;
+        color: #9a9a9a;
+        line-height: 1.7;
+        max-width: 300px;
+    }
+
+    /* ── COMPLETION BANNER ───────────────────────────────── */
+    .sp-complete-banner {
+        background: linear-gradient(135deg, #0f5032, #1a8a4a);
+        border-radius: 10px;
+        padding: 16px 20px;
+        margin: 16px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        color: #fff;
+    }
+
+    .sp-complete-icon {
+        font-size: 2rem;
+        flex-shrink: 0;
+    }
+
+    .sp-complete-title {
+        font-size: .82rem;
+        font-weight: 800;
+        margin-bottom: 2px;
+    }
+
+    .sp-complete-sub {
+        font-size: .7rem;
+        opacity: .75;
+    }
+</style>
+
+<!-- ════════════════════════════════════════════════════════════
+     FULL SCREEN SHELL
+════════════════════════════════════════════════════════════ -->
+<div class="sp-fullscreen">
+
+    <!-- META BAR -->
+    <div class="sp-meta-bar">
+        <div class="sp-meta-chip"><span class="sp-meta-lbl">Roll</span><span class="sp-meta-val">@Model.RollShortCode — @Model.RollName</span></div>
+        <div class="sp-meta-chip"><span class="sp-meta-lbl">Notice</span><span class="sp-meta-val">@Model.Notice</span></div>
+        <div class="sp-meta-chip"><span class="sp-meta-lbl">Version</span><span class="sp-meta-val">@Model.VersionText</span></div>
+        <div class="sp-meta-chip"><span class="sp-meta-lbl">Batches</span><span class="sp-meta-val">@createdBatches created</span></div>
+        <div class="sp-meta-chip"><span class="sp-meta-lbl">Progress</span><span class="sp-meta-val">@progressPct%</span></div>
     </div>
-</div>
 
-@if (TempData["Success"] != null)
-{
-    <div class="alert alert-success">@TempData["Success"]</div>
-}
-@if (TempData["Error"] != null)
-{
-    <div class="alert alert-danger">@TempData["Error"]</div>
-}
+    <!-- STEP BANNER -->
+    <div class="sp-step-banner">
+        <div class="sp-step-trail">
+            <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Configure</div>
+            <div class="sp-bc-arrow">›</div>
+            <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Approve</div>
+            <div class="sp-bc-arrow">›</div>
+            <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Kickoff</div>
+            <div class="sp-bc-arrow">›</div>
+            <div class="sp-bc active"><div class="sp-bc-dot">4</div>Print</div>
+        </div>
+        <div class="sp-step-label">Batch Summary &amp; Print &nbsp;·&nbsp; <span>Step 3 / Step 2</span></div>
+    </div>
 
-<!-- =========================
-     READONLY WORKFLOW SUMMARY
-     ========================= -->
-<div class="card mb-3">
-    <div class="card-body">
-        <h4 class="mb-3">Workflow Summary (Readonly)</h4>
+    <!-- BODY -->
+    <div class="sp-body">
 
-        <div class="row g-3">
-            <div class="col-md-3">
-                <div class="text-muted">Letter Date</div>
-                <div><b>@Model.LetterDate?.ToString("yyyy-MM-dd")</b></div>
+        <!-- ── LEFT: SUMMARY SIDEBAR ───────────────────────── -->
+        <div class="sp-left">
+
+            @if (TempData["Success"] != null)
+            {
+                <div class="sp-alert sp-alert-ok">✅ @TempData["Success"]</div>
+            }
+            @if (TempData["Error"] != null)
+            {
+                <div class="sp-alert sp-alert-err">⚠ @TempData["Error"]</div>
+            }
+
+            <!-- Stats row -->
+            <div class="sp-stats-row">
+                <div class="sp-stat">
+                    <div class="sp-stat-num gold">@createdBatches</div>
+                    <div class="sp-stat-lbl">Batches Created</div>
+                </div>
+                <div class="sp-stat">
+                    <div class="sp-stat-num">@batchSize</div>
+                    <div class="sp-stat-lbl">Records / Batch</div>
+                </div>
+                <div class="sp-stat">
+                    <div class="sp-stat-num">@createdRecords.ToString("N0")</div>
+                    <div class="sp-stat-lbl">Records Batched</div>
+                </div>
+                <div class="sp-stat">
+                    <div class="sp-stat-num @(remaining == 0 ? "green" : "")">@remaining.ToString("N0")</div>
+                    <div class="sp-stat-lbl">Remaining</div>
+                </div>
             </div>
 
-            <div class="col-md-3">
-                <div class="text-muted">Financial Years</div>
-                <div><b>@(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "-" : Model.FinancialYearsText)</b></div>
-            </div>
-
-            <div class="col-md-3">
-                <div class="text-muted">Objection Start</div>
-                <div><b>@Model.ObjectionStartDate?.ToString("yyyy-MM-dd")</b></div>
-            </div>
-
-            <div class="col-md-3">
-                <div class="text-muted">Objection End</div>
-                <div><b>@Model.ObjectionEndDate?.ToString("yyyy-MM-dd")</b></div>
-            </div>
-
-            <div class="col-md-3">
-                <div class="text-muted">Extension Date</div>
-                <div><b>@Model.ExtensionDate?.ToString("yyyy-MM-dd")</b></div>
-            </div>
-
-            <div class="col-md-9">
-                <div class="text-muted">Signature</div>
-                <div>
-                    @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
+            <!-- Progress -->
+            <div class="sp-progress-wrap">
+                <div class="sp-progress-label">
+                    <span>Batch Progress</span>
+                    <span style="color:@(progressPct == 100 ? "#1a8a4a" : "#E6B000");font-weight:800;">@progressPct%</span>
+                </div>
+                <div class="sp-progress-bar-wrap">
+                    <div class="sp-progress-bar-fill"></div>
+                </div>
+                <div class="sp-progress-sub">
+                    <span>@createdRecords.ToString("N0") of @totalPending.ToString("N0") records</span>
+                    @if (remainingBatches > 0)
                     {
-                        <span class="badge bg-success">UPLOADED</span>
-                        <span class="ms-2 text-muted" style="font-size:12px">@Model.SignaturePath</span>
+                        <span>~@remainingBatches batch@(remainingBatches == 1 ? "" : "es") left</span>
                     }
-                    else
+                    else if (allDone)
                     {
-                        <span class="badge bg-danger">MISSING</span>
-                        <span class="ms-2 text-muted">Step 1 signature not found.</span>
+                        <span style="color:#1a8a4a;font-weight:700;">✓ Complete</span>
                     }
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 
-<!-- =========================
-     BATCH STATS + PROGRESS
-     ========================= -->
-<div class="card mb-3">
-    <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-            <h4 class="mb-0">Batch Status</h4>
-            <span class="badge bg-primary">Batch Size: @batchSize</span>
-        </div>
-
-        <div class="row g-3 mb-3">
-            <div class="col-md-3">
-                <div class="text-muted">Total Pending Records</div>
-                <div style="font-size:20px"><b>@totalPending.ToString("N0")</b></div>
-            </div>
-
-            <div class="col-md-3">
-                <div class="text-muted">Created Batches</div>
-                <div style="font-size:20px"><b>@createdBatches.ToString("N0")</b></div>
-            </div>
-
-            <div class="col-md-3">
-                <div class="text-muted">Records in Created Batches</div>
-                <div style="font-size:20px"><b>@createdRecords.ToString("N0")</b></div>
-            </div>
-
-            <div class="col-md-3">
-                <div class="text-muted">Remaining Records</div>
-                <div style="font-size:20px"><b>@remaining.ToString("N0")</b></div>
-                <div class="text-muted" style="font-size:12px">Est. batches left: <b>@remainingBatches</b></div>
-            </div>
-        </div>
-
-        <div class="mb-1 text-muted" style="font-size:12px">Progress</div>
-        <div class="progress" style="height: 22px;">
-            <div class="progress-bar" role="progressbar"
-                 style="width:@progressPct%"
-                 aria-valuenow="@progressPct" aria-valuemin="0" aria-valuemax="100">
-                @progressPct%
-            </div>
-        </div>
-        <div class="text-muted mt-2" style="font-size:12px">
-            Created: @createdRecords.ToString("N0") of @totalPending.ToString("N0")
-        </div>
-    </div>
-</div>
-
-<!-- =========================
-     CREATE BATCH
-     ========================= -->
-<div class="card mb-3">
-    <div class="card-body">
-        <h4 class="mb-3">Create New Batch</h4>
-
-        <form asp-action="Step2CreateBatch" asp-controller="Step3" method="post">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="key" value="@Model.WorkflowKey" />
-
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">Batch Date</label>
-                    <input class="form-control" type="date" name="batchDate"
-                           value="@Model.BatchDate.ToString("yyyy-MM-dd")" required />
-                    <div class="text-muted" style="font-size:12px">
-                        This date will be saved into <b>NoticeBatch.BatchDate</b>
-                        and for <b>S49</b> also written into the roll rows (<b>Batch_Date</b>).
+            <!-- Workflow Summary -->
+            <div class="sp-card">
+                <div class="sp-card-header"><span>📋</span><h4>Workflow Summary</h4></div>
+                <div class="sp-card-body">
+                    <div class="sp-grid-2">
+                        <div class="sp-field">
+                            <div class="sp-fl">Notice</div>
+                            <div class="sp-fv">@Model.Notice</div>
+                        </div>
+                        <div class="sp-field">
+                            <div class="sp-fl">Version</div>
+                            <div class="sp-fv">@Model.VersionText</div>
+                        </div>
+                        <div class="sp-field" style="grid-column:span 2">
+                            <div class="sp-fl">Letter Date</div>
+                            <div class="sp-fv @(Model.LetterDate == null ? "empty" : "")">@(Model.LetterDate?.ToString("dd MMM yyyy") ?? "—")</div>
+                        </div>
+                        <div class="sp-field">
+                            <div class="sp-fl">Objection Start</div>
+                            <div class="sp-fv @(Model.ObjectionStartDate == null ? "empty" : "")">@(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")</div>
+                        </div>
+                        <div class="sp-field">
+                            <div class="sp-fl">Objection End</div>
+                            <div class="sp-fv @(Model.ObjectionEndDate == null ? "empty" : "")">@(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</div>
+                        </div>
+                        @if (Model.ExtensionDate.HasValue)
+                        {
+                            <div class="sp-field">
+                                <div class="sp-fl">Extension Date</div>
+                                <div class="sp-fv">@Model.ExtensionDate.Value.ToString("dd MMM yyyy")</div>
+                            </div>
+                        }
+                        <div class="sp-field" style="grid-column:span 2">
+                            <div class="sp-fl">Financial Years</div>
+                            <div class="sp-fv @(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "empty" : "")">@(Model.FinancialYearsText ?? "—")</div>
+                        </div>
+                    </div>
+                    <hr class="sp-divider" />
+                    <div class="sp-field">
+                        <div class="sp-fl">Signature</div>
+                        <div class="sp-fv">
+                            @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
+                            {
+                                <span class="sp-badge-ok">✓ Uploaded</span>
+                            }
+                            else
+                            {
+                                <span class="sp-badge-warn">⚠ Missing</span>
+                            }
+                        </div>
                     </div>
                 </div>
-
-                <div class="col-md-8 d-flex align-items-end">
-                    <button class="btn btn-primary" type="submit"
-                            @(remaining == 0 ? "disabled" : "")>
-                        Create Batch (Top @batchSize)
-                    </button>
-
-                    @if (remaining == 0)
-                    {
-                        <span class="ms-3 badge bg-success">Nothing left to batch</span>
-                    }
-                </div>
             </div>
-        </form>
-    </div>
-</div>
 
-<hr />
-
-<!-- =========================
-     EXISTING BATCHES
-     ========================= -->
-<h4>Existing Step 3 Batches</h4>
-
-@if (Model.Batches == null || Model.Batches.Count == 0)
-{
-    <div class="alert alert-secondary">No batches created yet.</div>
-}
-else
-{
-    <table class="table table-bordered table-sm align-middle">
-        <thead>
-            <tr>
-                <th>Batch Name</th>
-                <th style="width:120px">Batch Date</th>
-                <th style="width:120px">Records</th>
-                <th>Created By</th>
-                <th style="width:180px">Created At (UTC)</th>
-                <th style="width:120px">Approved</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var b in Model.Batches)
+            <!-- Completion banner -->
+            @if (allDone)
             {
-                <tr>
-                    <td>@b.BatchName</td>
-                    <td>@b.BatchDate.ToString("yyyy-MM-dd")</td>
-                    <td>@b.NumberOfRecords.ToString("N0")</td>
-                    <td>@b.CreatedBy</td>
-                    <td>@DT(b.CreatedAtUtc)</td>
-                    <td>
-                        @if (b.IsApproved)
-                        {
-                            <span class="badge bg-success">YES</span>
-                        }
-                        else
-                        {
-                            <span class="badge bg-secondary">NO</span>
-                        }
-                    </td>
-                </tr>
+                <div class="sp-complete-banner">
+                    <div class="sp-complete-icon">🎉</div>
+                    <div>
+                        <div class="sp-complete-title">All Records Batched</div>
+                        <div class="sp-complete-sub">All @totalPending.ToString("N0") records have been assigned across @createdBatches batch@(createdBatches == 1 ? "" : "es"). You can now print each batch below.</div>
+                    </div>
+                </div>
             }
-        </tbody>
-    </table>
-}
+
+        </div><!-- /sp-left -->
+        <!-- ── RIGHT: PRINT DASHBOARD ───────────────────────── -->
+        <div class="sp-right">
+            <div class="sp-right-header">
+                <div class="sp-right-title">
+                    <div class="sp-right-icon">🖨</div>
+                    Batch Print Dashboard — @Model.Notice
+                </div>
+                <span class="sp-badge-info">@Model.Batches.Count batch@(Model.Batches.Count == 1 ? "" : "es")</span>
+            </div>
+
+            <div class="sp-right-body">
+                @if (Model.Batches == null || Model.Batches.Count == 0)
+                {
+                    <div class="sp-empty">
+                        <div class="sp-empty-icon">📦</div>
+                        <div class="sp-empty-title">No Batches Created Yet</div>
+                        <div class="sp-empty-sub">
+                            Go back to the <strong>Step 3 Kickoff</strong> page and use the
+                            <em>Start Batch</em> button to create batches. Once batches exist,
+                            they will appear here ready to print.
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <table class="sp-batch-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Batch Code</th>
+                                <th>Notice</th>
+                                <th>Batch Date</th>
+                                <th>Records</th>
+                                <th>Created By</th>
+                                <th>Created At</th>
+                                <th>Status</th>
+                                <th style="text-align:center;">Print</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                int rowNum = 0;
+                            }
+                            @foreach (var b in Model.Batches)
+                            {
+                                rowNum++;
+                                <tr>
+                                    <td class="sp-bt-seq">@rowNum</td>
+                                    <td>
+                                        <span class="sp-bt-code">@b.BatchName</span>
+                                        <div class="sp-bt-meta">ID: @b.BatchId</div>
+                                    </td>
+                                    <td><span class="sp-badge-info">@Model.Notice</span></td>
+                                    <td class="sp-bt-date">@b.BatchDate.ToString("dd MMM yyyy")</td>
+                                    <td>
+                                        <span class="sp-bt-records">@b.NumberOfRecords.ToString("N0")</span>
+                                    </td>
+                                    <td class="sp-bt-date">@b.CreatedBy</td>
+                                    <td class="sp-bt-date">@b.CreatedAtUtc.ToString("dd MMM yyyy HH:mm")</td>
+                                    <td>
+                                        @if (b.IsApproved)
+                                        {
+                                            <span class="sp-badge-ok">✓ Approved</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="sp-badge-warn">Pending</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <form asp-action="Print" asp-controller="Step3" method="post" style="display:inline;">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="batchId" value="@b.BatchId" />
+                                            <input type="hidden" name="key" value="@Model.WorkflowKey" />
+                                            <button type="submit" class="btn-print" title="Generate & save PDFs for this batch">
+                                                🖨 Print Batch
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div><!-- /sp-right -->
+
+    </div><!-- /sp-body -->
+</div><!-- /sp-fullscreen -->

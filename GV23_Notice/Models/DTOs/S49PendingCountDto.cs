@@ -4,6 +4,8 @@
     {
         public int PendingPremiseCount { get; set; }
         public int PendingRowCount { get; set; }
+
+     
     }
 
     public sealed class S49AssignBatchResultDto

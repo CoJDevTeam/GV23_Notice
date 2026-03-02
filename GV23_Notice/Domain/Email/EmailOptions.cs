@@ -9,6 +9,16 @@
         public LimitsOptions Limits { get; set; } = new();
         public TemplatesOptions Templates { get; set; } = new();
 
+        // ✅ add this
+        public bool UseDefaultCredentials { get; set; } = false;
+
+        // ✅ optional backwards-compat alias (if your json already has UserDefaultCredentials)
+        public bool UserDefaultCredentials
+        {
+            get => UseDefaultCredentials;
+            set => UseDefaultCredentials = value;
+        }
+
         public sealed class SmtpOptions
         {
             public string Host { get; set; } = "";
@@ -16,8 +26,8 @@
             public bool EnableSsl { get; set; } = true;
             public string Username { get; set; } = "";
             public string Password { get; set; } = "";
+            public bool UseDefaultCredentials { get; set; } = false;
 
-       
         }
 
         public sealed class LimitsOptions

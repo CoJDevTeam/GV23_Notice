@@ -31,7 +31,7 @@ namespace GV23_Notice.Data
         public DbSet<NoticeStep2Snapshot> NoticeStep2Snapshots => Set<NoticeStep2Snapshot>();
         public DbSet<NoticeStep2CorrectionRequest> NoticeStep2CorrectionRequests => Set<NoticeStep2CorrectionRequest>();
 
-
+        public DbSet<S49PendingCountDto> S49PendingCounts { get; set; }
         public DbSet<S49BatchPickRow> S49BatchPickRows => Set<S49BatchPickRow>();
 
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
@@ -183,6 +183,12 @@ namespace GV23_Notice.Data
 
             modelBuilder.Entity<S49BatchPickRow>().HasNoKey();
             modelBuilder.Entity<S49BatchPickRow>().ToView(null);
+
+            modelBuilder.Entity<S49PendingCountDto>(entity =>
+            {
+                entity.HasNoKey();
+                entity.ToView(null); // tells EF this is NOT a table
+            });
         }
     }
 }

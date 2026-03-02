@@ -17,386 +17,274 @@ namespace GV23_Notice.Services.Step3
 
         public async Task<int> CreateBatchAsync(Guid workflowKey, DateTime batchDate, string createdBy, CancellationToken ct)
         {
-            // 1) Resolve settings by key (Step3 uses ApprovalKey in emailed link)
+            // 1) Resolve settings
             var s = await _db.NoticeSettings
-                .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey, ct);
-
-            // fallback (older flows might have WorkflowKey)
-            if (s is null)
-            {
-                s = await _db.NoticeSettings
-                    .FirstOrDefaultAsync(x => x.WorkflowKey == workflowKey, ct);
-            }
-
-            if (s is null)
-                throw new InvalidOperationException("Workflow not found.");
+                        .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey, ct)
+                    ?? await _db.NoticeSettings
+                        .FirstOrDefaultAsync(x => x.WorkflowKey == workflowKey, ct)
+                    ?? throw new InvalidOperationException("Workflow not found.");
 
             if (!s.IsApproved)
                 throw new InvalidOperationException("Step 1 must be approved before creating Step 3 batch.");
 
-            // Step2 must be approved OR correction requested (still trackable)
             if (!s.Step2Approved && !s.Step2CorrectionRequested)
                 throw new InvalidOperationException("Step 2 must be approved or correction-requested before batch creation.");
 
-            var roll = await _db.RollRegistry
-                .AsNoTracking()
-                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
-                ?? throw new InvalidOperationException("Roll not found.");
+            var roll = await _db.RollRegistry.AsNoTracking()
+                           .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
+                       ?? throw new InvalidOperationException("Roll not found.");
 
-            // 2) Build next batch name: S49_{RollShortCode}_0001 / S51_{RollShortCode}_0001
-            var prefix = $"{s.Notice}_{roll.ShortCode}_";   // ex: S51_GV23-Sup2-8_
-            var last = await _db.NoticeBatches
-                .AsNoTracking()
-                .Where(b => b.RollId == s.RollId && b.Notice == s.Notice && b.BatchKind == "STEP3")
+            // 2) Compute correct prefix per notice type
+            var shortCode = roll.ShortCode ?? "";
+            var prefix = s.Notice switch
+            {
+                NoticeKind.S52 => (s.IsSection52Review ? "S52" : "AD") + $"_{shortCode}_",
+                NoticeKind.DJ => $"DJ_{shortCode}_",
+                NoticeKind.IN => ((s.IsInvalidOmission ?? false) ? "IOM" : "IOBJ") + $"_{shortCode}_",
+                _ => $"{s.Notice}_{shortCode}_"
+            };
+
+            // 3) Compute next sequence using the correct prefix
+            var last = await _db.NoticeBatches.AsNoTracking()
+                .Where(b => b.RollId == s.RollId
+                         && b.BatchKind == "STEP3"
+                         && b.BatchName.StartsWith(prefix))
                 .OrderByDescending(b => b.Id)
                 .FirstOrDefaultAsync(ct);
 
             var nextSeq = 1;
-            if (last != null && !string.IsNullOrWhiteSpace(last.BatchName) &&
-                last.BatchName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            if (last != null && last.BatchName.Length > prefix.Length)
             {
-                var suf = last.BatchName.Substring(prefix.Length);
+                var suf = last.BatchName[prefix.Length..];
                 if (int.TryParse(suf, out var parsed))
                     nextSeq = parsed + 1;
             }
 
             var batchName = $"{prefix}{nextSeq:0000}";
+            var batchDateUtc = batchDate.Date;
+            var nowUtc = DateTime.UtcNow;
 
-            // Version safe
-            var versionText = s.Version.ToString();
-
-            // 3) Insert batch header now (NumberOfRecords updated after picks)
+            // 4) Insert batch header
             var batch = new NoticeBatch
             {
-                NoticeSettingsId = s.Id,              // ✅ REQUIRED FK
-                                                      // NoticeSettings = s,                // optional (but FK is enough)
-
-                WorkflowKey = workflowKey,            // this is your kickoff/approval key
+                NoticeSettingsId = s.Id,
+                WorkflowKey = workflowKey,
                 RollId = s.RollId,
                 Mode = s.Mode,
-
                 Notice = s.Notice,
-                SettingsVersionUsed = s.Version,      // ✅ you have this field in NoticeBatch
-
+                SettingsVersionUsed = s.Version,
+                Version = s.Version.ToString(),
                 BatchKind = "STEP3",
                 BatchName = batchName,
-                BatchDate = batchDate.Date,
-
-                CreatedBy = createdBy,
-                CreatedAtUtc = DateTime.UtcNow,
-
-                // Optional snapshot fields if you want
+                BatchDate = batchDateUtc,   // ✅ always set
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
-
                 NumberOfRecords = 0,
-                IsApproved = false
+                IsApproved = false,
+                CreatedBy = createdBy,
+                CreatedAtUtc = nowUtc
             };
-
 
             _db.NoticeBatches.Add(batch);
             await _db.SaveChangesAsync(ct);
 
-            // 4) Notice-specific pick + roll/app table updates (Top 500)
-            var nowUtc = DateTime.UtcNow;
-
-            if (s.Notice == NoticeKind.S49)
+            // 5) Notice-specific SP call — all now pass BatchName + BatchDate
+            switch (s.Notice)
             {
-                // Assign Top 500 in roll DB + update Batch_Name there
-                var picked = await _db.Set<S49BatchPickRow>()
-                    .FromSqlRaw("EXEC dbo.S49_Step3_AssignTop500ToBatch @p0, @p1", s.RollId, batchName)
-                    .ToListAsync(ct);
-
-                var runLogs = picked
-                    .Where(x => !string.IsNullOrWhiteSpace(x.PremiseId))
-                    .Select(x => new NoticeRunLog
+                case NoticeKind.S49:
                     {
-                        NoticeBatchId = batch.Id,
-                        PremiseId = x.PremiseId,
-                        RecipientEmail = x.RecipientEmail,
-                        Status = RunStatus.Generated,
-                        CreatedAtUtc = nowUtc
-                    })
-                    .ToList();
+                        // SP: EXEC dbo.S49_Step3_AssignTop500ToBatch @RollId, @BatchName, @BatchDate
+                        var picked = await _db.Set<S49BatchPickRow>()
+                            .FromSqlRaw("EXEC dbo.S49_Step3_AssignTop500ToBatch @p0, @p1, @p2",
+                                s.RollId, batchName, batchDateUtc)
+                            .ToListAsync(ct);
 
-                if (runLogs.Count > 0)
-                    _db.NoticeRunLogs.AddRange(runLogs);
+                        var runLogs = picked
+                            .Where(x => !string.IsNullOrWhiteSpace(x.PremiseId))
+                            .Select(x => new NoticeRunLog
+                            {
+                                NoticeBatchId = batch.Id,
+                                PremiseId = x.PremiseId,
+                                RecipientEmail = x.RecipientEmail,
+                                Status = RunStatus.Generated,
+                                CreatedAtUtc = nowUtc
+                            }).ToList();
 
-                batch.NumberOfRecords = runLogs.Count;
-                await _db.SaveChangesAsync(ct);
+                        _db.NoticeRunLogs.AddRange(runLogs);
+                        batch.NumberOfRecords = runLogs.Count;
+                        await _db.SaveChangesAsync(ct);
+                        return batch.Id;
+                    }
 
-                return batch.Id;
-            }
-
-            if (s.Notice == NoticeKind.S51)
-            {
-                // Closing date used inside Section51Table insert (column [Closing Date])
-                // Choose the correct source: EvidenceCloseDate is typical for S51.
-                var closingDate = (s.EvidenceCloseDate ?? s.LetterDate.AddDays(30)).Date;
-
-                // Insert Top 500 into APP DB dbo.Section51Table (proc reads from roll DB using Roll_Resolve + join sapContact)
-                var picked = await _db.Set<S51BatchPickRow>()
-                    .FromSqlRaw(
-                        "EXEC dbo.S51_Step3_InsertTop500IntoSection51Table @p0, @p1, @p2, @p3",
-                        s.RollId,
-                        batchName,
-                        batchDate.Date,
-                        closingDate)
-                    .ToListAsync(ct);
-
-                var runLogs = picked
-                    .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
-                    .Select(x => new NoticeRunLog
+                case NoticeKind.S51:
                     {
-                        NoticeBatchId = batch.Id,
-                        ObjectionNo = x.ObjectionNo,
-                        PremiseId = x.PremiseId,
-                        RecipientEmail = x.RecipientEmail,
-                        Status = RunStatus.Generated,
-                        CreatedAtUtc = nowUtc
-                    })
-                    .ToList();
+                        var closingDate = (s.EvidenceCloseDate ?? s.LetterDate.AddDays(30)).Date;
 
-                if (runLogs.Count > 0)
-                    _db.NoticeRunLogs.AddRange(runLogs);
+                        // SP: EXEC dbo.S51_Step3_InsertTop500IntoSection51Table @RollId, @BatchName, @BatchDate, @ClosingDate
+                        var picked = await _db.Set<S51BatchPickRow>()
+                            .FromSqlRaw("EXEC dbo.S51_Step3_InsertTop500IntoSection51Table @p0, @p1, @p2, @p3",
+                                s.RollId, batchName, batchDateUtc, closingDate)
+                            .ToListAsync(ct);
 
-                batch.NumberOfRecords = runLogs.Count;
-                await _db.SaveChangesAsync(ct);
+                        var runLogs = picked
+                            .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                            .Select(x => new NoticeRunLog
+                            {
+                                NoticeBatchId = batch.Id,
+                                ObjectionNo = x.ObjectionNo,
+                                PremiseId = x.PremiseId,
+                                RecipientEmail = x.RecipientEmail,
+                                Status = RunStatus.Generated,
+                                CreatedAtUtc = nowUtc
+                            }).ToList();
 
-                return batch.Id;
-            }
-            if (s.Notice == NoticeKind.S52)
-            {
-                if (!s.BulkFromDate.HasValue || !s.BulkToDate.HasValue)
-                    throw new InvalidOperationException("Section 52 batch requires Bulk From and Bulk To dates.");
+                        _db.NoticeRunLogs.AddRange(runLogs);
+                        batch.NumberOfRecords = runLogs.Count;
+                        await _db.SaveChangesAsync(ct);
+                        return batch.Id;
+                    }
 
-                // YOU MUST have a persisted flag for S52 type:
-                // true => Review (System_Generated), false => Appeal Decision
-                var isReview = s.IsSection52Review; // <-- rename to your real property
-
-                // IMPORTANT: batch name prefix rule
-                // S52_{Roll}_0001 for review
-                // AD_{Roll}_0001 for appeal decision
-                var prefixOverride = (isReview ? "S52" : "AD");
-                var s52prefix = $"{prefixOverride}_{roll.ShortCode}_";
-
-                // regenerate sequence using the override prefix (not s.Notice)
-                var lasts = await _db.NoticeBatches
-                    .AsNoTracking()
-                    .Where(b => b.RollId == s.RollId && b.BatchKind == "STEP3" && b.BatchName.StartsWith(prefix))
-                    .OrderByDescending(b => b.Id)
-                    .FirstOrDefaultAsync(ct);
-
-                var S52nextSeq = 1;
-                if (last != null && !string.IsNullOrWhiteSpace(last.BatchName) &&
-                    last.BatchName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    var suf = last.BatchName.Substring(prefix.Length);
-                    if (int.TryParse(suf, out var parsed)) nextSeq = parsed + 1;
-                }
-
-                // override batch name on the existing batch header
-                batch.BatchName = $"{prefix}{nextSeq:0000}";
-
-                // store range as backup in NoticeBatch fields (recommended):
-                // If you already have fields, set them. If not, ignore.
-                // batch.RangeFrom = s.BulkFromDate.Value.Date; etc...
-
-                await _db.SaveChangesAsync(ct);
-
-                var picked = await _db.Set<S52BatchPickRow>()
-                    .FromSqlRaw(
-                        "EXEC dbo.S52_Step3_SelectTop500ByRange @p0, @p1, @p2, @p3",
-                        s.RollId,
-                        s.BulkFromDate.Value.Date,
-                        s.BulkToDate.Value.Date,
-                        isReview)
-                    .ToListAsync(ct);
-
-                
-
-                var runLogs = picked
-                    .Where(x => !string.IsNullOrWhiteSpace(x.AppealNo))
-                    .Select(x => new NoticeRunLog
+                case NoticeKind.S52:
                     {
-                        NoticeBatchId = batch.Id,
-                        AppealNo = x.AppealNo,
-                        ObjectionNo = x.ObjectionNo,
-                        PremiseId = x.PremiseId,
-                        RecipientEmail = x.RecipientEmail,
-                        Status = RunStatus.Generated,
-                        CreatedAtUtc = nowUtc
-                    })
-                    .ToList();
+                        if (!s.BulkFromDate.HasValue || !s.BulkToDate.HasValue)
+                            throw new InvalidOperationException("S52 batch requires Bulk From and Bulk To dates.");
 
-                if (runLogs.Count > 0)
-                    _db.NoticeRunLogs.AddRange(runLogs);
+                        // SP: EXEC dbo.S52_Step3_SelectTop500ByRange @RollId, @FromDate, @ToDate, @IsReview
+                        var picked = await _db.Set<S52BatchPickRow>()
+                            .FromSqlRaw("EXEC dbo.S52_Step3_SelectTop500ByRange @p0, @p1, @p2, @p3",
+                                s.RollId,
+                                s.BulkFromDate.Value.Date,
+                                s.BulkToDate.Value.Date,
+                                s.IsSection52Review)
+                            .ToListAsync(ct);
 
-                batch.NumberOfRecords = runLogs.Count;
-                await _db.SaveChangesAsync(ct);
+                        var runLogs = picked
+                            .Where(x => !string.IsNullOrWhiteSpace(x.AppealNo))
+                            .Select(x => new NoticeRunLog
+                            {
+                                NoticeBatchId = batch.Id,
+                                AppealNo = x.AppealNo,
+                                ObjectionNo = x.ObjectionNo,
+                                PremiseId = x.PremiseId,
+                                RecipientEmail = x.RecipientEmail,
+                                Status = RunStatus.Generated,
+                                CreatedAtUtc = nowUtc
+                            }).ToList();
 
-                return batch.Id;
-            }
+                        _db.NoticeRunLogs.AddRange(runLogs);
+                        batch.NumberOfRecords = runLogs.Count;
+                        await _db.SaveChangesAsync(ct);
+                        return batch.Id;
+                    }
 
-            if (s.Notice == NoticeKind.DJ)
-            {
-                // Override prefix to DJ_
-                var djPrefix = $"DJ_{roll.ShortCode}_";
-
-                var lastDj = await _db.NoticeBatches.AsNoTracking()
-                    .Where(b => b.RollId == s.RollId && b.BatchKind == "STEP3" && b.BatchName.StartsWith(djPrefix))
-                    .OrderByDescending(b => b.Id)
-                    .FirstOrDefaultAsync(ct);
-
-               
-                if (lastDj != null && !string.IsNullOrWhiteSpace(lastDj.BatchName) &&
-                    lastDj.BatchName.StartsWith(djPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    var suf = lastDj.BatchName.Substring(djPrefix.Length);
-                    if (int.TryParse(suf, out var parsed)) nextSeq = parsed + 1;
-                }
-
-                batch.BatchName = $"{djPrefix}{nextSeq:0000}";
-                await _db.SaveChangesAsync(ct);
-
-                var picked = await _db.Set<DjBatchPickRow>()
-                    .FromSqlRaw("EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @p0, @p1, @p2",
-                        s.RollId, batch.BatchName, batchDate.Date)
-                    .ToListAsync(ct);
-
-           
-
-                var runLogs = picked
-                    .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
-                    .Select(x => new NoticeRunLog
+                case NoticeKind.DJ:
                     {
-                        NoticeBatchId = batch.Id,
-                        ObjectionNo = x.ObjectionNo,
-                        PremiseId = x.PremiseId,
-                        RecipientEmail = x.RecipientEmail,
-                        Status = RunStatus.Generated,
-                        CreatedAtUtc = nowUtc
-                    })
-                    .ToList();
+                        // SP: EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @RollId, @BatchName, @BatchDate
+                        var picked = await _db.Set<DjBatchPickRow>()
+                            .FromSqlRaw("EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @p0, @p1, @p2",
+                                s.RollId, batchName, batchDateUtc)
+                            .ToListAsync(ct);
 
-                if (runLogs.Count > 0)
-                    _db.NoticeRunLogs.AddRange(runLogs);
+                        var runLogs = picked
+                            .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                            .Select(x => new NoticeRunLog
+                            {
+                                NoticeBatchId = batch.Id,
+                                ObjectionNo = x.ObjectionNo,
+                                PremiseId = x.PremiseId,
+                                RecipientEmail = x.RecipientEmail,
+                                Status = RunStatus.Generated,
+                                CreatedAtUtc = nowUtc
+                            }).ToList();
 
-                batch.NumberOfRecords = runLogs.Count;
-                await _db.SaveChangesAsync(ct);
+                        _db.NoticeRunLogs.AddRange(runLogs);
+                        batch.NumberOfRecords = runLogs.Count;
+                        await _db.SaveChangesAsync(ct);
+                        return batch.Id;
+                    }
 
-                return batch.Id;
-            }
-
-            if (s.Notice == NoticeKind.IN)
-            {
-                // Need persisted invalid kind
-                var isOmission = s.IsInvalidOmission ?? false; // true => omission, false => objection
-                var prefixOverride = isOmission ? "IOM" : "IOBJ";
-                var inPrefix = $"{prefixOverride}_{roll.ShortCode}_";
-
-                var lastIn = await _db.NoticeBatches.AsNoTracking()
-                    .Where(b => b.RollId == s.RollId && b.BatchKind == "STEP3" && b.BatchName.StartsWith(inPrefix))
-                    .OrderByDescending(b => b.Id)
-                    .FirstOrDefaultAsync(ct);
-
-                var DJnextSeq = 1;
-                if (lastIn != null && !string.IsNullOrWhiteSpace(lastIn.BatchName) &&
-                    lastIn.BatchName.StartsWith(inPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    var suf = lastIn.BatchName.Substring(inPrefix.Length);
-                    if (int.TryParse(suf, out var parsed)) nextSeq = parsed + 1;
-                }
-
-                batch.BatchName = $"{inPrefix}{nextSeq:0000}";
-                await _db.SaveChangesAsync(ct);
-
-                var picked = await _db.Set<InBatchPickRow>()
-                    .FromSqlRaw("EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @p0, @p1, @p2, @p3",
-                        s.RollId, isOmission, batch.BatchName, batchDate.Date)
-                    .ToListAsync(ct);
-
-                
-
-                var runLogs = picked
-                    .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
-                    .Select(x => new NoticeRunLog
+                case NoticeKind.IN:
                     {
-                        NoticeBatchId = batch.Id,
-                        ObjectionNo = x.ObjectionNo,
-                        PremiseId = x.PremiseId,
-                        RecipientEmail = x.RecipientEmail,
-                        Status = RunStatus.Generated,
-                        CreatedAtUtc = nowUtc
-                    })
-                    .ToList();
+                        var isOmission = s.IsInvalidOmission ?? false;
 
-                if (runLogs.Count > 0)
-                    _db.NoticeRunLogs.AddRange(runLogs);
+                        // SP: EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @RollId, @IsOmission, @BatchName, @BatchDate
+                        var picked = await _db.Set<InBatchPickRow>()
+                            .FromSqlRaw("EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @p0, @p1, @p2, @p3",
+                                s.RollId, isOmission, batchName, batchDateUtc)
+                            .ToListAsync(ct);
 
-                batch.NumberOfRecords = runLogs.Count;
-                await _db.SaveChangesAsync(ct);
+                        var runLogs = picked
+                            .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                            .Select(x => new NoticeRunLog
+                            {
+                                NoticeBatchId = batch.Id,
+                                ObjectionNo = x.ObjectionNo,
+                                PremiseId = x.PremiseId,
+                                RecipientEmail = x.RecipientEmail,
+                                Status = RunStatus.Generated,
+                                CreatedAtUtc = nowUtc
+                            }).ToList();
 
-                return batch.Id;
+                        _db.NoticeRunLogs.AddRange(runLogs);
+                        batch.NumberOfRecords = runLogs.Count;
+                        await _db.SaveChangesAsync(ct);
+                        return batch.Id;
+                    }
+
+                default:
+                    // Remove the incomplete batch header since nothing was assigned
+                    _db.NoticeBatches.Remove(batch);
+                    await _db.SaveChangesAsync(ct);
+                    throw new NotSupportedException($"Step3 batch creation not implemented for notice: {s.Notice}");
             }
-            // If we reach here, the notice isn't implemented yet
-            throw new NotSupportedException($"Step3 batch creation not implemented for notice: {s.Notice}");
         }
 
+        // ── Legacy overload (kept for backward compat) ───────────────────────
         public async Task<NoticeBatch> CreateBatchAsync(int settingsId, string createdBy, CancellationToken ct)
         {
-            var s = await _db.NoticeSettings
-                .FirstOrDefaultAsync(x => x.Id == settingsId, ct);
+            var s = await _db.NoticeSettings.FirstOrDefaultAsync(x => x.Id == settingsId, ct)
+                    ?? throw new InvalidOperationException("NoticeSettings not found.");
 
-            if (s is null) throw new InvalidOperationException("NoticeSettings not found.");
-            if (!s.IsApproved) throw new InvalidOperationException("Settings not approved.");
+            if (!s.IsApproved)
+                throw new InvalidOperationException("Settings not approved.");
 
             var roll = await _db.RollRegistry.AsNoTracking()
-                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+                           .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
+                       ?? throw new InvalidOperationException("RollRegistry not found.");
 
-            if (roll is null) throw new InvalidOperationException("RollRegistry not found.");
-
-            // Generate batch name like S49_SUPP3_0001
-            var prefix = $"{s.Notice}_{roll.ShortCode}";
+            var prefix = $"{s.Notice}_{roll.ShortCode}_";
             var last = await _db.NoticeBatches.AsNoTracking()
                 .Where(x => x.NoticeSettingsId == settingsId)
                 .OrderByDescending(x => x.Id)
                 .FirstOrDefaultAsync(ct);
 
             var nextNo = 1;
-            if (last != null && last.BatchName.StartsWith(prefix + "_", StringComparison.OrdinalIgnoreCase))
+            if (last != null && last.BatchName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
-                var tail = last.BatchName.Substring((prefix + "_").Length);
+                var tail = last.BatchName[prefix.Length..];
                 if (int.TryParse(tail, out var parsed)) nextNo = parsed + 1;
             }
 
-            var batchName = $"{prefix}_{nextNo:0000}";
+            var batchName = $"{prefix}{nextNo:0000}";
             var batchDate = DateTime.Today;
 
-            // Create NoticeBatch first
             var batch = new NoticeBatch
             {
                 NoticeSettingsId = s.Id,
                 BatchName = batchName,
+                BatchDate = batchDate,
                 CreatedBy = createdBy,
                 CreatedAtUtc = DateTime.UtcNow,
-
-                Roll = Enum.TryParse<RollCode>(roll.ShortCode, out var parsedRoll)
-    ? parsedRoll
-    : RollCode.GV23, // or whatever fallback you want                  // if your RollRegistry has RollCode enum mapping
+                Roll = Enum.TryParse<RollCode>(roll.ShortCode, out var rc) ? rc : RollCode.GV23,
                 Notice = s.Notice,
                 SettingsVersionUsed = s.Version,
-
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
-
                 BatchKind = $"{s.Notice} {s.Mode}",
                 WorkflowKey = s.ApprovalKey ?? Guid.NewGuid(),
                 RollId = s.RollId,
                 Mode = s.Mode,
                 Version = $"v{s.Version}",
-
-                BatchDate = batchDate,
                 NumberOfRecords = 0,
                 IsApproved = true,
                 ApprovedBy = s.ApprovedBy,
@@ -406,7 +294,6 @@ namespace GV23_Notice.Services.Step3
             _db.NoticeBatches.Add(batch);
             await _db.SaveChangesAsync(ct);
 
-            // ✅ S49: assign TOP 500 premiseIds in roll table via SP (updates Batch_Name + Batch_Date)
             if (s.Notice == NoticeKind.S49)
             {
                 var res = await _db.Set<S49AssignBatchResultDto>()
@@ -415,15 +302,8 @@ namespace GV23_Notice.Services.Step3
                     .AsNoTracking()
                     .FirstOrDefaultAsync(ct);
 
-                var pickedPremises = res?.PremiseCount ?? 0;
-                var pickedRows = res?.RowCount ?? 0;
-
-                batch.NumberOfRecords = pickedPremises; // for S49 we count premiseIds as “records”
+                batch.NumberOfRecords = res?.PremiseCount ?? 0;
                 await _db.SaveChangesAsync(ct);
-
-                // OPTIONAL: create a single NoticeRunLog row per premise (recommended)
-                // If you already have a proc to list premiseIds by Batch_Name, we’ll do it properly.
-                // For now you can leave this until we wire "batch details" screen.
             }
 
             return batch;

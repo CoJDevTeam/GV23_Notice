@@ -20,7 +20,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string? ApprovedBy { get; set; }
         public DateTime? ApprovedAtUtc { get; set; }
 
-        // Step1 snapshot (read-only)
+        // Step1 snapshot (read-only display)
         public DateTime LetterDate { get; set; }
         public DateTime? ObjectionStartDate { get; set; }
         public DateTime? ObjectionEndDate { get; set; }
@@ -28,27 +28,65 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string? FinancialYearsText { get; set; }
         public string? SignaturePath { get; set; }
 
-        // ✅ NEW: Step2-like preview fields
+        // Notice-specific dates (for batch panel display)
+        public DateTime? EvidenceCloseDate { get; set; }       // S51
+        public DateTime? BulkFromDate { get; set; }            // S52
+        public DateTime? BulkToDate { get; set; }              // S52
+        public bool? IsSection52Review { get; set; }           // S52: true=Review, false=Appeal
+        public DateTime? S53BatchDate { get; set; }            // S53
+        public DateTime? AppealCloseDate { get; set; }         // S53
+        public DateTime? ExtractionDate { get; set; }          // S78
+        public int? ExtractPeriodDays { get; set; }            // S78
+        public DateTime? ReviewOpenDate { get; set; }          // S78
+        public DateTime? ReviewCloseDate { get; set; }         // S78
+        public bool? IsInvalidOmission { get; set; }           // IN
+
+        // ── Batch panel: auto-computed server side ──────────────
+        /// <summary>Pre-computed next batch code e.g. S49_GV23_0003</summary>
+        public string NextBatchCode { get; set; } = "";
+        /// <summary>Total pending records available for batching (from SP or count query)</summary>
+        public int TotalPendingRecords { get; set; }
+        /// <summary>How many batches already created for this workflow</summary>
+        public int BatchesAlreadyCreated { get; set; }
+
+        // Preview fields
         public string RecipientName { get; set; } = "";
         public string RecipientEmail { get; set; } = "";
         public string EmailSubject { get; set; } = "";
         public string EmailBodyHtml { get; set; } = "";
         public string PdfUrl { get; set; } = "";
 
-        // ✅ Keep UI selection (optional, but nice)
         public string SelectedVariant { get; set; } = "Default";
         public string SelectedMode { get; set; } = "single";
-        public string? AppealNo { get; set; } // for S52 only
+        public string? AppealNo { get; set; }
 
-      
-        // Real DB preview (one premise sample)
+        // Real DB preview sample
         public string? SamplePremiseId { get; set; }
         public string? SampleEmail { get; set; }
         public int SampleRowCount { get; set; }
         public bool SampleIsSplit { get; set; }
 
-        // Preview URLs (generated live)
         public string PdfPreviewUrl { get; set; } = "";
         public string EmailPreviewHtml { get; set; } = "";
+
+        // ── Batch dashboard ─────────────────────────────────────────
+        /// <summary>All batches already created for this workflow, newest first.</summary>
+        public List<KickoffBatchRowVm> CreatedBatches { get; set; } = new();
+
+        /// <summary>When true the view auto-switches to the Batch tab on load.</summary>
+        public bool ShowBatchTab { get; set; }
+    }
+
+    public sealed class KickoffBatchRowVm
+    {
+        public int BatchId { get; set; }
+        public string BatchName { get; set; } = "";
+        public DateTime BatchDate { get; set; }
+        public int NumberOfRecords { get; set; }
+        public string CreatedBy { get; set; } = "";
+        public DateTime CreatedAtUtc { get; set; }
+        public bool IsApproved { get; set; }
+        public string? ApprovedBy { get; set; }
+        public DateTime? ApprovedAtUtc { get; set; }
     }
 }
