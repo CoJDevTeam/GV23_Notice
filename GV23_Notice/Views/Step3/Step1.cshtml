@@ -7,6 +7,117 @@
     string DT(DateTime? d) => d.HasValue ? d.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) : "-";
 }
 
+<style>
+    .s1-nav {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        background: #0d0d0d;
+        border-bottom: 3px solid #E6B000;
+        padding: 12px 20px;
+        margin: -20px -20px 24px -20px;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .s1-nav-title {
+        font-size: .75rem;
+        font-weight: 800;
+        color: #fff;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        margin-right: 8px;
+        white-space: nowrap;
+    }
+
+    .s1-nav-spacer {
+        flex: 1;
+    }
+
+    .s1-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 9px 18px;
+        border-radius: 8px;
+        font-family: 'Poppins', sans-serif;
+        font-size: .72rem;
+        font-weight: 700;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all .15s;
+    }
+
+    .s1-btn-gold {
+        background: linear-gradient(135deg, #F5CA3A, #D4A500);
+        color: #0d0d0d;
+        box-shadow: 0 3px 10px rgba(230,176,0,.35);
+    }
+
+        .s1-btn-gold:hover {
+            background: linear-gradient(135deg, #ffd700, #E6B000);
+            transform: translateY(-1px);
+            color: #0d0d0d;
+        }
+
+    .s1-btn-outline {
+        background: transparent;
+        color: rgba(255,255,255,.8);
+        border: 1.5px solid rgba(255,255,255,.25);
+    }
+
+        .s1-btn-outline:hover {
+            background: rgba(255,255,255,.08);
+            color: #fff;
+            border-color: rgba(255,255,255,.5);
+        }
+
+    .s1-btn-green {
+        background: linear-gradient(135deg, #1a8a4a, #2ebd6c);
+        color: #fff;
+        box-shadow: 0 3px 10px rgba(26,138,74,.3);
+    }
+
+        .s1-btn-green:hover {
+            background: linear-gradient(135deg, #15703c, #1a8a4a);
+            transform: translateY(-1px);
+            color: #fff;
+        }
+
+    .s1-arrow {
+        color: rgba(255,255,255,.2);
+        font-size: .9rem;
+    }
+</style>
+
+<!-- NAVIGATION BAR -->
+<div class="s1-nav">
+    <span class="s1-nav-title">🗂 @Model.Notice — @Model.RollShortCode</span>
+    <div class="s1-arrow">›</div>
+
+    <!-- Step trail buttons -->
+    <a href="@Url.Action("Step1", "Step3", new { key = Model.WorkflowKey })" class="s1-btn s1-btn-outline">
+        📋 Step 1 Summary
+    </a>
+    <div class="s1-arrow">›</div>
+    <a href="@Url.Action("Step2", "Step3", new { key = Model.WorkflowKey })" class="s1-btn s1-btn-outline">
+        📦 Batch Summary
+    </a>
+    <div class="s1-arrow">›</div>
+    <a href="@Url.Action("Print", "Step3", new { key = Model.WorkflowKey })" class="s1-btn s1-btn-gold">
+        🖨 Go to Print
+    </a>
+    <div class="s1-arrow">›</div>
+    <a href="@Url.Action("SendEmail", "Step3", new { key = Model.WorkflowKey })" class="s1-btn s1-btn-green">
+        📧 Send Email
+    </a>
+
+    <div class="s1-nav-spacer"></div>
+    <span style="font-size:.65rem;color:rgba(255,255,255,.3);font-weight:600">v@Model.Version</span>
+</div>
+
 <div class="page-header">
     <h1>Step 3 – Step 1 (Handover)</h1>
     <p>

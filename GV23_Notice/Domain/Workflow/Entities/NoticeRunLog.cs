@@ -21,6 +21,12 @@ namespace GV23_Notice.Domain.Workflow.Entities
         [MaxLength(320)]
         public string? RecipientEmail { get; set; }
 
+        [MaxLength(256)]
+        public string? RecipientName { get; set; }
+
+        [MaxLength(512)]
+        public string? PropertyDesc { get; set; }
+
         [MaxLength(260)]
         public string? PdfPath { get; set; }
 

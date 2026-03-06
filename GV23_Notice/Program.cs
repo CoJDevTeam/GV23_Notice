@@ -3,6 +3,7 @@ using GV23_Notice.Domain.Email;
 using GV23_Notice.Domain.Storage;
 using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
+using GV23_Notice.Services.Email;
 using GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Notices.DearJohnny;
 using GV23_Notice.Services.Notices.Invalidity;
@@ -17,7 +18,7 @@ using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.SnapShotStep2;
 using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.Storage;
-using GV23_Notice.Services.Storage.GV23_Notice.Services.Workflow.Step3;
+
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.EntityFrameworkCore;
 
@@ -104,6 +105,12 @@ builder.Services.AddScoped<IStep3WorkflowSelectService, Step3WorkflowSelectServi
 //---------------------Storage--------------------------------------------
 builder.Services.AddScoped<INoticePathService, NoticePathService>();
 builder.Services.AddScoped<INoticeBatchPrintService, NoticeBatchPrintService>();
+builder.Services.AddScoped<GV23_Notice.Services.Step3.IStep3PrintQueryService,
+                           GV23_Notice.Services.Step3.Step3PrintQueryService>();
+builder.Services.Configure<GV23_Notice.Domain.Email.EmailOptions>(
+    builder.Configuration.GetSection("Email"));
+builder.Services.AddScoped<INoticeBatchEmailService,
+                           NoticeBatchEmailService>();
 // --------------------------- Auth ---------------------------
 builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme)
     .AddNegotiate();

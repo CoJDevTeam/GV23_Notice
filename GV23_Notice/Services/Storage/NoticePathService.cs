@@ -114,6 +114,74 @@ namespace GV23_Notice.Services.Storage
             return Path.Combine(root, fallbackMain, fallbackFile);
         }
 
+        public string BuildBatchPdfPath(
+            RollRegistry roll,
+            NoticeKind notice,
+            string batchName,
+            string propertyDesc,
+            string? copyRole = null)
+        {
+            var root = GetRootPath(roll, notice);
+            var safeRoll = SafeName(roll.ShortCode);
+            var safeBatch = SafeName(batchName);
+            var safeProp = SafeName(propertyDesc);
+            var suffix = string.IsNullOrWhiteSpace(copyRole) ? "" : $"_{SafeName(copyRole)}";
+
+            // Main folder:   {Roll}_{Notice}        e.g. SUPP_3_S49
+            var noticeLabel = notice switch
+            {
+                NoticeKind.S49 => "S49",
+                NoticeKind.S51 => "S51",
+                NoticeKind.S52 => "S52",
+                NoticeKind.S53 => "S53",
+                NoticeKind.DJ => "DJ",
+                NoticeKind.IN => "IN",
+                NoticeKind.S78 => "S78",
+                _ => notice.ToString()
+            };
+
+            var mainFolder = $"{safeRoll}_{noticeLabel}";
+            var batchesFolder = "Batches";
+            var batchFolder = safeBatch.Length > 0 ? safeBatch : "Unknown_Batch";
+            var propPart = safeProp.Length > 0 ? safeProp : "Property";
+            var fileName = $"{propPart}_{noticeLabel}{suffix}.pdf";
+
+            // Full: root\{Roll}_{Notice}\Batches\{BatchName}\{PropertyDesc}_{Notice}.pdf
+            return Path.Combine(root, mainFolder, batchesFolder, batchFolder, fileName);
+        }
+
+
+        public string BuildBatchEmlPath(
+            RollRegistry roll,
+            NoticeKind notice,
+            string batchName,
+            string propertyDesc)
+        {
+            var root = GetRootPath(roll, notice);
+            var safeRoll = SafeName(roll.ShortCode);
+            var safeBatch = SafeName(batchName);
+            var safeProp = SafeName(propertyDesc);
+
+            var noticeLabel = notice switch
+            {
+                NoticeKind.S49 => "S49",
+                NoticeKind.S51 => "S51",
+                NoticeKind.S52 => "S52",
+                NoticeKind.S53 => "S53",
+                NoticeKind.DJ => "DJ",
+                NoticeKind.IN => "IN",
+                NoticeKind.S78 => "S78",
+                _ => notice.ToString()
+            };
+
+            // {root}\{Roll}_{Notice}\Batches\{BatchName}_Emails\{PropertyDesc}.eml
+            var mainFolder = $"{safeRoll}_{noticeLabel}";
+            var emailsFolder = $"{(safeBatch.Length > 0 ? safeBatch : "Batch")}_Emails";
+            var fileName = $"{(safeProp.Length > 0 ? safeProp : "Property")}.eml";
+
+            return Path.Combine(root, mainFolder, "Batches", emailsFolder, fileName);
+        }
+
         private static string SafeName(string? name)
         {
             name ??= "";

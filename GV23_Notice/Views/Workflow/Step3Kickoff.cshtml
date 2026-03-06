@@ -27,8 +27,7 @@
     };
 }
 
-<link href="~/css/step3/step3kickoffcss.css" rel="stylesheet" />
-<link href="~/css/step3/step3kickoffbatchcss.css" rel="stylesheet" />
+<link href="~/css/step3/step3kickoffcss1.css" rel="stylesheet" />
 
 <!-- PAGE LOADER -->
 <div id="pageLoader">
@@ -346,19 +345,23 @@
                                         }
                                     </td>
                                     <td>
-                                        <form asp-action="Print" asp-controller="Step3" method="post" style="display:inline;">
-                                            @Html.AntiForgeryToken()
-                                            <input type="hidden" name="batchId" value="@b.BatchId" />
-                                            <input type="hidden" name="key" value="@Model.ApprovalKey" />
-                                            <button type="submit" class="bp-dt-print-btn" title="Print PDFs for this batch">
-                                                🖨 Print
-                                            </button>
-                                        </form>
+                                        <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
+                                           class="bp-dt-print-btn" title="Go to print dashboard for this batch">
+                                            🖨 Print
+                                        </a>
                                     </td>
                                 </tr>
                             }
                         </tbody>
                     </table>
+                </div>
+
+                <!-- Go straight to Print Dashboard -->
+                <div style="padding:14px 16px;border-top:1px solid #ebebeb;">
+                    <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
+                       class="bp-goto-print-btn">
+                        🖨 Go to Print Dashboard →
+                    </a>
                 </div>
             }
         </div><!-- /bpPaneDashboard -->
@@ -580,7 +583,7 @@
                     <span>Review all fields before creating. The batch code is auto-assigned.</span>
                 </div>
 
-                <div style="display:flex;gap:8px;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button type="button" class="btn-open-batch-panel" onclick="openBatchPanel('create')" style="flex:1;">
                         📦 Start Batch
                     </button>
@@ -588,6 +591,14 @@
                         📊 @Model.CreatedBatches.Count
                     </button>
                 </div>
+
+                @if (Model.CreatedBatches.Count > 0)
+                {
+                    <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
+                       class="btn-goto-print-sidebar">
+                        🖨 Go to Print Dashboard
+                    </a>
+                }
             </div>
 
         </div><!-- /s3-sidebar -->

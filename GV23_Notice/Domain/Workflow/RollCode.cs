@@ -49,6 +49,7 @@
         Generated = 1,
         Sent = 2,
         Failed = 3,
-        NoEmail = 4
+        NoEmail = 4,
+            Printed = 5
     }
 }
