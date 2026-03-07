@@ -263,7 +263,8 @@ namespace GV23_Notice.Controllers
             }
 
             // Map vm → entity (your existing mapping)
-            ApplyVmToEntity(vm, entity);
+            var rollCode = await ResolveRollCodeAsync(vm.RollId, ct);
+            ApplyVmToEntity(vm, entity, rollCode);
 
             // ✅ apply new period fields
             ApplyValuationAndFinancialYear(vm, entity);
@@ -611,9 +612,10 @@ namespace GV23_Notice.Controllers
             };
         }
 
-        private static void ApplyVmToEntity(WorkflowStep1Vm vm, NoticeSettings e)
+        private static void ApplyVmToEntity(WorkflowStep1Vm vm, NoticeSettings e, RollCode rollCode)
         {
             e.RollId = vm.RollId;
+            e.Roll = rollCode;
             e.Notice = vm.Notice;
             e.Mode = vm.Mode;
 
@@ -625,26 +627,22 @@ namespace GV23_Notice.Controllers
             e.EnquiriesLine = vm.EnquiriesLine;
             e.CityManagerSignDate = vm.CityManagerSignDate;
 
-            // S49
             e.ObjectionStartDate = vm.ObjectionStartDate?.Date;
             e.ObjectionEndDate = vm.ObjectionEndDate?.Date;
             e.ExtensionDate = vm.ExtensionDate?.Date;
 
-            // S51
             e.EvidenceCloseDate = vm.EvidenceCloseDate?.Date;
 
-            // S52
             e.BulkFromDate = vm.BulkFromDate?.Date;
             e.BulkToDate = vm.BulkToDate?.Date;
 
-            // S53
             e.BatchDate = vm.BatchDate?.Date;
             e.AppealCloseDate = vm.AppealCloseDate?.Date;
 
             if (vm.AppealCloseOverridden)
             {
                 e.AppealCloseOverrideReason = vm.AppealCloseOverrideReason;
-                e.AppealCloseOverrideBy = null; // optional: set to User in controller if you want
+                e.AppealCloseOverrideBy = null;
                 e.AppealCloseOverrideAtUtc = DateTime.UtcNow;
             }
             else
@@ -652,14 +650,38 @@ namespace GV23_Notice.Controllers
                 e.AppealCloseOverrideReason = null;
                 e.AppealCloseOverrideBy = null;
                 e.AppealCloseOverrideAtUtc = null;
-                e.AppealCloseOverrideEvidencePath = null; // keep if you prefer, but safer to clear
+                e.AppealCloseOverrideEvidencePath = null;
             }
 
-            // S78
             e.ExtractionDate = vm.ExtractionDate?.Date;
             e.ExtractPeriodDays = vm.ExtractPeriodDays;
             e.ReviewOpenDate = vm.ReviewOpenDate?.Date;
             e.ReviewCloseDate = vm.ReviewCloseDate?.Date;
+        }
+
+        private async Task<RollCode> ResolveRollCodeAsync(int rollId, CancellationToken ct)
+        {
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.RollId == rollId, ct);
+
+            if (roll is null)
+                throw new InvalidOperationException($"RollRegistry record not found for RollId {rollId}.");
+
+            var code = (roll.ShortCode ?? "").Trim().ToUpperInvariant();
+
+            return code switch
+            {
+                "GV23" => RollCode.GV23,
+                "SUPP1" => RollCode.SUPP1,
+                "SUPP 1" => RollCode.SUPP1,
+                "SUPP2" => RollCode.SUPP2,
+                "SUPP 2" => RollCode.SUPP2,
+                "SUPP3" => RollCode.SUPP3,
+                "SUPP 3" => RollCode.SUPP3,
+                "QUERY" => RollCode.QUERY,
+                _ => throw new InvalidOperationException($"Unsupported RollRegistry.ShortCode '{roll.ShortCode}'.")
+            };
         }
 
         [HttpGet("CalcS53AppealCloseDate")]

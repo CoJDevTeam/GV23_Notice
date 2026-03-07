@@ -34,6 +34,8 @@ namespace GV23_Notice.Data
         public DbSet<S49PendingCountDto> S49PendingCounts { get; set; }
         public DbSet<S49BatchPickRow> S49BatchPickRows => Set<S49BatchPickRow>();
 
+        public DbSet<S51BatchPickRow> S51BatchPickRows => Set<S51BatchPickRow>();
+
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -188,6 +190,12 @@ namespace GV23_Notice.Data
             {
                 entity.HasNoKey();
                 entity.ToView(null); // tells EF this is NOT a table
+            });
+
+            modelBuilder.Entity<S51BatchPickRow>(entity =>
+            {
+                entity.HasNoKey();
+                entity.ToView(null);
             });
         }
     }

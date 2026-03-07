@@ -3,55 +3,82 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - GV23_Notice</title>
+    <title>@ViewData["Title"] - GV23 Notice</title>
     <script type="importmap"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/GV23_Notice.styles.css" asp-append-version="true" />
+    <link href="~/css/layoutcss.css" rel="stylesheet" />
 </head>
 <body>
-    <header>
-        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
-            <div class="container-fluid">
-                <a class="navbar-brand" asp-area="" asp-controller="Home" asp-action="Index">GV23_Notice</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
-                    <ul class="navbar-nav flex-grow-1">
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Index">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Workflow" asp-action="Step1">Home</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Step3" asp-action="Step1">Step3</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
-                        </li>
-                    </ul>
-                    <p class="nav navbar-text">Hello, @User.Identity?.Name!</p>
-                </div>
+
+    <!-- ═══════════════ NAV ═══════════════ -->
+    <nav class="gv-navbar">
+
+        <a class="gv-brand" asp-controller="Home" asp-action="Index">
+            <span class="gv-brand-badge">GV23</span>
+            <span class="gv-brand-title">Notice Management</span>
+        </a>
+
+        <button class="gv-toggler" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="Toggle menu">
+            <span></span><span></span><span></span>
+        </button>
+
+        <div class="gv-nav-wrap">
+            <ul class="gv-nav">
+                <li>
+                    <a asp-controller="Home" asp-action="Index"
+                       class="@(ViewContext.RouteData.Values["controller"]?.ToString() == "Home" ? "active" : "")">
+                        ⌂ Home
+                    </a>
+                </li>
+                <li>
+                    <a asp-controller="Workflow" asp-action="Step1"
+                       class="@(ViewContext.RouteData.Values["controller"]?.ToString() == "Workflow" ? "active" : "")">
+                        ⚙ Workflow
+                    </a>
+                </li>
+                <li>
+                    <a asp-controller="Step3" asp-action="Index"
+                       class="@(ViewContext.RouteData.Values["controller"]?.ToString() == "Step3" ? "active" : "")">
+                        ▶ Step 3
+                    </a>
+                </li>
+                <li class="nav-divider"></li>
+                <li>
+                    <a asp-controller="Home" asp-action="Privacy">Privacy</a>
+                </li>
+            </ul>
+
+            <div class="gv-user">
+                <div class="gv-user-dot"></div>
+                <span>Hello, <strong>@User.Identity?.Name</strong></span>
             </div>
-        </nav>
-    </header>
-    <div class="container">
-        <main role="main" class="pb-3">
-            @RenderBody()
-        </main>
+        </div>
+
+    </nav>
+
+    <!-- ═══════════════ BODY ═══════════════ -->
+    <div class="gv-content">
+        @RenderBody()
     </div>
 
-    <footer class="border-top footer text-muted">
-        <div class="container">
-            &copy; 2026 - GV23_Notice - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
+    <!-- ═══════════════ FOOTER ═══════════════ -->
+    <footer class="gv-footer">
+        <div class="gv-footer-left">
+            <span class="gv-footer-badge">GV23</span>
+            <span class="gv-footer-copy">&copy; 2026 <span>GV23 Notice Management System</span></span>
+        </div>
+        <div class="gv-footer-links">
+            <a asp-controller="Home" asp-action="Privacy">Privacy Policy</a>
         </div>
     </footer>
+
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
+
 </body>
 </html>

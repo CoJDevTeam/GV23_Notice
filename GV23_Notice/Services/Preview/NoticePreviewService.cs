@@ -505,15 +505,15 @@ namespace GV23_Notice.Services.Notices
             {
                 RollName = rollName,
                 ObjectionNo = db.ObjectionNo ?? "",
-                Section51Pin = "PULL_FROM_DB_LATER", // if you have it in DB, map it here
-                PropertyFrom = "Printed",
+                Section51Pin = db.Section51Pin,
+                
 
                 Addr1 = db.Addr1 ?? "",
                 Addr2 = db.Addr2 ?? "",
                 Addr3 = db.Addr3 ?? "",
                 Addr4 = db.Addr4 ?? "",
                 Addr5 = db.Addr5 ?? "",
-
+                ValuationKey=db.valuationKey,
                 PropertyDesc = db.PropertyDesc ?? "",
 
                 Section6 = new Section6Row
@@ -525,10 +525,13 @@ namespace GV23_Notice.Services.Notices
                     Old_Extent = db.OldExtent?.ToString(CultureInfo.InvariantCulture),
                     Old2_Extent = db.Old2Extent?.ToString(CultureInfo.InvariantCulture),
                     Old3_Extent = db.Old3Extent?.ToString(CultureInfo.InvariantCulture),
+                    Old_Market_Value = db.OldMarketValue?.ToString(),
+                    Old2_Market_Value = db.Old2MarketValue?.ToString(),
+                    Old3_Market_Value = db.Old3MarketValue?.ToString(),
 
-                    Old_Market_Value = Money(db.OldMarketValue),
-                    Old2_Market_Value = Money(db.Old2MarketValue),
-                    Old3_Market_Value = Money(db.Old3MarketValue),
+                    New_Market_Value = db.NewMarketValue?.ToString(),
+                    New2_Market_Value = db.New2MarketValue?.ToString(),
+                    New3_Market_Value = db.New3MarketValue?.ToString(),
 
                     New_Category = db.NewCategory,
                     New2_Category = db.New2Category,
@@ -538,11 +541,8 @@ namespace GV23_Notice.Services.Notices
                     New2_Extent = db.New2Extent?.ToString(CultureInfo.InvariantCulture),
                     New3_Extent = db.New3Extent?.ToString(CultureInfo.InvariantCulture),
 
-                    New_Market_Value = Money(db.NewMarketValue),
-                    New2_Market_Value = Money(db.New2MarketValue),
-                    New3_Market_Value = Money(db.New3MarketValue),
-
                    
+
                 }
             };
         }

@@ -28,7 +28,16 @@
 
     public sealed class Section6Row
     {
-        // ================= OLD (GV Roll) =================
+        // descriptive fields
+        public string? Old_Property_Description { get; set; }
+        public string? Old_Address { get; set; }
+        public string? Old_Owner { get; set; }
+
+        public string? New_Property_Description { get; set; }
+        public string? New_Address { get; set; }
+        public string? New_Owner { get; set; }
+
+        // OLD (GV Roll)
         public string? Old_Market_Value { get; set; }
         public string? Old_Category { get; set; }
         public string? Old_Extent { get; set; }
@@ -41,7 +50,7 @@
         public string? Old3_Category { get; set; }
         public string? Old3_Extent { get; set; }
 
-        // ================= OBJECTOR REQUEST =================
+        // OBJECTOR REQUEST
         public string? New_Market_Value { get; set; }
         public string? New_Category { get; set; }
         public string? New_Extent { get; set; }
@@ -54,7 +63,7 @@
         public string? New3_Category { get; set; }
         public string? New3_Extent { get; set; }
 
-
-
+        // bottom row for now
+        public string? WithEffectDate { get; set; }
     }
 }

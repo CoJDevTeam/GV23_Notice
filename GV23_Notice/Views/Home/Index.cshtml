@@ -1,8 +1,131 @@
 ﻿@{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = "Home — GV23 Notice Management";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
-</div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"]</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="~/css/homeindex.css" rel="stylesheet" />
+</head>
+<body>
+
+    <!-- ═══════════════ HEADER ═══════════════ -->
+  @*   <header class="page-header">
+        <div class="brand">
+            <span class="brand-badge">GV23</span>
+            <span class="brand-title">Notice Management System</span>
+        </div>
+        <nav class="header-nav">
+            <a class="nav-link active" asp-controller="Home" asp-action="Index">Home</a>
+            <a class="nav-link" asp-controller="Workflow" asp-action="Step1">Workflow</a>
+            <a class="nav-link" asp-controller="Step3" asp-action="Index">Step 3</a>
+        </nav>
+    </header>
+ *@
+    <!-- ═══════════════ MAIN ═══════════════ -->
+    <div class="main-wrap">
+
+        <!-- TITLE BAR -->
+        <div class="title-bar">
+            <h1>Notice Management — Dashboard</h1>
+            <span class="sub">Valuation Period <span>2026</span> · Active</span>
+        </div>
+
+        <!-- STATS ROW -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <span class="stat-label">Active Rolls</span>
+                <span class="stat-value gold">12</span>
+                <span class="stat-hint">Across all notice types</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Workflows Open</span>
+                <span class="stat-value">7</span>
+                <span class="stat-hint">Awaiting processing</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Step 2 Approved</span>
+                <span class="stat-value green">4</span>
+                <span class="stat-hint">Ready for Step 3</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Notices Sent</span>
+                <span class="stat-value">1,248</span>
+                <span class="stat-hint">This valuation cycle</span>
+            </div>
+        </div>
+
+        <!-- WORKFLOW PIPELINE -->
+        <div class="card">
+            <div class="card-header">
+                <div class="header-accent"></div>
+                Workflow Pipeline
+            </div>
+            <div class="card-body">
+                <div class="pipeline">
+
+                    <a class="phase-card" asp-controller="Workflow" asp-action="Step1">
+                        <span class="phase-number">Phase 1</span>
+                        <span class="phase-title">Setup &amp; Configuration</span>
+                        <span class="phase-desc">Define roll parameters, letter dates, modes, and the initial approval chain.</span>
+                        <span class="phase-status done">✓ Complete</span>
+                    </a>
+
+                    <div class="pipeline-arrow">›</div>
+
+                    <a class="phase-card" asp-controller="Workflow" asp-action="Step2">
+                        <span class="phase-number">Phase 2</span>
+                        <span class="phase-title">Review &amp; Approval</span>
+                        <span class="phase-desc">Data review, correction tickets, and Step 2 sign-off before proceeding.</span>
+                        <span class="phase-status ready">● In Progress</span>
+                    </a>
+
+                    <div class="pipeline-arrow">›</div>
+
+                    <a class="phase-card phase-active" asp-controller="Step3" asp-action="Index">
+                        <span class="phase-number">Phase 3 — Current</span>
+                        <span class="phase-title">Data Team Processing</span>
+                        <span class="phase-desc">Select approved workflows, create batches, print notices and send emails.</span>
+                        <span class="phase-status ready">▶ Ready to Begin</span>
+                    </a>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- QUICK ACTIONS -->
+        <div class="section-divider">Quick Access</div>
+
+        <div class="quick-grid">
+
+            <a class="quick-card" asp-controller="Step3" asp-action="Index">
+                <div class="quick-icon">📋</div>
+                <span class="quick-label">Select Workflow</span>
+                <span class="quick-sub">Choose an approved workflow to begin Step 3 batch processing.</span>
+                <span class="quick-arrow">Go to Step 3 →</span>
+            </a>
+
+            <a class="quick-card" asp-controller="Workflow" asp-action="Step1">
+                <div class="quick-icon">⚙️</div>
+                <span class="quick-label">Workflow Admin</span>
+                <span class="quick-sub">Create or manage workflows, assign rolls and notice types for new cycles.</span>
+                <span class="quick-arrow">Open Admin →</span>
+            </a>
+
+            <a class="quick-card" asp-controller="Workflow" asp-action="SettingsLibrary">
+                <div class="quick-icon">📚</div>
+                <span class="quick-label">Settings Library</span>
+                <span class="quick-sub">View and manage notice templates, valuation periods, and roll definitions.</span>
+                <span class="quick-arrow">Open Library →</span>
+            </a>
+
+        </div>
+
+    </div><!-- /main-wrap -->
+
+</body>
+</html>

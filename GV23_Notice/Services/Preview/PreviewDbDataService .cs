@@ -138,14 +138,27 @@ namespace GV23_Notice.Services.Preview
                 PremiseId = row.Str("Premise_iD") ?? row.Str("PremiseId"),
                 PropertyDesc = row.Str("Property_desc") ?? row.Str("PropertyDesc"),
                 Email = row.Str("Email") ?? row.Str("EMAIL_ADDR"),
-
+                valuationKey= row.Str("Valuation_Key"),
                 Addr1 = row.Str("ADDR1"),
                 Addr2 = row.Str("ADDR2"),
                 Addr3 = row.Str("ADDR3"),
                 Addr4 = row.Str("ADDR4"),
                 Addr5 = row.Str("ADDR5"),
 
-                // Section6 (Old)
+                // Section 7
+                RandomPin = row.Str("RandomPin"),
+                Section51Pin = row.Str("Section51Pin") ?? row.Str("RandomPin"),
+
+                // Section 6 descriptive fields
+                OldPropertyDescription = row.Str("Old_Property_Description"),
+                OldAddress = row.Str("Old_Address"),
+                OldOwner = row.Str("Old_Owner"),
+
+                NewPropertyDescription = row.Str("New_Property_Description"),
+                NewAddress = row.Str("New_Address"),
+                NewOwner = row.Str("New_Owner"),
+
+                // Section 6 old
                 OldCategory = row.Str("Old_Category"),
                 Old2Category = row.Str("Old2_Category"),
                 Old3Category = row.Str("Old3_Category"),
@@ -154,11 +167,12 @@ namespace GV23_Notice.Services.Preview
                 Old2Extent = row.Dec("Old2_Extent"),
                 Old3Extent = row.Dec("Old3_Extent"),
 
-                OldMarketValue = row.Dec("Old_Market_Value"),
-                Old2MarketValue = row.Dec("Old2_Market_Value"),
-                Old3MarketValue = row.Dec("Old3_Market_Value"),
+                OldMarketValue = row.Str("Old_Market_Value"),
+                Old2MarketValue = row.Str("Old2_Market_Value"),
+                Old3MarketValue = row.Str("Old3_Market_Value"),
 
-                // Section6 (New)
+               
+                // Section 6 new
                 NewCategory = row.Str("New_Category"),
                 New2Category = row.Str("New2_Category"),
                 New3Category = row.Str("New3_Category"),
@@ -167,14 +181,14 @@ namespace GV23_Notice.Services.Preview
                 New2Extent = row.Dec("New2_Extent"),
                 New3Extent = row.Dec("New3_Extent"),
 
-                NewMarketValue = row.Dec("New_Market_Value"),
-                New2MarketValue = row.Dec("New2_Market_Value"),
-                New3MarketValue = row.Dec("New3_Market_Value"),
+                NewMarketValue = row.Str("New_Market_Value"),
+                New2MarketValue = row.Str("New2_Market_Value"),
+                New3MarketValue = row.Str("New3_Market_Value"),
+
 
                 ObjectionReasons = row.Str("Objection_Reasons")
             };
         }
-
         public async Task<S52PreviewDbData> S52PreviewDbDataAsync(int rollId, string appealNo, bool isReview, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(appealNo))

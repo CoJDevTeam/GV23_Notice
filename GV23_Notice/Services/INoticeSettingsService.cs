@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Rolls;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -9,34 +10,35 @@ namespace GV23_Notice.Services
     {
         Task<NoticeSettings> CreateDraftAsync(int rollId, NoticeKind notice, BatchMode mode, string user, CancellationToken ct);
         Task<NoticeSettings?> GetLatestDraftOrApprovedAsync(int rollId, NoticeKind notice, BatchMode mode, CancellationToken ct);
-
         Task<NoticeSettings?> GetByIdAsync(int id, CancellationToken ct);
-
-        // Optional convenience (tracked)
         Task<NoticeSettings?> GetByIdForUpdateAsync(int id, CancellationToken ct);
-
         Task<NoticeSettings> SaveDraftAsync(NoticeSettings draft, CancellationToken ct);
-
         Task ConfirmAsync(int settingsId, string user, string? notes, CancellationToken ct);
         Task ApproveAsync(int settingsId, string user, string? notes, CancellationToken ct);
     }
+
     public sealed class NoticeSettingsService : INoticeSettingsService
     {
         private readonly AppDbContext _db;
 
-        public NoticeSettingsService(AppDbContext db) => _db = db;
+        public NoticeSettingsService(AppDbContext db)
+        {
+            _db = db;
+        }
 
         public async Task<NoticeSettings?> GetByIdAsync(int id, CancellationToken ct)
             => await _db.NoticeSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
 
         public async Task<NoticeSettings?> GetByIdForUpdateAsync(int id, CancellationToken ct)
-            => await _db.NoticeSettings.FirstOrDefaultAsync(x => x.Id == id, ct); // tracked
+            => await _db.NoticeSettings.FirstOrDefaultAsync(x => x.Id == id, ct);
 
         public async Task<NoticeSettings?> GetLatestDraftOrApprovedAsync(int rollId, NoticeKind notice, BatchMode mode, CancellationToken ct)
         {
+            var rollCode = await ResolveRollCodeAsync(rollId, ct);
+
             return await _db.NoticeSettings
                 .AsNoTracking()
-                .Where(x => x.RollId == rollId && x.Notice == notice && x.Mode == mode)
+                .Where(x => x.Roll == rollCode && x.Notice == notice && x.Mode == mode)
                 .OrderByDescending(x => x.Version)
                 .FirstOrDefaultAsync(ct);
         }
@@ -45,14 +47,17 @@ namespace GV23_Notice.Services
         {
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
+            var rollCode = await ResolveRollCodeAsync(rollId, ct);
+
             var maxVersion = await _db.NoticeSettings
-                .Where(x => x.RollId == rollId && x.Notice == notice && x.Mode == mode)
+                .Where(x => x.Roll == rollCode && x.Notice == notice && x.Mode == mode)
                 .Select(x => (int?)x.Version)
                 .MaxAsync(ct) ?? 0;
 
             var draft = new NoticeSettings
             {
                 RollId = rollId,
+                Roll = rollCode,
                 Notice = notice,
                 Mode = mode,
                 Version = maxVersion + 1,
@@ -80,9 +85,17 @@ namespace GV23_Notice.Services
 
         public async Task<NoticeSettings> SaveDraftAsync(NoticeSettings draft, CancellationToken ct)
         {
-            _db.NoticeSettings.Update(draft);
+            if (draft.Id <= 0)
+                throw new InvalidOperationException("Cannot save draft because NoticeSettings.Id is not set.");
+
+            var tracked = await _db.NoticeSettings.FirstOrDefaultAsync(x => x.Id == draft.Id, ct);
+            if (tracked is null)
+                throw new InvalidOperationException($"NoticeSettings with Id {draft.Id} was not found.");
+
+            _db.Entry(tracked).CurrentValues.SetValues(draft);
+
             await _db.SaveChangesAsync(ct);
-            return draft;
+            return tracked;
         }
 
         public async Task ConfirmAsync(int settingsId, string user, string? notes, CancellationToken ct)
@@ -126,6 +139,31 @@ namespace GV23_Notice.Services
             });
 
             await _db.SaveChangesAsync(ct);
+        }
+
+        private async Task<RollCode> ResolveRollCodeAsync(int rollId, CancellationToken ct)
+        {
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.RollId == rollId, ct);
+
+            if (roll is null)
+                throw new InvalidOperationException($"RollRegistry record not found for RollId {rollId}.");
+
+            var code = (roll.ShortCode ?? "").Trim().ToUpperInvariant();
+
+            return code switch
+            {
+                "GV23" => RollCode.GV23,
+                "SUPP1" => RollCode.SUPP1,
+                "SUPP 1" => RollCode.SUPP1,
+                "SUPP2" => RollCode.SUPP2,
+                "SUPP 2" => RollCode.SUPP2,
+                "SUPP3" => RollCode.SUPP3,
+                "SUPP 3" => RollCode.SUPP3,
+                "QUERY" => RollCode.QUERY,
+                _ => throw new InvalidOperationException($"Unsupported RollRegistry.ShortCode '{roll.ShortCode}' for RollId {rollId}.")
+            };
         }
     }
 }

@@ -37,9 +37,10 @@ namespace GV23_Notice.Models.DTOs
         public string ObjectionNo { get; set; } = "";
         public string? ObjectorType { get; set; }
 
-        // Obj_Property_Info (sample fields typically used)
+        // Obj_Property_Info
         public string? PremiseId { get; set; }
         public string? PropertyDesc { get; set; }
+        public string? valuationKey { get; set; }
         public string? Email { get; set; }
         public string? Addr1 { get; set; }
         public string? Addr2 { get; set; }
@@ -47,7 +48,20 @@ namespace GV23_Notice.Models.DTOs
         public string? Addr4 { get; set; }
         public string? Addr5 { get; set; }
 
-        // Obj_Section6 (Old/New + multipurpose split fields)
+        // Obj_Section7
+        public string? RandomPin { get; set; }
+        public string? Section51Pin { get; set; }
+
+        // Obj_Section6 - descriptive fields
+        public string? OldPropertyDescription { get; set; }
+        public string? OldAddress { get; set; }
+        public string? OldOwner { get; set; }
+
+        public string? NewPropertyDescription { get; set; }
+        public string? NewAddress { get; set; }
+        public string? NewOwner { get; set; }
+
+        // Obj_Section6 - main comparison fields
         public string? OldCategory { get; set; }
         public string? Old2Category { get; set; }
         public string? Old3Category { get; set; }
@@ -56,9 +70,9 @@ namespace GV23_Notice.Models.DTOs
         public decimal? Old2Extent { get; set; }
         public decimal? Old3Extent { get; set; }
 
-        public decimal? OldMarketValue { get; set; }
-        public decimal? Old2MarketValue { get; set; }
-        public decimal? Old3MarketValue { get; set; }
+        public string? OldMarketValue { get; set; }
+        public string? Old2MarketValue { get; set; }
+        public string? Old3MarketValue { get; set; }
 
         public string? NewCategory { get; set; }
         public string? New2Category { get; set; }
@@ -68,9 +82,9 @@ namespace GV23_Notice.Models.DTOs
         public decimal? New2Extent { get; set; }
         public decimal? New3Extent { get; set; }
 
-        public decimal? NewMarketValue { get; set; }
-        public decimal? New2MarketValue { get; set; }
-        public decimal? New3MarketValue { get; set; }
+        public string? NewMarketValue { get; set; }
+        public string? New2MarketValue { get; set; }
+        public string? New3MarketValue { get; set; }
 
         public string? ObjectionReasons { get; set; }
     }
