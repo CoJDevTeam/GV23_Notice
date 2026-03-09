@@ -172,15 +172,43 @@
                 <!-- S52 -->
                 <div id="blockS52" class="notice-block">
                     <div class="nb-header"><span class="nb-pill">S52</span> Section 52 — Bulk Approval</div>
+
+                    <!-- Sub-type selector: Appeal Decision vs Section 52 Review -->
+                    <div class="wf-row c2" style="margin-bottom:14px;">
+                        <div class="wf-field">
+                            <label>Sub-type <span class="opt">(required)</span></label>
+                            <div style="display:flex;gap:24px;margin-top:6px;">
+                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+                                    <input type="radio" name="IsSection52Review" value="false"
+                                           id="s52SubAD"
+                                           @(Model != null && Model.IsSection52Review == false ? "checked" : (Model == null ? "checked" : ""))
+                                           onchange="onS52SubTypeChange()" />
+                                    Appeal Decision
+                                </label>
+                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
+                                    <input type="radio" name="IsSection52Review" value="true"
+                                           id="s52SubRV"
+                                           @(Model != null && Model.IsSection52Review == true ? "checked" : "")
+                                           onchange="onS52SubTypeChange()" />
+                                    Section 52 Review
+                                </label>
+                            </div>
+                            <span class="hint" style="margin-top:6px;display:block;">
+                                <b>Appeal Decision</b> — Outcome of a valuation appeal (A_UserID ≠ "System_Generated").<br />
+                                <b>Section 52 Review</b> — Municipal Valuer self-review decision (A_UserID = "System_Generated").
+                            </span>
+                        </div>
+                    </div>
+
                     <div id="blockS52Bulk" style="display:none;">
                         <div class="wf-row c2">
                             <div class="wf-field"><label>Bulk From Date</label><input type="date" asp-for="BulkFromDate" /></div>
                             <div class="wf-field"><label>Bulk To Date</label><input type="date" asp-for="BulkToDate" /></div>
                         </div>
-                        <span class="hint" style="margin-top:8px;display:block;">Bulk date range is required for Section 52 bulk approvals.</span>
+                        <span class="hint" style="margin-top:8px;display:block;">Bulk date range filters on the Appeal/Review decision date in the roll DB. The To date is inclusive (end-of-day).</span>
                     </div>
                     <div id="blockS52Single" style="display:none;">
-                        <span class="hint">Single mode: only the Letter Date is used for approval.</span>
+                        <span class="hint">Single mode: the Letter Date is used as the single-day query range.</span>
                     </div>
                 </div>
 
@@ -361,17 +389,17 @@
         ════════════════════════════════════════ */
         @if (TempData["Success"] != null)
         {
-                <text>
-                document.addEventListener("DOMContentLoaded", () =>
-                    WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
-                </text>
+                    <text>
+                    document.addEventListener("DOMContentLoaded", () =>
+                        WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
+                    </text>
         }
         @if (TempData["Error"] != null)
         {
-                <text>
-                document.addEventListener("DOMContentLoaded", () =>
-                    WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
-                </text>
+                    <text>
+                    document.addEventListener("DOMContentLoaded", () =>
+                        WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
+                    </text>
         }
 
         /* ════════════════════════════════════════
@@ -451,6 +479,15 @@
             const dt = new Date(letter + "T00:00:00");
             dt.setDate(dt.getDate() + 30);
             out.value = toIsoDate(dt);
+        }
+
+        function onS52SubTypeChange() {
+            // Keep the hidden asp-for field in sync with the radio buttons
+            // (The radio uses name="IsSection52Review" so it posts directly, but
+            //  we also update the hidden field for model binding safety.)
+            const rv = document.querySelector('input[name="IsSection52Review"]:checked')?.value === "true";
+            const hidden = document.querySelector('input[type="hidden"][name="IsSection52Review"]');
+            if (hidden) hidden.value = rv ? "true" : "false";
         }
 
         async function calcS53AppealClose() {

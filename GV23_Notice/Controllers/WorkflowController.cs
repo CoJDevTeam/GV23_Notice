@@ -347,6 +347,7 @@ namespace GV23_Notice.Controllers
                 // s52
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
+                IsSection52Review = s.IsSection52Review,
 
                 // s53
                 BatchDate = s.BatchDate,
@@ -596,6 +597,7 @@ namespace GV23_Notice.Controllers
                 // S52
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
+                IsSection52Review = s.IsSection52Review,
 
                 // S53
                 BatchDate = s.BatchDate,
@@ -635,6 +637,7 @@ namespace GV23_Notice.Controllers
 
             e.BulkFromDate = vm.BulkFromDate?.Date;
             e.BulkToDate = vm.BulkToDate?.Date;
+            e.IsSection52Review = vm.IsSection52Review;
 
             e.BatchDate = vm.BatchDate?.Date;
             e.AppealCloseDate = vm.AppealCloseDate?.Date;
@@ -785,6 +788,7 @@ namespace GV23_Notice.Controllers
 
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
+                IsSection52Review = s.IsSection52Review,
 
                 BatchDate = s.BatchDate,
                 AppealCloseDate = s.AppealCloseDate
@@ -1038,12 +1042,31 @@ namespace GV23_Notice.Controllers
             if (string.IsNullOrWhiteSpace(kickoffBaseUrl))
                 throw new InvalidOperationException("Could not build Step3Kickoff URL.");
 
+            // For S52 we must embed the appealNo AND the variant so the Data Team
+            // can click the link without getting a BadRequest.  We also generate a
+            // second link for the opposite S52 variant so both can be in one email.
+            string? s52AppealKickoffUrl = null;
+            string? s52ReviewKickoffUrl = null;
+
+            if (s.Notice == NoticeKind.S52 && !string.IsNullOrWhiteSpace(dto.AppealNo))
+            {
+                s52AppealKickoffUrl = Url.Action(nameof(Step3Kickoff), "Workflow",
+                    new { settingsId = s.Id, appealNo = dto.AppealNo, variant = "S52Appeal" },
+                    protocol: Request.Scheme);
+
+                s52ReviewKickoffUrl = Url.Action(nameof(Step3Kickoff), "Workflow",
+                    new { settingsId = s.Id, appealNo = dto.AppealNo, variant = "S52Review" },
+                    protocol: Request.Scheme);
+            }
+
             var (approvalSubject, approvalBodyHtml) = _wfEmails.BuildApprovalEmail(
                 s,
                 roll,
                 approvedBy,
                 s.ApprovalKey.Value,
-                kickoffBaseUrl);
+                kickoffBaseUrl,
+                appealKickoffUrl: s52AppealKickoffUrl,
+                reviewKickoffUrl: s52ReviewKickoffUrl);
 
             var domain = ResolveDomain(s.Notice);
 
@@ -1296,6 +1319,7 @@ namespace GV23_Notice.Controllers
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
                 IsSection52Review = s.IsSection52Review,
+               
                 S53BatchDate = s.BatchDate,
                 AppealCloseDate = s.AppealCloseDate,
                 ExtractionDate = s.ExtractionDate,

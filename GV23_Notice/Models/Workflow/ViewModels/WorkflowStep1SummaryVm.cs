@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Domain.Workflow;
+using Microsoft.Identity.Client;
 
 namespace GV23_Notice.Models.Workflow.ViewModels
 {
@@ -40,5 +41,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public int? ExtractPeriodDays { get; set; }
         public DateTime? ReviewOpenDate { get; set; }
         public DateTime? ReviewCloseDate { get; set; }
+
+        public bool? IsSection52Review { get; set; }
     }
 }

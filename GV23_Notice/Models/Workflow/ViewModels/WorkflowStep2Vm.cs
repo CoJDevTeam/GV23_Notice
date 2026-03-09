@@ -83,5 +83,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public bool IsConfirmed { get; set; }
         public bool IsApproved { get; set; }
 
+        public bool IsSection52Review { get; set; }
+
     }
 }

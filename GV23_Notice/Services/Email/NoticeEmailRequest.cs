@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Domain.Workflow;
+using static QuestPDF.Helpers.Colors;
 
 namespace GV23_Notice.Services.Email
 {
@@ -32,6 +33,11 @@ namespace GV23_Notice.Services.Email
 
         // === Invalid specific ===
         public InvalidNoticeKind? InvalidKind { get; set; } // InvalidOmission / InvalidObjection
+
+        public DateTime? S51SubmissionsCloseDate { get; set; }
+        public string? S51PortalUrl { get; set; } = "https://objections.joburg.org.za";
+        public string? S51Section51Pin { get; set; }
+        public string? S51ObjectionNo { get; set; }
     }
 
     public sealed class NoticeEmailPropertyItem

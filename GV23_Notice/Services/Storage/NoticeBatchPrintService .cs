@@ -345,6 +345,19 @@ namespace GV23_Notice.Services.Storage
                 }
             };
 
+            // Detect multi/split property: any of the _1/_2 columns have a value
+            // OR the property_Type == 'Multi' (stored in OldCategory1 if source set it)
+            var s6 = data.Section6!;
+            data.IsMulti =
+                !string.IsNullOrWhiteSpace(s6.Old2_Category) ||
+                !string.IsNullOrWhiteSpace(s6.Old2_Market_Value) ||
+                !string.IsNullOrWhiteSpace(s6.Old2_Extent) ||
+                !string.IsNullOrWhiteSpace(s6.New2_Category) ||
+                !string.IsNullOrWhiteSpace(s6.New2_Market_Value) ||
+                !string.IsNullOrWhiteSpace(s6.New2_Extent) ||
+                !string.IsNullOrWhiteSpace(s6.Old3_Category) ||
+                !string.IsNullOrWhiteSpace(s6.New3_Category);
+
             var ctx = new Section51NoticeContext
             {
                 HeaderImagePath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG"),

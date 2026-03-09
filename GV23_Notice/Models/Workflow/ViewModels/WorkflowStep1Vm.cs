@@ -52,7 +52,13 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         [DataType(DataType.Date)]
         public DateTime? EvidenceCloseDate { get; set; } // will be auto-set = LetterDate + 30
 
-        // S52 bulk range
+        // S52 sub-type + bulk range
+        /// <summary>
+        /// true  = Section 52 Review (A_UserID = "System_Generated")
+        /// false = Appeal Decision
+        /// </summary>
+        public bool IsSection52Review { get; set; }
+
         [DataType(DataType.Date)]
         public DateTime? BulkFromDate { get; set; }
 
@@ -89,7 +95,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         // Used for redirecting to Step2 after approve
         public int? SettingsId { get; set; }
 
-      
+
         public string? RollShortCode { get; set; } // optional for display
 
 
@@ -103,7 +109,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
 
 
 
-     
+
 
 
     }

@@ -1,5 +1,6 @@
 ﻿using GV23_Notice.Domain.Email;
 using GV23_Notice.Domain.Rolls;
+using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using Microsoft.Extensions.Options;
 using System.Text;
@@ -23,11 +24,24 @@ namespace GV23_Notice.Services.Email
             RollRegistry roll,
             string approvedBy,
             Guid workflowKey,
-            string kickoffBaseUrl)
+            string kickoffBaseUrl,
+            string? appealKickoffUrl = null,
+            string? reviewKickoffUrl = null)
         {
             var join = kickoffBaseUrl.Contains('?') ? "&" : "?";
+            // Generic fallback URL (non-S52 notices)
             var kickoffUrl = $"{kickoffBaseUrl}{join}key={workflowKey:D}";
-            var subject = $"[APPROVED] {roll.ShortCode} {s.Notice} (v{s.Version}) – Step 3 Kickoff Ready";
+
+            // For S52 use the pre-built variant-specific URLs when available
+            bool isS52 = s.Notice == NoticeKind.S52;
+            bool hasDualLinks = isS52 && !string.IsNullOrWhiteSpace(appealKickoffUrl)
+                                      && !string.IsNullOrWhiteSpace(reviewKickoffUrl);
+
+            var kindLabel = isS52
+                ? (s.IsSection52Review ? "Section 52 Review" : "Appeal Decision")
+                : s.Notice.ToString();
+
+            var subject = $"[APPROVED] {roll.ShortCode} {kindLabel} (v{s.Version}) – Step 3 Kickoff Ready";
 
             var noticeRows = BuildNoticeDetailRows(s);
 
@@ -51,9 +65,27 @@ namespace GV23_Notice.Services.Email
       <p style='margin:0 0 20px;font-size:14px;color:#222222;line-height:1.6;'>
         Good day Team,<br/><br/>
         The Step 2 preview and approval has been <strong style='color:#b38900;'>completed and approved</strong>.
-        The Data Team may now proceed to Step 3 using the secure kickoff link below.
+        The Data Team may now proceed to Step 3 using the secure kickoff link(s) below.
       </p>
 
+      {(hasDualLinks ? $@"
+      <table role='presentation' cellpadding='0' cellspacing='0' width='100%' style='margin:0 0 12px;'>
+        <tr>
+          <td style='background:#fdf8e8;border:1px solid #e6b000;border-left:4px solid #e6b000;border-radius:6px;padding:18px 20px;'>
+            <p style='margin:0 0 6px;font-size:12px;font-weight:700;color:#b38900;text-transform:uppercase;letter-spacing:0.8px;'>Kickoff Link — Appeal Decision</p>
+            <a href='{H(appealKickoffUrl!)}' style='font-size:13px;color:#0066cc;word-break:break-all;text-decoration:underline;'>{H(appealKickoffUrl!)}</a>
+          </td>
+        </tr>
+      </table>
+      <table role='presentation' cellpadding='0' cellspacing='0' width='100%' style='margin:0 0 28px;'>
+        <tr>
+          <td style='background:#fdf8e8;border:1px solid #006600;border-left:4px solid #006600;border-radius:6px;padding:18px 20px;'>
+            <p style='margin:0 0 6px;font-size:12px;font-weight:700;color:#006600;text-transform:uppercase;letter-spacing:0.8px;'>Kickoff Link — Section 52 Review</p>
+            <a href='{H(reviewKickoffUrl!)}' style='font-size:13px;color:#0066cc;word-break:break-all;text-decoration:underline;'>{H(reviewKickoffUrl!)}</a>
+            <p style='margin:10px 0 0;font-size:11px;color:#888888;'>Workflow Key: {H(workflowKey.ToString("D"))}</p>
+          </td>
+        </tr>
+      </table>" : $@"
       <table role='presentation' cellpadding='0' cellspacing='0' width='100%' style='margin:0 0 28px;'>
         <tr>
           <td style='background:#fdf8e8;border:1px solid #e6b000;border-left:4px solid #e6b000;border-radius:6px;padding:18px 20px;'>
@@ -62,13 +94,13 @@ namespace GV23_Notice.Services.Email
             <p style='margin:10px 0 0;font-size:11px;color:#888888;'>Workflow Key: {H(workflowKey.ToString("D"))}</p>
           </td>
         </tr>
-      </table>
+      </table>")}
 
-   
       <p style='margin:0 0 10px;font-size:13px;font-weight:700;color:#111111;text-transform:uppercase;letter-spacing:0.6px;border-bottom:2px solid #e6b000;padding-bottom:6px;'>Workflow Summary</p>
       <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='border-collapse:collapse;margin-bottom:24px;font-size:13px;'>
         {SummaryRow("Roll", $"{H(roll.ShortCode)} – {H(roll.Name)}")}
-        {SummaryRow("Notice Type", H(s.Notice.ToString()))}
+        {SummaryRow("Notice Type", isS52 ? H(kindLabel) : H(s.Notice.ToString()))}
+        {SummaryRow("S52 Sub-type", isS52 ? (s.IsSection52Review ? "Section 52 Review" : "Appeal Decision") : null)}
         {SummaryRow("Batch Mode", H(s.Mode.ToString()))}
         {SummaryRow("Version", $"v{s.Version}")}
         {SummaryRow("Approved By", H(approvedBy))}
@@ -217,6 +249,8 @@ namespace GV23_Notice.Services.Email
                     break;
 
                 case Domain.Workflow.NoticeKind.S52:
+                    sb.Append(SummaryRow("S52 Sub-type",
+                        s.IsSection52Review ? "Section 52 Review" : "Appeal Decision"));
                     if (s.BulkFromDate.HasValue)
                         sb.Append(SummaryRow("Bulk From Date", s.BulkFromDate.Value.ToString("dd MMMM yyyy")));
                     if (s.BulkToDate.HasValue)
@@ -251,8 +285,9 @@ namespace GV23_Notice.Services.Email
         }
 
         /// <summary>Alternating-row table row with gold label column.</summary>
-        private static string SummaryRow(string label, string value, bool alt = false)
+        private static string SummaryRow(string label, string? value, bool alt = false)
         {
+            if (value is null) return "";  // skip row entirely when value is null
             var bg = alt ? "#fafafa" : "#ffffff";
             return $@"
 <tr style='background:{bg};'>
@@ -295,4 +330,3 @@ namespace GV23_Notice.Services.Email
         private static string H(string? s) => System.Net.WebUtility.HtmlEncode(s ?? string.Empty);
     }
 }
-

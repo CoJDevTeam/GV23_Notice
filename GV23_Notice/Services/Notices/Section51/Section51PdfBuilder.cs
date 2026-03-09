@@ -255,16 +255,52 @@ namespace GV23_Notice.Services.Notices.Section51
         {
             var s6 = data.Section6;
 
-            string gvValue = isOmission ? "Omitted" : StackMoney(s6?.Old_Market_Value, s6?.Old2_Market_Value, s6?.Old3_Market_Value);
-            string gvCat = isOmission ? "Omitted" : StackText(s6?.Old_Category, s6?.Old2_Category, s6?.Old3_Category);
-            string gvArea = isOmission ? "Omitted" : StackText(s6?.Old_Extent, s6?.Old2_Extent, s6?.Old3_Extent);
+            // Determine how many property splits exist (1, 2 or 3)
+            // A split row exists when any of its Old OR New columns have a value
+            bool HasSplit2 = !string.IsNullOrWhiteSpace(s6?.Old2_Category)
+                          || !string.IsNullOrWhiteSpace(s6?.Old2_Market_Value)
+                          || !string.IsNullOrWhiteSpace(s6?.Old2_Extent)
+                          || !string.IsNullOrWhiteSpace(s6?.New2_Category)
+                          || !string.IsNullOrWhiteSpace(s6?.New2_Market_Value)
+                          || !string.IsNullOrWhiteSpace(s6?.New2_Extent);
 
+            bool HasSplit3 = !string.IsNullOrWhiteSpace(s6?.Old3_Category)
+                          || !string.IsNullOrWhiteSpace(s6?.Old3_Market_Value)
+                          || !string.IsNullOrWhiteSpace(s6?.Old3_Extent)
+                          || !string.IsNullOrWhiteSpace(s6?.New3_Category)
+                          || !string.IsNullOrWhiteSpace(s6?.New3_Market_Value)
+                          || !string.IsNullOrWhiteSpace(s6?.New3_Extent);
 
-            string objValue = StackMoney(s6?.New_Market_Value, s6?.New2_Market_Value, s6?.New3_Market_Value);
+            // Build cell values per split
+            static string Mon(string? v, bool omitted) =>
+                omitted ? "Omitted" : FormatMoney(v);
 
+            static string Txt(string? v, bool omitted) =>
+                omitted ? "Omitted" : v?.Trim() ?? "";
 
-            string objCat = StackText(s6?.New_Category, s6?.New2_Category, s6?.New3_Category);
-            string objArea = StackText(s6?.New_Extent, s6?.New2_Extent, s6?.New3_Extent);
+            // Row 1
+            var gvValue1 = isOmission ? "Omitted" : Mon(s6?.Old_Market_Value, false);
+            var gvCat1 = isOmission ? "Omitted" : Txt(s6?.Old_Category, false);
+            var gvArea1 = isOmission ? "Omitted" : Txt(s6?.Old_Extent, false);
+            var objValue1 = Mon(s6?.New_Market_Value, false);
+            var objCat1 = Txt(s6?.New_Category, false);
+            var objArea1 = Txt(s6?.New_Extent, false);
+
+            // Row 2 (split)
+            var gvValue2 = isOmission ? "Omitted" : Mon(s6?.Old2_Market_Value, false);
+            var gvCat2 = isOmission ? "Omitted" : Txt(s6?.Old2_Category, false);
+            var gvArea2 = isOmission ? "Omitted" : Txt(s6?.Old2_Extent, false);
+            var objValue2 = Mon(s6?.New2_Market_Value, false);
+            var objCat2 = Txt(s6?.New2_Category, false);
+            var objArea2 = Txt(s6?.New2_Extent, false);
+
+            // Row 3 (split)
+            var gvValue3 = isOmission ? "Omitted" : Mon(s6?.Old3_Market_Value, false);
+            var gvCat3 = isOmission ? "Omitted" : Txt(s6?.Old3_Category, false);
+            var gvArea3 = isOmission ? "Omitted" : Txt(s6?.Old3_Extent, false);
+            var objValue3 = Mon(s6?.New3_Market_Value, false);
+            var objCat3 = Txt(s6?.New3_Category, false);
+            var objArea3 = Txt(s6?.New3_Extent, false);
 
             container.Table(t =>
             {
@@ -282,44 +318,74 @@ namespace GV23_Notice.Services.Notices.Section51
                     h.Cell().Element(HeaderCell).Text("Objectors Request").FontFamily("Arial").FontSize(9).SemiBold();
                 });
 
-                Row(t, "Value", gvValue, objValue);
-                Row(t, "Category", gvCat, objCat);
-                Row(t, "Area m²", gvArea, objArea);
-                Row(t, "With Effective Date", null, null);
+                // ── Split 1 header (only shown for multi) ─────────────────────
+                if (HasSplit2 || HasSplit3)
+                {
+                    SpanRow(t, "Split 1");
+                }
+
+                DataRow(t, "Value", gvValue1, objValue1);
+                DataRow(t, "Category", gvCat1, objCat1);
+                DataRow(t, "Area m²", gvArea1, objArea1);
+
+                // ── Split 2 ────────────────────────────────────────────────────
+                if (HasSplit2)
+                {
+                    SpanRow(t, "Split 2");
+                    DataRow(t, "Value", gvValue2, objValue2);
+                    DataRow(t, "Category", gvCat2, objCat2);
+                    DataRow(t, "Area m²", gvArea2, objArea2);
+                }
+
+                // ── Split 3 ────────────────────────────────────────────────────
+                if (HasSplit3)
+                {
+                    SpanRow(t, "Split 3");
+                    DataRow(t, "Value", gvValue3, objValue3);
+                    DataRow(t, "Category", gvCat3, objCat3);
+                    DataRow(t, "Area m²", gvArea3, objArea3);
+                }
+
+                // ── With Effective Date row ────────────────────────────────────
+                DataRow(t, "With Effective Date", null, null);
             });
 
-            static void Row(TableDescriptor t, string label, string left, string right)
+            static void DataRow(TableDescriptor t, string label, string? left, string? right)
             {
                 t.Cell().Element(BodyCell).Text(label).FontFamily("Arial").FontSize(9).SemiBold();
                 t.Cell().Element(BodyCell).Text(left ?? "").FontFamily("Arial").FontSize(9);
                 t.Cell().Element(BodyCell).Text(right ?? "").FontFamily("Arial").FontSize(9);
             }
 
+            static void SpanRow(TableDescriptor t, string label)
+            {
+                t.Cell().ColumnSpan(3).Element(SpanCell).Text(label)
+                    .FontFamily("Arial").FontSize(8).SemiBold().FontColor(Colors.Grey.Darken3);
+            }
+
             static IContainer HeaderCell(IContainer c) => c.Border(1).Background(Colors.Grey.Lighten3).Padding(6);
             static IContainer BodyCell(IContainer c) => c.Border(1).Padding(6);
+            static IContainer SpanCell(IContainer c) => c.Border(1).Background(Colors.Grey.Lighten4).Padding(4);
+        }
 
-            static string StackText(params string?[] parts)
-                => string.Join("\n", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()));
+        private static string FormatMoney(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return "";
 
-            static string StackMoney(params string?[] parts)
-                => string.Join("\n", parts.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => FormatMoney(x!)));
+            var cleaned = raw.Replace("R", "", StringComparison.OrdinalIgnoreCase)
+                             .Replace(",", " ")
+                             .Trim();
 
-            static string FormatMoney(string raw)
+            cleaned = new string(cleaned.Where(ch => char.IsDigit(ch) || ch == '.' || ch == '-').ToArray());
+
+            if (decimal.TryParse(cleaned, System.Globalization.NumberStyles.Any,
+                                 System.Globalization.CultureInfo.InvariantCulture, out var val))
             {
-                var cleaned = raw.Replace("R", "", StringComparison.OrdinalIgnoreCase)
-                                 .Replace(",", " ")
-                                 .Trim();
-
-                cleaned = new string(cleaned.Where(ch => char.IsDigit(ch) || ch == '.' || ch == '-').ToArray());
-
-                if (decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out var val))
-                {
-                    var s = val.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
-                    return $"R {s}";
-                }
-
-                return raw.Trim();
+                var s = val.ToString("N0", System.Globalization.CultureInfo.InvariantCulture).Replace(",", " ");
+                return $"R {s}";
             }
+
+            return raw.Trim();
         }
     }
 }

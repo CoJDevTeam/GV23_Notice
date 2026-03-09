@@ -97,6 +97,34 @@ namespace GV23_Notice.Services.Email
                 mid.Append("<p>You are hereby notified that the Municipal Valuer has received an objection from an individual to your property as reflected in the valuation roll.</p>");
             }
 
+            // Submission deadline + portal instructions (mirrors the PDF body)
+            var closeDate = req.S51SubmissionsCloseDate?.ToString() ?? "";
+            var portal    = req.S51PortalUrl ?? _opt.PortalUrl ?? "https://objections.joburg.org.za";
+            var pin       = req.S51Section51Pin ?? "";
+            var objNo     = req.S51ObjectionNo ?? req.Items.FirstOrDefault()?.ObjectionNo ?? "";
+
+            if (!string.IsNullOrWhiteSpace(closeDate))
+            {
+                mid.Append("<p>");
+                mid.Append("Submissions by the owner in response to the objections must be submitted online to the Municipal Valuer ");
+                mid.Append($"no later than <b>{H(closeDate)}</b> via <a href=\"{H(portal)}\">{H(portal)}</a>. ");
+                mid.Append("To attach submissions, click on \u201cUpload Documents,\u201d select \u201cSection 51 Uploads,\u201d ");
+                if (!string.IsNullOrWhiteSpace(objNo))
+                    mid.Append($"fill in the objection number <b>{H(objNo)}</b> ");
+                if (!string.IsNullOrWhiteSpace(pin))
+                    mid.Append($"and PIN <b>{H(pin)}</b>, ");
+                mid.Append("and then upload the submission documents.");
+                mid.Append("</p>");
+            }
+
+            mid.Append("<p>");
+            mid.Append("You will be notified of the Municipal Valuer\u2019s decision in terms of Section 53 of the ");
+            mid.Append("Municipal Property Rates Act 6 of 2004. If you are dissatisfied with the decision, ");
+            mid.Append("you will have the right to lodge an appeal.");
+            mid.Append("</p>");
+
+            mid.Append(EnquiriesBlock());
+
             return (Subject(req, "Section 51 Notice"), BaseHtml(req, mid.ToString()));
         }
 
@@ -415,4 +443,3 @@ namespace GV23_Notice.Services.Email
         private static string H(string input) => WebUtility.HtmlEncode(input ?? "");
     }
 }
-

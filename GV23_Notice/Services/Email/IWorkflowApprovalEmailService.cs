@@ -8,13 +8,17 @@ namespace GV23_Notice.Services.Email
         /// <summary>
         /// Builds the Step 2 APPROVAL workflow email.
         /// The email must contain a Step 3 kickoff link that is based on the WorkflowKey.
+        /// For S52: pass <paramref name="appealKickoffUrl"/> and <paramref name="reviewKickoffUrl"/>
+        /// to include separate links for Appeal Decision and Section 52 Review processing.
         /// </summary>
         (string Subject, string BodyHtml) BuildApprovalEmail(
             NoticeSettings settings,
             RollRegistry roll,
             string approvedBy,
             Guid workflowKey,
-            string kickoffBaseUrl);
+            string kickoffBaseUrl,
+            string? appealKickoffUrl = null,
+            string? reviewKickoffUrl = null);
 
         /// <summary>
         /// Builds the Step 2 CORRECTION REQUEST workflow email.

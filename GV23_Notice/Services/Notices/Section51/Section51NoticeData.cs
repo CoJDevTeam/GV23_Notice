@@ -36,6 +36,8 @@
             // ✅ Trace key (required by you)
             public string? ValuationKey { get; set; }
 
+        public bool? IsMulti { get; set; }
+
            
         
     }
