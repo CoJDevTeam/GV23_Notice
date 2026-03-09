@@ -62,12 +62,12 @@ namespace GV23_Notice.Services.Storage
             }
 
             // S51:
-            // root\{ObjectionNo}\Section51_Notice\{ObjectionNo}_{PropertyDesc}_Section51_Notice.pdf
+            // root\{ObjectionNo}\Section 51 Notice\{ObjectionNo}_{PropertyDesc}_S51.pdf
             if (notice == NoticeKind.S51)
             {
                 var main = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
-                var inner = "Section51_Notice";
-                var file = $"{main}_{safeProp}_Section51_Notice{suffix}.pdf";
+                const string inner = "Section 51 Notice";          // literal spaces — matches your folder
+                var file = $"{main}_{safeProp}_S51{suffix}.pdf";
                 return Path.Combine(root, main, inner, file);
             }
 

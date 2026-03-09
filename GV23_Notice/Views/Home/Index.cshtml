@@ -1,131 +1,252 @@
-﻿@{
-    ViewData["Title"] = "Home — GV23 Notice Management";
+﻿@model GV23_Notice.Models.Workflow.ViewModels.HomeIndexVm
+
+@using GV23_Notice.Domain.Workflow
+
+@{
+    ViewData["Title"] = "Dashboard — GV23 Notice Management";
+    var now = DateTime.Now;
 }
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link href="~/css/homeindex.css" rel="stylesheet" />
-</head>
-<body>
 
-    <!-- ═══════════════ HEADER ═══════════════ -->
-  @*   <header class="page-header">
-        <div class="brand">
-            <span class="brand-badge">GV23</span>
-            <span class="brand-title">Notice Management System</span>
+<link href="~/css/homeindexcss.css" rel="stylesheet" />
+<div class="hd-page">
+
+    <!-- TITLE BAR -->
+    <div class="hd-title-bar">
+        <div>
+            <div class="hd-title">Notice Management <span>Dashboard</span></div>
+            <div class="hd-subtitle">City of Johannesburg — Valuation Services Department</div>
         </div>
-        <nav class="header-nav">
-            <a class="nav-link active" asp-controller="Home" asp-action="Index">Home</a>
-            <a class="nav-link" asp-controller="Workflow" asp-action="Step1">Workflow</a>
-            <a class="nav-link" asp-controller="Step3" asp-action="Index">Step 3</a>
-        </nav>
-    </header>
- *@
-    <!-- ═══════════════ MAIN ═══════════════ -->
-    <div class="main-wrap">
-
-        <!-- TITLE BAR -->
-        <div class="title-bar">
-            <h1>Notice Management — Dashboard</h1>
-            <span class="sub">Valuation Period <span>2026</span> · Active</span>
+        <div class="hd-date-pill">
+            <span>@now.ToString("dd MMM yyyy")</span> &nbsp;·&nbsp; @now.ToString("HH:mm")
         </div>
+    </div>
 
-        <!-- STATS ROW -->
-        <div class="stats-row">
-            <div class="stat-card">
-                <span class="stat-label">Active Rolls</span>
-                <span class="stat-value gold">12</span>
-                <span class="stat-hint">Across all notice types</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-label">Workflows Open</span>
-                <span class="stat-value">7</span>
-                <span class="stat-hint">Awaiting processing</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-label">Step 2 Approved</span>
-                <span class="stat-value green">4</span>
-                <span class="stat-hint">Ready for Step 3</span>
-            </div>
-            <div class="stat-card">
-                <span class="stat-label">Notices Sent</span>
-                <span class="stat-value">1,248</span>
-                <span class="stat-hint">This valuation cycle</span>
+    <!-- HERO -->
+    <div class="hd-hero">
+        <div class="hd-hero-text">
+            <h2>GV23 Notice Management System</h2>
+            <p>Valuation cycle processing — bulk generation, print, and dispatch of statutory notices for Section 49, 51, 52, 53, Dear Johnny, Invalid, and Section 78 workflows.</p>
+            <div class="hd-hero-badges">
+                <span class="hd-badge hd-badge-live"><span class="hd-hero-pulse"></span> System Active</span>
+                <span class="hd-badge hd-badge-cycle">2026 Valuation Period</span>
+                <span class="hd-badge hd-badge-user">👤 @User.Identity?.Name?.Split('\\').Last()</span>
             </div>
         </div>
+        <div class="hd-hero-right">
+            <a class="hd-go-btn" asp-controller="Step3" asp-action="Index">
+                ▶ Go to Step 3 Processing
+            </a>
+            <a class="hd-go-btn-sec" asp-controller="Workflow" asp-action="Step1">
+                ⚙ Workflow Admin
+            </a>
+        </div>
+    </div>
 
-        <!-- WORKFLOW PIPELINE -->
-        <div class="card">
-            <div class="card-header">
-                <div class="header-accent"></div>
-                Workflow Pipeline
+    <!-- STATS STRIP -->
+    <div class="hd-stats">
+        <div class="hd-stat gold">
+            <span class="hd-stat-lbl">Active Rolls</span>
+            <span class="hd-stat-num">@Model.ActiveRolls</span>
+            <span class="hd-stat-sub">Registered in system</span>
+        </div>
+        <div class="hd-stat">
+            <span class="hd-stat-lbl">Total Workflows</span>
+            <span class="hd-stat-num">@Model.TotalWorkflows</span>
+            <span class="hd-stat-sub">@Model.Step1Approved approved at Step 1</span>
+        </div>
+        <div class="hd-stat">
+            <span class="hd-stat-lbl">Pending Step 2</span>
+            <span class="hd-stat-num">@Model.PendingStep2</span>
+            <span class="hd-stat-sub">Awaiting Step 2 approval</span>
+        </div>
+        <div class="hd-stat green">
+            <span class="hd-stat-lbl">Step 2 Approved</span>
+            <span class="hd-stat-num">@Model.Step2Approved</span>
+            <span class="hd-stat-sub">Ready for Step 3</span>
+        </div>
+        <div class="hd-stat green">
+            <span class="hd-stat-lbl">Notices Sent</span>
+            <span class="hd-stat-num">@Model.TotalSent.ToString("N0")</span>
+            <span class="hd-stat-sub">@Model.TotalBatches batch@(Model.TotalBatches == 1 ? "" : "es") created</span>
+        </div>
+    </div>
+
+    <!-- MAIN BODY — 2 columns -->
+    <div class="hd-cols">
+
+        <!-- LEFT: Recent Workflows Table -->
+        <div class="hd-card">
+            <div class="hd-card-head">
+                <h3>📋 Recent Workflows</h3>
+                <span class="hd-count-chip">@Model.RecentWorkflows.Count</span>
             </div>
-            <div class="card-body">
-                <div class="pipeline">
+            <div style="overflow-x:auto">
+                @if (Model.RecentWorkflows.Count == 0)
+                {
+                    <div class="hd-empty">
+                        <div class="hd-empty-icon">📭</div>
+                        No workflows yet. Go to Workflow Admin to create one.
+                    </div>
+                }
+                else
+                {
+                    <table class="hd-wf-table">
+                        <thead>
+                            <tr>
+                                <th>Roll / Workflow</th>
+                                <th>Notice</th>
+                                <th>Letter Date</th>
+                                <th>Status</th>
+                                <th style="text-align:center">Sent</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var w in Model.RecentWorkflows)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="hd-wf-name">@w.RollName</div>
+                                        <div class="hd-wf-meta">
+                                            <span class="hd-roll-code">@w.RollShortCode</span>
+                                            &nbsp;v@w.Version
+                                        </div>
+                                    </td>
+                                    <td><span class="hd-notice-chip">@w.Notice</span></td>
+                                    <td style="font-size:11.5px;color:#666;white-space:nowrap">@w.LetterDate.ToString("dd MMM yyyy")</td>
+                                    <td>
+                                        @if (w.IsStep2Approved && w.HasWorkflowKey)
+                                        {
+                                            <span class="hd-status-pip hd-pip-s3">⚡ Step 3 Ready</span>
+                                        }
+                                        else if (w.IsStep2Approved)
+                                        {
+                                            <span class="hd-status-pip hd-pip-s2ok">✓ Step 2 Done</span>
+                                        }
+                                        else if (w.IsApproved)
+                                        {
+                                            <span class="hd-status-pip hd-pip-s1ok">● Step 1 Approved</span>
+                                        }
+                                        else if (w.IsConfirmed)
+                                        {
+                                            <span class="hd-status-pip hd-pip-draft">✎ Step 1 Confirmed</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="hd-status-pip hd-pip-draft">Draft</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center">
+                                        <span class="hd-sent-num @(w.SentCount == 0 ? "zero" : "")">
+                                            @w.SentCount.ToString("N0")
+                                        </span>
+                                    </td>
+                                    <td>
+                                        @if (w.IsStep2Approved && w.WorkflowKey.HasValue)
+                                        {
+                                            <a class="hd-wf-link" asp-controller="Step3" asp-action="Kickoff"
+                                               asp-route-key="@w.WorkflowKey">Open →</a>
+                                        }
+                                        else if (w.IsApproved)
+                                        {
+                                            <a class="hd-wf-link" asp-controller="Workflow" asp-action="Step2">Review</a>
+                                        }
+                                        else
+                                        {
+                                            <span class="no-link">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
 
-                    <a class="phase-card" asp-controller="Workflow" asp-action="Step1">
-                        <span class="phase-number">Phase 1</span>
-                        <span class="phase-title">Setup &amp; Configuration</span>
-                        <span class="phase-desc">Define roll parameters, letter dates, modes, and the initial approval chain.</span>
-                        <span class="phase-status done">✓ Complete</span>
-                    </a>
+        <!-- RIGHT: Phases + Notice Types -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
 
-                    <div class="pipeline-arrow">›</div>
-
-                    <a class="phase-card" asp-controller="Workflow" asp-action="Step2">
-                        <span class="phase-number">Phase 2</span>
-                        <span class="phase-title">Review &amp; Approval</span>
-                        <span class="phase-desc">Data review, correction tickets, and Step 2 sign-off before proceeding.</span>
-                        <span class="phase-status ready">● In Progress</span>
-                    </a>
-
-                    <div class="pipeline-arrow">›</div>
-
-                    <a class="phase-card phase-active" asp-controller="Step3" asp-action="Index">
-                        <span class="phase-number">Phase 3 — Current</span>
-                        <span class="phase-title">Data Team Processing</span>
-                        <span class="phase-desc">Select approved workflows, create batches, print notices and send emails.</span>
-                        <span class="phase-status ready">▶ Ready to Begin</span>
-                    </a>
-
+            <!-- Workflow Phases -->
+            <div class="hd-card">
+                <div class="hd-card-head">
+                    <h3>🔁 Workflow Phases</h3>
+                </div>
+                <div class="hd-card-body" style="padding:16px">
+                    <div class="hd-phases">
+                        <a class="hd-phase done" asp-controller="Workflow" asp-action="Step1">
+                            <div class="hd-phase-num">✓</div>
+                            <div class="hd-phase-info">
+                                <div class="hd-phase-title">Phase 1 — Setup & Config</div>
+                                <div class="hd-phase-desc">Define roll, notice type, dates, signatures and approval chain.</div>
+                            </div>
+                            <div class="hd-phase-tag tag-done">Done</div>
+                        </a>
+                        <a class="hd-phase done" asp-controller="Workflow" asp-action="Step2">
+                            <div class="hd-phase-num">✓</div>
+                            <div class="hd-phase-info">
+                                <div class="hd-phase-title">Phase 2 — Review & Approval</div>
+                                <div class="hd-phase-desc">Data check, correction tickets, Step 2 sign-off.</div>
+                            </div>
+                            <div class="hd-phase-tag tag-done">Done</div>
+                        </a>
+                        <a class="hd-phase active" asp-controller="Step3" asp-action="Index">
+                            <div class="hd-phase-num">3</div>
+                            <div class="hd-phase-info">
+                                <div class="hd-phase-title">Phase 3 — Processing</div>
+                                <div class="hd-phase-desc">Batch creation, PDF print, and email dispatch to ratepayers.</div>
+                            </div>
+                            <div class="hd-phase-tag tag-current">Current</div>
+                        </a>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- QUICK ACTIONS -->
-        <div class="section-divider">Quick Access</div>
-
-        <div class="quick-grid">
-
-            <a class="quick-card" asp-controller="Step3" asp-action="Index">
-                <div class="quick-icon">📋</div>
-                <span class="quick-label">Select Workflow</span>
-                <span class="quick-sub">Choose an approved workflow to begin Step 3 batch processing.</span>
-                <span class="quick-arrow">Go to Step 3 →</span>
-            </a>
-
-            <a class="quick-card" asp-controller="Workflow" asp-action="Step1">
-                <div class="quick-icon">⚙️</div>
-                <span class="quick-label">Workflow Admin</span>
-                <span class="quick-sub">Create or manage workflows, assign rolls and notice types for new cycles.</span>
-                <span class="quick-arrow">Open Admin →</span>
-            </a>
-
-            <a class="quick-card" asp-controller="Workflow" asp-action="SettingsLibrary">
-                <div class="quick-icon">📚</div>
-                <span class="quick-label">Settings Library</span>
-                <span class="quick-sub">View and manage notice templates, valuation periods, and roll definitions.</span>
-                <span class="quick-arrow">Open Library →</span>
-            </a>
+            <!-- Notice Types -->
+            <div class="hd-card">
+                <div class="hd-card-head">
+                    <h3>📑 Notice Types</h3>
+                </div>
+                <div class="hd-card-body" style="padding:14px">
+                    <div class="hd-types-grid">
+                        @foreach (var nt in new[] {
+                                                ("S49","Section 49"),("S51","Section 51"),("S52","Section 52"),("S53","Section 53"),
+                                                ("DJ","Dear Johnny"),("IN","Invalid"),("S78","Section 78")
+                                                })
+                        {
+                            <div class="hd-ntype">
+                                <div class="hd-ntype-code">@nt.Item1</div>
+                                <div class="hd-ntype-name">@nt.Item2</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
 
         </div>
+    </div><!-- /hd-cols -->
+    <!-- QUICK ACTIONS -->
+    <div class="hd-section-hdr"><h3>Quick Access</h3></div>
+    <div class="hd-actions">
+        <a class="hd-action primary" asp-controller="Step3" asp-action="Index">
+            <div class="hd-action-icon">▶</div>
+            <div class="hd-action-label">Step 3 Processing</div>
+            <div class="hd-action-sub">Select an approved workflow to create batches, print PDFs, and send notice emails to ratepayers.</div>
+            <div class="hd-action-cta">Go to Step 3 →</div>
+        </a>
+        <a class="hd-action" asp-controller="Workflow" asp-action="Step1">
+            <div class="hd-action-icon">⚙️</div>
+            <div class="hd-action-label">Workflow Administration</div>
+            <div class="hd-action-sub">Create or manage workflows — assign rolls, notice types, letter dates, and valuation period settings.</div>
+            <div class="hd-action-cta">Open Admin →</div>
+        </a>
+        <a class="hd-action green-action" asp-controller="Workflow" asp-action="SettingsLibrary">
+            <div class="hd-action-icon">📚</div>
+            <div class="hd-action-label">Settings Library</div>
+            <div class="hd-action-sub">View all notice configurations, valuation periods, and roll registry definitions in one place.</div>
+            <div class="hd-action-cta">Open Library →</div>
+        </a>
+    </div>
 
-    </div><!-- /main-wrap -->
-
-</body>
-</html>
+</div><!-- /hd-page -->

@@ -1,174 +1,254 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3SelectVm
 @using System.Globalization
+@using GV23_Notice.Domain.Workflow
 
 @{
-    ViewData["Title"] = "Step 3 - Select Approved Workflow";
-    string D(DateTime d) => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    ViewData["Title"] = "Step 3 — Processing";
+    string D(DateTime d) => d.ToString("dd MMM yyyy", CultureInfo.InvariantCulture);
+    var hasResults = Model.RollId != null && Model.Notice != null;
+    var hasRows = hasResults && Model.Rows.Count > 0;
+    var approvedRows = Model.Rows.Where(r => r.Step2Approved).ToList();
+    var corrRows = Model.Rows.Where(r => r.Step2CorrectionRequested).ToList();
+    var now = DateTime.Now;
 }
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link href="~/css/step3/index.css" rel="stylesheet" />
-</head>
-<body>
+<link href="~/css/step3/step3index.css" rel="stylesheet" />
 
-    <!-- ═══════════════ HEADER ═══════════════ -->
-    <header class="page-header">
-        <div class="brand">
-            <span class="brand-badge">GV23</span>
-            <span class="brand-title">Notice Management System</span>
+<div class="s3i-page">
+
+    <!-- TITLE BAR -->
+    <div class="s3i-title-bar">
+        <div>
+            <div class="s3i-title">Step 3 — <span>Processing</span></div>
+            <div class="s3i-subtitle">Select an approved workflow to begin batch creation, printing and email dispatch</div>
         </div>
-        <div class="step-indicator">
-            <span style="font-size:11px;color:#888;margin-right:6px;font-weight:600;">STEP 3</span>
-            <div class="step-pip done"></div>
-            <div class="step-pip active"></div>
-            <div class="step-pip"></div>
-            <span style="font-size:11px;color:var(--gold);font-weight:700;margin-left:6px;">3-1 — Select Workflow</span>
-        </div>
-    </header>
+        <div class="s3i-crumb">Phase <span>3 of 3</span> &nbsp;·&nbsp; Data Team</div>
+    </div>
 
-    <!-- ═══════════════ MAIN ═══════════════ -->
-    <div class="main-wrap">
-
-        <!-- TITLE BAR -->
-        <div class="title-bar">
-            <h2>Step 3 — Select Approved Workflow</h2>
-            <span class="step-crumb">Phase <span>3 of 3</span> · Data Team Processing</span>
-        </div>
-
-        <!-- FILTER CARD -->
-        <div class="card">
-            <div class="card-header">
-                <div class="header-accent"></div>
-                Select Roll &amp; Notice
+    <!-- HERO BANNER -->
+    <div class="s3i-hero">
+        <div class="s3i-hero-text">
+            <h2>Step 3 — Data Team Processing</h2>
+            <p>Select an approved workflow below. Once selected you can validate the kickoff preview, create batches of up to 500 records each, print PDFs and dispatch email notices directly to ratepayers.</p>
+            <div class="s3i-hero-badges">
+                <span class="s3i-badge s3i-badge-step">⚡ Phase 3 Active</span>
+                <span class="s3i-badge s3i-badge-phase">📋 Kickoff → Batch → Print → Send</span>
             </div>
-            <div class="card-body">
-                <form method="get" asp-action="Index" asp-controller="Step3">
-                    <div class="form-grid">
-                        <div class="form-field">
-                            <label class="form-label">Roll</label>
-                            <select class="form-select" name="rollId" required>
-                                <option value="">— Select Roll —</option>
-                                @foreach (var r in Model.Rolls)
-                                {
-                                    <option value="@r.Value" selected="@r.Selected">@r.Text</option>
-                                }
-                            </select>
-                        </div>
+        </div>
+        <div class="s3i-step-pips">
+            <div class="s3i-pip done"></div>
+            <div class="s3i-pip done"></div>
+            <div class="s3i-pip active"></div>
+        </div>
+    </div>
 
-                        <div class="form-field">
-                            <label class="form-label">Notice</label>
-                            <select class="form-select" name="notice" required>
-                                <option value="">— Select Notice —</option>
-                                @foreach (var n in Model.Notices)
-                                {
-                                    <option value="@n.Value" selected="@n.Selected">@n.Text</option>
-                                }
-                            </select>
+    <!-- STATS — only when results are loaded -->
+    @if (hasResults)
+    {
+        <div class="s3i-stats">
+            <div class="s3i-stat gold">
+                <span class="s3i-stat-lbl">Results Found</span>
+                <span class="s3i-stat-num">@Model.Rows.Count</span>
+                <span class="s3i-stat-sub">Matching workflows</span>
+            </div>
+            <div class="s3i-stat green">
+                <span class="s3i-stat-lbl">Step 2 Approved</span>
+                <span class="s3i-stat-num">@approvedRows.Count</span>
+                <span class="s3i-stat-sub">Ready to process</span>
+            </div>
+            <div class="s3i-stat orange">
+                <span class="s3i-stat-lbl">Correction Req.</span>
+                <span class="s3i-stat-num">@corrRows.Count</span>
+                <span class="s3i-stat-sub">Pending correction</span>
+            </div>
+            <div class="s3i-stat">
+                <span class="s3i-stat-lbl">Roll</span>
+                <span class="s3i-stat-num" style="font-size:20px">@(Model.Rows.FirstOrDefault()?.RollShortCode ?? "—")</span>
+                <span class="s3i-stat-sub">@Model.Notice</span>
+            </div>
+        </div>
+    }
+
+    <!-- MAIN COLUMNS -->
+    <div class="s3i-cols">
+
+        <!-- LEFT: Filter + Results -->
+        <div>
+            <!-- FILTER CARD -->
+            <div class="s3i-card" style="margin-bottom:16px">
+                <div class="s3i-card-head">
+                    <h3>🔍 Select Roll &amp; Notice Type</h3>
+                </div>
+                <div class="s3i-card-body">
+                    <form method="get" asp-action="Index" asp-controller="Step3">
+                        <div class="s3i-form-grid">
+                            <div class="s3i-form-field">
+                                <label class="s3i-form-label">Roll</label>
+                                <select class="s3i-form-select" name="rollId">
+                                    <option value="">— Select Roll —</option>
+                                    @foreach (var r in Model.Rolls)
+                                    {
+                                        <option value="@r.Value" selected="@r.Selected">@r.Text</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="s3i-form-field">
+                                <label class="s3i-form-label">Notice Type</label>
+                                <select class="s3i-form-select" name="notice">
+                                    <option value="">— Select Notice —</option>
+                                    @foreach (var n in Model.Notices)
+                                    {
+                                        <option value="@n.Value" selected="@n.Selected">@n.Text</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="s3i-form-field">
+                                <button class="s3i-btn-load" type="submit">
+                                    ↻ Load Workflows
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- RESULTS -->
+            @if (!hasResults)
+            {
+                <div class="s3i-alert info">
+                    <div class="s3i-alert-icon">ℹ</div>
+                    <div>Select a <strong>Roll</strong> and <strong>Notice Type</strong> above, then click <strong>Load Workflows</strong> to see approved workflows ready for Step 3 processing.</div>
+                </div>
+            }
+            else if (!hasRows)
+            {
+                <div class="s3i-alert warn">
+                    <div class="s3i-alert-icon">⚠</div>
+                    <div>
+                        <strong>No workflows found</strong> for this Roll + Notice combination.<br />
+                        <span style="font-size:11px;opacity:.8;">Requirements: Step 1 Approved + WorkflowKey generated + Step 2 Approved or Correction Requested.</span>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="s3i-divider"><h3>Approved Workflows — @Model.Rows.Count found</h3></div>
+                <div class="s3i-wf-grid">
+                    @foreach (var r in Model.Rows)
+                    {
+                        var cardClass = r.Step2Approved ? "approved" : "correction";
+                        var iconEmoji = r.Step2Approved ? "✓" : "✎";
+                        <div class="s3i-wf-card @cardClass">
+                            <div class="s3i-wf-icon @cardClass">@iconEmoji</div>
+                            <div>
+                                <div class="s3i-wf-name">@r.RollName</div>
+                                <div class="s3i-wf-meta">
+                                    <span class="s3i-wf-chip chip-notice">@r.Notice</span>
+                                    <span class="s3i-wf-chip chip-mode">@r.Mode</span>
+                                    <span class="s3i-wf-chip chip-ver">v@r.VersionText</span>
+                                    @if (r.Step2Approved)
+                                    {
+                                        <span class="s3i-wf-chip chip-approved">✓ Step 2 Approved</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="s3i-wf-chip chip-correction">✎ Correction Requested</span>
+                                    }
+                                </div>
+                                <div class="s3i-wf-dates">
+                                    Letter date: <strong>@D(r.LetterDate)</strong>
+                                    &nbsp;·&nbsp; Step 1 approved by <strong>@r.Step1ApprovedBy</strong>
+                                    @if (r.Step1ApprovedAtUtc.HasValue)
+                                    {
+                                        <span>on @r.Step1ApprovedAtUtc.Value.ToString("dd MMM yyyy")</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="s3i-wf-action">
+                                <a class="s3i-btn-open"
+                                   href="@Url.Action("Open", "Step3", new { key = r.WorkflowKey })">
+                                    ▶ Open
+                                </a>
+                                <div class="s3i-wf-key" title="@r.WorkflowKey">@r.WorkflowKey</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- RIGHT SIDEBAR -->
+        <div class="s3i-sidebar">
+
+            <!-- Processing steps guide -->
+            <div class="s3i-tip-card">
+                <div class="s3i-tip-head"><h4>📍 Step 3 Process</h4></div>
+                <div class="s3i-tip-body">
+                    <div class="s3i-step-list">
+                        <div class="s3i-step-item">
+                            <div class="s3i-step-num done">✓</div>
+                            <div class="s3i-step-text">
+                                <div class="s3i-step-title">Select Workflow</div>
+                                <div class="s3i-step-desc">Choose a Step 2-approved workflow to begin.</div>
+                            </div>
+                        </div>
+                        <div class="s3i-step-item">
+                            <div class="s3i-step-num active">2</div>
+                            <div class="s3i-step-text">
+                                <div class="s3i-step-title">Kickoff &amp; Preview</div>
+                                <div class="s3i-step-desc">Validate PDF preview and confirm batch creation.</div>
+                            </div>
+                        </div>
+                        <div class="s3i-step-item">
+                            <div class="s3i-step-num locked">3</div>
+                            <div class="s3i-step-text">
+                                <div class="s3i-step-title">Create Batches</div>
+                                <div class="s3i-step-desc">Assign records into batches of up to 500.</div>
+                            </div>
+                        </div>
+                        <div class="s3i-step-item">
+                            <div class="s3i-step-num locked">4</div>
+                            <div class="s3i-step-text">
+                                <div class="s3i-step-title">Print PDFs</div>
+                                <div class="s3i-step-desc">Generate and save PDFs for each batch.</div>
+                            </div>
+                        </div>
+                        <div class="s3i-step-item">
+                            <div class="s3i-step-num locked">5</div>
+                            <div class="s3i-step-text">
+                                <div class="s3i-step-title">Send Email Notices</div>
+                                <div class="s3i-step-desc">Dispatch emails and save .eml copies to disk.</div>
+                            </div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    <div class="form-actions">
-                        <button class="btn btn-primary" type="submit">
-                            ↻ Load Approved Workflows
-                        </button>
+            <!-- Notice types reference -->
+            <div class="s3i-tip-card">
+                <div class="s3i-tip-head"><h4>📑 Notice Types</h4></div>
+                <div class="s3i-tip-body">
+                    <div class="s3i-ntype-list">
+                        @foreach (var nt in new[]{
+                                                ("S49","General Valuation"),
+                                                ("S51","Third Party"),
+                                                ("S52","Appeal"),
+                                                ("S53","MVD Outcome"),
+                                                ("DJ", "Dear Johnny"),
+                                                ("IN", "Invalid Notice"),
+                                                ("S78","Inspection")
+                                                })
+                        {
+                            <div class="s3i-ntype-row">
+                                <span class="s3i-ntype-code">@nt.Item1</span>
+                                <span class="s3i-ntype-name">@nt.Item2</span>
+                            </div>
+                        }
                     </div>
-                </form>
+                </div>
             </div>
+
         </div>
+    </div><!-- /s3i-cols -->
 
-        <!-- RESULTS -->
-        @if (Model.RollId is null || Model.Notice is null)
-        {
-            <div class="section-divider">Results</div>
-            <div class="alert alert-info">
-                <span class="alert-icon">ℹ</span>
-                <div>Select a <strong>Roll</strong> and <strong>Notice</strong> above to load the approved workflows available for processing.</div>
-            </div>
-        }
-        else if (Model.Rows.Count == 0)
-        {
-            <div class="section-divider">Results</div>
-            <div class="alert alert-warning">
-                <span class="alert-icon">⚠</span>
-                <div>
-                    No approved workflows found for this Roll + Notice combination.<br />
-                    <small style="opacity:0.8;">Requirements: Step 1 Approved + WorkflowKey generated + Step 2 Approved or Correction Requested.</small>
-                </div>
-            </div>
-        }
-        else
-        {
-            <div class="section-divider">Approved Workflows</div>
-            <div class="card">
-                <div class="card-header">
-                    <div class="header-accent"></div>
-                    Workflows Ready for Processing
-                </div>
-
-                <div class="table-wrap">
-                    <table class="notice-table">
-                        <thead>
-                            <tr>
-                                <th>Status</th>
-                                <th>Roll</th>
-                                <th>Notice</th>
-                                <th>Mode</th>
-                                <th>Version</th>
-                                <th>Letter Date</th>
-                                <th>Workflow Key</th>
-                                <th style="text-align:right;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var r in Model.Rows)
-                            {
-                                <tr>
-                                    <td>
-                                        @if (r.Step2Approved)
-                                        {
-                                            <span class="status-badge status-approved">✓ Approved</span>
-                                        }
-                                        else if (r.Step2CorrectionRequested)
-                                        {
-                                            <span class="status-badge status-correction">✎ Correction</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="status-badge status-pending">⏳ Pending</span>
-                                        }
-                                    </td>
-                                    <td class="td-roll">@r.RollShortCode — @r.RollName</td>
-                                    <td style="font-weight:600;">@r.Notice</td>
-                                    <td style="color:var(--gray-mid);">@r.Mode</td>
-                                    <td><span class="version-tag">@r.VersionText</span></td>
-                                    <td style="font-variant-numeric:tabular-nums;">@D(r.LetterDate)</td>
-                                    <td class="td-key" title="@r.WorkflowKey">@r.WorkflowKey</td>
-                                    <td style="text-align:right;">
-                                        <a class="btn btn-open"
-                                           href="@Url.Action("Open", "Step3", new { key = r.WorkflowKey })">
-                                            Open →
-                                        </a>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="table-footer">
-                    <span class="row-count"><strong>@Model.Rows.Count</strong> workflow@(Model.Rows.Count == 1 ? "" : "s") found</span>
-                    <span>Only Step 2 Approved &amp; Correction Requested workflows are listed</span>
-                </div>
-            </div>
-        }
-
-    </div><!-- /main-wrap -->
-
-</body>
-</html>
+</div><!-- /s3i-page -->

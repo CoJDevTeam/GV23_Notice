@@ -104,7 +104,7 @@ namespace GV23_Notice.Services.Notices.Section51
 
                         r.ConstantItem(220).AlignRight().Text(t =>
                         {
-                            //t.Span("Valuation Key:\n").Style(small7);
+                            t.Span("Valuation Key:\n").Style(small7);
                             t.Span(Safe(data.ValuationKey)).Style(small7.SemiBold());
                         });
                     });
@@ -259,10 +259,10 @@ namespace GV23_Notice.Services.Notices.Section51
             string gvCat = isOmission ? "Omitted" : StackText(s6?.Old_Category, s6?.Old2_Category, s6?.Old3_Category);
             string gvArea = isOmission ? "Omitted" : StackText(s6?.Old_Extent, s6?.Old2_Extent, s6?.Old3_Extent);
 
-           
+
             string objValue = StackMoney(s6?.New_Market_Value, s6?.New2_Market_Value, s6?.New3_Market_Value);
 
-            
+
             string objCat = StackText(s6?.New_Category, s6?.New2_Category, s6?.New3_Category);
             string objArea = StackText(s6?.New_Extent, s6?.New2_Extent, s6?.New3_Extent);
 

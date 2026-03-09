@@ -1,4 +1,8 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Services.Notices.Section51;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using System.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Services.Notices.Section49;
@@ -16,23 +20,29 @@ namespace GV23_Notice.Services.Storage
         private readonly INoticePathService _paths;
         private readonly IS49RollRepository _s49Repo;
         private readonly ISection49PdfBuilder _s49Builder;
+        private readonly ISection51PdfBuilder _s51Builder;
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<NoticeBatchPrintService> _log;
+        private readonly IConfiguration _config;
 
         public NoticeBatchPrintService(
             AppDbContext db,
             INoticePathService paths,
             IS49RollRepository s49Repo,
             ISection49PdfBuilder s49Builder,
+            ISection51PdfBuilder s51Builder,
             IWebHostEnvironment env,
-            ILogger<NoticeBatchPrintService> log)
+            ILogger<NoticeBatchPrintService> log,
+            IConfiguration config)
         {
             _db = db;
             _paths = paths;
             _s49Repo = s49Repo;
             _s49Builder = s49Builder;
+            _s51Builder = s51Builder;
             _env = env;
             _log = log;
+            _config = config;
         }
 
         // ── Print a single batch ────────────────────────────────────────────
@@ -51,10 +61,17 @@ namespace GV23_Notice.Services.Storage
                            .FirstOrDefaultAsync(r => r.RollId == batch.RollId, ct)
                        ?? throw new InvalidOperationException("Roll not found.");
 
+            // Include Failed rows so re-printing a batch retries them.
+            // Only skip rows already Printed or Sent.
             var runLogs = await _db.NoticeRunLogs
-                .Where(x => x.NoticeBatchId == batch.Id && x.Status == RunStatus.Generated)
+                .Where(x => x.NoticeBatchId == batch.Id
+                         && (x.Status == RunStatus.Generated || x.Status == RunStatus.Failed))
                 .OrderBy(x => x.Id)
                 .ToListAsync(ct);
+
+            // Reset failed rows back to Generated so the loop below treats them uniformly
+            foreach (var rl in runLogs.Where(x => x.Status == RunStatus.Failed))
+                rl.Status = RunStatus.Generated;
 
             var result = new PrintBatchResult
             {
@@ -120,19 +137,37 @@ namespace GV23_Notice.Services.Storage
                     (pdfBytes, propertyDesc) = await BuildS49PdfAsync(settings, roll, batch, log, ct);
                     break;
 
+                case NoticeKind.S51:
+                    (pdfBytes, propertyDesc) = await BuildS51PdfAsync(settings, roll, batch, log, ct);
+                    break;
+
                 // For other notice types: fall back to snapshot-based print
                 default:
                     (pdfBytes, propertyDesc) = await BuildFromSnapshotAsync(settings, log, ct);
                     break;
             }
 
-            // Build save path:  {root}\{Roll}_{Notice}\Batches\{BatchName}\{PropertyDesc}_{Notice}.pdf
-            var pdfPath = _paths.BuildBatchPdfPath(
-                roll: roll,
-                notice: settings.Notice,
-                batchName: batch.BatchName,
-                propertyDesc: propertyDesc,
-                copyRole: null);
+            // Build save path — S51 uses ObjectionNo-based folder structure, not batch folder
+            string pdfPath;
+            if (settings.Notice == NoticeKind.S51)
+            {
+                // root\{ObjectionNo}\Section 51 Notice\{ObjectionNo}_{PropertyDesc}_S51.pdf
+                pdfPath = _paths.BuildPdfPath(
+                    roll: roll,
+                    notice: settings.Notice,
+                    keyNo: log.ObjectionNo ?? propertyDesc,
+                    propertyDesc: propertyDesc,
+                    copyRole: null);
+            }
+            else
+            {
+                pdfPath = _paths.BuildBatchPdfPath(
+                    roll: roll,
+                    notice: settings.Notice,
+                    batchName: batch.BatchName,
+                    propertyDesc: propertyDesc,
+                    copyRole: null);
+            }
 
             SavePdf(pdfPath, pdfBytes);
 
@@ -213,6 +248,116 @@ namespace GV23_Notice.Services.Storage
             };
 
             var pdfBytes = _s49Builder.BuildNotice(pdfData, ctx);
+            return (pdfBytes, propertyDesc);
+        }
+
+
+        // ── S51: load from Section51Table via SP → build PDF ────────────────
+        private async Task<(byte[] pdfBytes, string propertyDesc)> BuildS51PdfAsync(
+            NoticeSettings settings,
+            Domain.Rolls.RollRegistry roll,
+            NoticeBatch batch,
+            NoticeRunLog log,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(log.ObjectionNo))
+                throw new InvalidOperationException(
+                    $"RunLog {log.Id} has no ObjectionNo for S51 print.");
+
+            // Use the same DefaultConnection — Notice_DB is the default catalog
+            var cs = _config.GetConnectionString("DefaultConnection")
+                     ?? throw new InvalidOperationException(
+                         "DefaultConnection is not configured in appsettings.");
+
+            Section51NoticeData data;
+            DateTime closingDate;
+            string propertyDesc;
+
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.S51_GetNoticeRow", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 60
+            };
+            cmd.Parameters.AddWithValue("@RollId", batch.RollId);
+            cmd.Parameters.AddWithValue("@ObjectionNo", log.ObjectionNo);
+
+            await conn.OpenAsync(ct);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                throw new InvalidOperationException(
+                    $"S51_GetNoticeRow returned no row for RollId={batch.RollId}, " +
+                    $"ObjectionNo={log.ObjectionNo}. " +
+                    "Check that the batch was created successfully.");
+
+            // Helper: safely read nullable string from DBNull-safe column
+            static string? Str(SqlDataReader r, string col)
+            {
+                var v = r[col];
+                return v == DBNull.Value ? null : v?.ToString();
+            }
+
+            propertyDesc = Str(reader, "PropertyDescription") ?? log.ObjectionNo ?? "";
+
+            closingDate = reader["ClosingDate"] is DateTime cd
+                ? cd
+                : (settings.EvidenceCloseDate ?? settings.LetterDate.AddDays(30));
+
+            data = new Section51NoticeData
+            {
+                ObjectionNo = Str(reader, "ObjectionNo") ?? log.ObjectionNo!,
+                PropertyDesc = propertyDesc,
+                ValuationKey = Str(reader, "ValuationKey"),
+                Section51Pin = Str(reader, "Section51Pin"),
+                Email = Str(reader, "RecipientEmail"),
+                RollName = roll.Name ?? roll.ShortCode,
+
+                // PostalAddress is stored as one string in the table
+                Addr1 = Str(reader, "PostalAddress") ?? "",
+                Addr2 = "",
+                Addr3 = "",
+                Addr4 = "",
+                Addr5 = "",
+
+                Section6 = new Section6Row
+                {
+                    Old_Category = Str(reader, "OldCategory"),
+                    Old2_Category = Str(reader, "OldCategory1"),
+                    Old3_Category = Str(reader, "OldCategory2"),
+                    New_Category = Str(reader, "NewCategory"),
+                    New2_Category = Str(reader, "NewCategory1"),
+                    New3_Category = Str(reader, "NewCategory2"),
+
+                    Old_Market_Value = Str(reader, "OldMarketValue"),
+                    Old2_Market_Value = Str(reader, "OldMarketValue1"),
+                    Old3_Market_Value = Str(reader, "OldMarketValue2"),
+                    New_Market_Value = Str(reader, "NewMarketValue"),
+                    New2_Market_Value = Str(reader, "NewMarketValue1"),
+                    New3_Market_Value = Str(reader, "NewMarketValue2"),
+
+                    Old_Extent = Str(reader, "OldExtent"),
+                    Old2_Extent = Str(reader, "OldExtent1"),
+                    Old3_Extent = Str(reader, "OldExtent2"),
+                    New_Extent = Str(reader, "NewExtent"),
+                    New2_Extent = Str(reader, "NewExtent1"),
+                    New3_Extent = Str(reader, "NewExtent2"),
+                }
+            };
+
+            var ctx = new Section51NoticeContext
+            {
+                HeaderImagePath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG"),
+                LetterDate = settings.LetterDate,
+                SubmissionsCloseDate = closingDate,
+                PortalUrl = settings.PortalUrl
+                                       ?? "https://objections.joburg.org.za",
+                EnquiriesLine = settings.EnquiriesLine
+                                       ?? "For any enquiries, please contact us on 011 407 6622 " +
+                                          "or valuationenquiries@joburg.org.za",
+            };
+
+            var pdfBytes = _s51Builder.BuildNotice(data, ctx);
             return (pdfBytes, propertyDesc);
         }
 
