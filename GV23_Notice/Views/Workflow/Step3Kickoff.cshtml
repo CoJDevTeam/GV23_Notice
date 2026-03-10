@@ -271,6 +271,10 @@ else
             {
                 <div class="s3-alert-ok" style="margin:14px 16px 0;">✅ @TempData["Success"]</div>
             }
+            @if (TempData["Error"] != null)
+            {
+                <div class="s3-alert-ok" style="margin:14px 16px 0;background:#7a1a1a;color:#fff;border-color:#c0392b;">⚠️ Batch creation failed: @TempData["Error"]</div>
+            }
 
             <!-- Stats row -->
             <div class="bp-dash-stats">
@@ -374,7 +378,6 @@ else
             </form>
             <button class="btn-cancel-batch" onclick="closeBatchPanel()">Cancel</button>
         </div>
-
 
 }
 <!-- ════════════════════════════════════════════════════════════
@@ -635,7 +638,7 @@ else
 </div><!-- /s3-fullscreen -->
 @section Scripts {
     <script>
-        // ── Page loader ─────────────────────────────────────────
+        // ── Page loader ──────────────────────────────────────────
         (function () {
             function dismiss() {
                 var el = document.getElementById('pageLoader');
@@ -649,52 +652,48 @@ else
             setTimeout(dismiss, 2000);
         })();
 
-        // ── Panel tab switching ──────────────────────────────────
+        @if (!Model.IsS52)
+        {
+        <text>
+        // ── Panel tab switching ─────────────────────────────────
         function switchPanelTab(tab) {
-            // Tabs
             document.querySelectorAll('.bp-tab').forEach(t => t.classList.remove('active'));
             document.getElementById(tab === 'create' ? 'bpTabCreate' : 'bpTabDashboard').classList.add('active');
-            // Panes
             document.querySelectorAll('.bp-pane').forEach(p => p.classList.remove('active'));
             document.getElementById(tab === 'create' ? 'bpPaneCreate' : 'bpPaneDashboard').classList.add('active');
-            // Footer: only show on create tab
             document.getElementById('bpFooter').style.display = tab === 'create' ? '' : 'none';
         }
 
-        // ── Open batch panel ────────────────────────────────────
+        // ── Open / close batch panel ────────────────────────────
         function openBatchPanel(tab) {
             document.getElementById('batchOverlay').classList.add('open');
             document.body.style.overflow = 'hidden';
             switchPanelTab(tab || 'create');
         }
-
         function closeBatchPanel() {
             document.getElementById('batchOverlay').classList.remove('open');
             document.body.style.overflow = '';
         }
 
-        // Close on overlay click (outside panel)
         document.getElementById('batchOverlay').addEventListener('click', function (e) {
             if (e.target === this) closeBatchPanel();
         });
 
-        // Sync date picker → hidden form input
         document.getElementById('batchDateInput').addEventListener('change', function () {
             document.getElementById('batchDateHidden').value = this.value;
         });
 
-        // Prevent double-submit
         document.getElementById('batchForm').addEventListener('submit', function () {
             var btn = document.getElementById('createBatchBtn');
             btn.disabled = true;
             btn.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #0d0d0d;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></span> Creating…';
         });
 
-        // Auto-open dashboard tab after successful batch creation (TempData["Success"])
-        @if (TempData["Success"] != null)
+        @if (Model.ShowBatchTab)
         {
                 <text>openBatchPanel('dashboard');</text>
         }
+        </text>
+        }
     </script>
-  
 }

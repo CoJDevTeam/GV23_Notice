@@ -92,9 +92,26 @@ namespace GV23_Notice.Controllers
             if (key == Guid.Empty) return BadRequest("Invalid workflow key.");
             var user = User?.Identity?.Name ?? "Unknown";
             var date = (batchDate ?? DateTime.Today).Date;
-            await _batchCreate.CreateBatchAsync(key, date, user, ct);
-            TempData["Success"] = "Batch created successfully.";
-            return RedirectToAction(nameof(Step2), new { key });
+
+            // Resolve settingsId so we can redirect back to Kickoff
+            var s = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ApprovalKey == key || x.WorkflowKey == key, ct);
+
+            if (s is null) return BadRequest("Workflow not found.");
+
+            try
+            {
+                await _batchCreate.CreateBatchAsync(key, date, user, ct);
+                TempData["Success"] = "Batch created successfully.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ex.Message;
+            }
+
+            // Always return to Kickoff so user stays in context
+            return RedirectToAction("Step3Kickoff", "Workflow", new { settingsId = s.Id, key });
         }
 
         // ── PRINT ───────────────────────────────────────────────────────────

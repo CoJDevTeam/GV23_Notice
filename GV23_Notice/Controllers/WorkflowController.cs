@@ -1300,12 +1300,23 @@ namespace GV23_Notice.Controllers
             var batchPrefix = ComputeBatchPrefix(s, shortCode);
             var batchesCreated = await _db.NoticeBatches.AsNoTracking()
                 .CountAsync(b => b.WorkflowKey == key && b.BatchKind == "STEP3", ct);
-            var lastBatch = await _db.NoticeBatches.AsNoTracking()
-                .Where(b => b.RollId == s.RollId && b.Notice == s.Notice
-                         && b.BatchKind == "STEP3"
-                         && b.BatchName.StartsWith(batchPrefix))
+
+            // Load all created batches for the dashboard tab (newest first)
+            var createdBatchList = await _db.NoticeBatches.AsNoTracking()
+                .Where(b => b.WorkflowKey == key && b.BatchKind == "STEP3")
                 .OrderByDescending(b => b.Id)
-                .FirstOrDefaultAsync(ct);
+                .Take(200)
+                .ToListAsync(ct);
+
+            var lastBatch = createdBatchList
+                .FirstOrDefault(b => b.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
+                ?? await _db.NoticeBatches.AsNoTracking()
+                    .Where(b => b.RollId == s.RollId && b.Notice == s.Notice
+                             && b.BatchKind == "STEP3"
+                             && b.BatchName.StartsWith(batchPrefix))
+                    .OrderByDescending(b => b.Id)
+                    .FirstOrDefaultAsync(ct);
+
             var nextSeq = 1;
             if (lastBatch != null && lastBatch.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
             {
@@ -1313,6 +1324,19 @@ namespace GV23_Notice.Controllers
                 if (int.TryParse(tail, out var parsed)) nextSeq = parsed + 1;
             }
             var nextBatchCode = $"{batchPrefix}{nextSeq:0000}";
+
+            var kickoffBatchRows = createdBatchList.Select(b => new GV23_Notice.Models.Workflow.ViewModels.KickoffBatchRowVm
+            {
+                BatchId = b.Id,
+                BatchName = b.BatchName,
+                BatchDate = b.BatchDate,
+                NumberOfRecords = b.NumberOfRecords,
+                CreatedBy = b.CreatedBy ?? "",
+                CreatedAtUtc = b.CreatedAtUtc,
+                IsApproved = b.IsApproved,
+                ApprovedBy = b.ApprovedBy,
+                ApprovedAtUtc = b.ApprovedAtUtc
+            }).ToList();
 
             var vm = new GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
             {
@@ -1371,6 +1395,10 @@ namespace GV23_Notice.Controllers
                 IsS52 = s.Notice == NoticeKind.S52,
                 S52IsReview = s52IsReview,
                 S52RangeCount = s52RangeCount,
+
+                // Batch dashboard — populated so the dashboard tab shows real rows
+                CreatedBatches = kickoffBatchRows,
+                ShowBatchTab = TempData["Success"] != null,
             };
 
             return View(vm);

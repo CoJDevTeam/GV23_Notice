@@ -2,6 +2,7 @@
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.DTOs;
+using GV23_Notice.Models.Workflow.ViewModels;
 using Microsoft.EntityFrameworkCore;
 
 namespace GV23_Notice.Services.Step3
@@ -26,9 +27,6 @@ namespace GV23_Notice.Services.Step3
 
             if (!s.IsApproved)
                 throw new InvalidOperationException("Step 1 must be approved before creating Step 3 batch.");
-
-            if (!s.Step2Approved && !s.Step2CorrectionRequested)
-                throw new InvalidOperationException("Step 2 must be approved or correction-requested before batch creation.");
 
             var roll = await _db.RollRegistry.AsNoTracking()
                            .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
@@ -211,6 +209,45 @@ namespace GV23_Notice.Services.Step3
                         var picked = await _db.Set<InBatchPickRow>()
                             .FromSqlRaw("EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @p0, @p1, @p2, @p3",
                                 s.RollId, isOmission, batchName, batchDateUtc)
+                            .ToListAsync(ct);
+
+                        var runLogs = picked
+                            .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                            .Select(x => new NoticeRunLog
+                            {
+                                NoticeBatchId = batch.Id,
+                                ObjectionNo = x.ObjectionNo,
+                                PremiseId = x.PremiseId,
+                                RecipientEmail = x.RecipientEmail,
+                                Status = RunStatus.Generated,
+                                CreatedAtUtc = nowUtc
+                            }).ToList();
+
+                        _db.NoticeRunLogs.AddRange(runLogs);
+                        batch.NumberOfRecords = runLogs.Count;
+                        await _db.SaveChangesAsync(ct);
+                        return batch.Id;
+                    }
+
+                case NoticeKind.S53:
+                    {
+                        if (!s.AppealCloseDate.HasValue)
+                            throw new InvalidOperationException("S53 batch requires AppealCloseDate to be calculated first (Step 1).");
+
+                        var appealCloseDate = s.AppealCloseDate.Value.Date;
+                        var sapNo = createdBy; // Windows identity = SAP number
+
+                        // SP inserts into [SourceDb].dbo.Objection_MVD applying the 3 objector-type rules
+                        // and runs InsertAuditTrail_MVD for each objection.
+                        // Returns one row per Objection_MVD row inserted.
+                        var picked = await _db.Set<S53BatchPickRow>()
+                            .FromSqlRaw(
+                                "EXEC dbo.S53_Step3_InsertTop500IntoMvdTable @p0, @p1, @p2, @p3, @p4",
+                                s.RollId,
+                                batchName,
+                                batchDateUtc,
+                                appealCloseDate,
+                                sapNo)
                             .ToListAsync(ct);
 
                         var runLogs = picked

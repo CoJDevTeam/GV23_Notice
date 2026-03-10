@@ -1,6 +1,7 @@
 ﻿using GV23_Notice.Domain.Rolls;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.DTOs;
+using GV23_Notice.Models.Workflow.ViewModels;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Reflection.Emit;
@@ -35,6 +36,8 @@ namespace GV23_Notice.Data
         public DbSet<S49BatchPickRow> S49BatchPickRows => Set<S49BatchPickRow>();
 
         public DbSet<S51BatchPickRow> S51BatchPickRows => Set<S51BatchPickRow>();
+        public DbSet<S53BatchPickRow> S53BatchPickRows => Set<S53BatchPickRow>();
+
 
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
 
@@ -44,6 +47,13 @@ namespace GV23_Notice.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+
+            modelBuilder.Entity<S53BatchPickRow>(entity =>
+            {
+                entity.HasNoKey();
+                entity.ToView(null);
+            });
 
             modelBuilder.Entity<NoticeSettings>(b =>
             {
