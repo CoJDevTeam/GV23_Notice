@@ -15,10 +15,12 @@ namespace GV23_Notice.Services.Step3
     public sealed class Step3PrintQueryService : IStep3PrintQueryService
     {
         private readonly AppDbContext _db;
+        private readonly IS52RangePrintService _s52Range;
 
-        public Step3PrintQueryService(AppDbContext db)
+        public Step3PrintQueryService(AppDbContext db, IS52RangePrintService s52Range)
         {
             _db = db;
+            _s52Range = s52Range;
         }
 
         public async Task<Step3PrintVm> BuildPrintVmAsync(Guid workflowKey, CancellationToken ct)
@@ -61,7 +63,7 @@ namespace GV23_Notice.Services.Step3
                 };
             }).ToList();
 
-            return new Step3PrintVm
+            var vm = new Step3PrintVm
             {
                 WorkflowKey = workflowKey,
                 RollId = s.RollId,
@@ -81,6 +83,21 @@ namespace GV23_Notice.Services.Step3
                 TotalFailed = rows.Sum(r => r.FailedCount),
                 Batches = rows
             };
+
+            // S52: populate range-print fields so Print view can show count + Print button
+            if (s.Notice == NoticeKind.S52)
+            {
+                vm.IsS52 = true;
+                vm.S52IsReview = s.IsSection52Review == true;
+                vm.S52SettingsId = s.Id;
+                vm.S52ApprovalKey = s.ApprovalKey ?? s.WorkflowKey ?? Guid.Empty;
+                vm.S52FromDate = s.BulkFromDate;
+                vm.S52ToDate = s.BulkToDate;
+                try { vm.S52RangeCount = await _s52Range.CountRangeAsync(s.Id, vm.S52IsReview, ct); }
+                catch { vm.S52RangeCount = 0; }
+            }
+
+            return vm;
         }
 
         public async Task<Step3SendEmailVm> BuildEmailVmAsync(Guid workflowKey, CancellationToken ct)
@@ -138,6 +155,8 @@ namespace GV23_Notice.Services.Step3
                 TotalPrinted = rows.Sum(r => r.PrintedCount),
                 TotalSent = rows.Sum(r => r.SentCount),
                 MaxEmailsPerSend = 2000,
+                IsS52 = s.Notice == NoticeKind.S52,
+                S52IsReview = s.IsSection52Review == true,
                 Batches = rows
             };
         }
@@ -160,6 +179,3 @@ namespace GV23_Notice.Services.Step3
         }
     }
 }
-
-
-

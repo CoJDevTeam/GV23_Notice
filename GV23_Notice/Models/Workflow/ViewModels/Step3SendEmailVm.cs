@@ -25,6 +25,10 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public int TotalSent { get; set; }   // already sent
         public int MaxEmailsPerSend { get; set; } = 2000;
 
+        // S52 flags — used to show the correct .eml save path in the view
+        public bool IsS52 { get; set; }
+        public bool S52IsReview { get; set; }
+
         public List<Step3EmailBatchRowVm> Batches { get; set; } = new();
     }
 

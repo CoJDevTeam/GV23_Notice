@@ -1,12 +1,15 @@
-﻿using GV23_Notice.Data;
+﻿using System.Data;
+using System.Globalization;
+using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Services.Notices.Section52;
 using GV23_Notice.Services.Storage;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using System.Data;
-using System.Globalization;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace GV23_Notice.Services.Step3
 {
@@ -125,7 +128,7 @@ namespace GV23_Notice.Services.Step3
             _db.NoticeBatches.Add(batch);
             await _db.SaveChangesAsync(ct);
 
-            // Header image
+            // Header image context (built once, reused per record)
             var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
             var ctx = new Section52PdfContext
             {
@@ -133,26 +136,33 @@ namespace GV23_Notice.Services.Step3
                 LetterDate = DateOnly.FromDateTime(s.LetterDate)
             };
 
-            // Process each row: build PDF → save → create run log → mark Printed
-            foreach (var row in rows)
+            // ── Step 1: Pre-insert ALL run logs as Generated ──────────────────
+            // This mirrors how Step3BatchService works — the polling endpoint
+            // watches Generated→Printed transitions, so logs must exist first.
+            var logs = rows.Select(row => new NoticeRunLog
+            {
+                NoticeBatchId = batch.Id,
+                AppealNo = row.AppealNo,
+                ObjectionNo = row.ObjectionNo,
+                PremiseId = row.PremiseId,
+                RecipientEmail = row.Email,
+                PropertyDesc = row.PropertyDesc,
+                RecipientName = row.Addr1,
+                Status = RunStatus.Generated,
+                CreatedAtUtc = nowUtc
+            }).ToList();
+
+            _db.NoticeRunLogs.AddRange(logs);
+            await _db.SaveChangesAsync(ct);   // All logs visible to polling as Generated
+
+            // ── Step 2: Process each record — build PDF → update log status ───
+            for (int i = 0; i < rows.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
 
-                // Build AppealDecisionRow from raw SP data
+                var row = rows[i];
+                var log = logs[i];
                 var appealRow = MapToAppealDecisionRow(row);
-
-                var log = new NoticeRunLog
-                {
-                    NoticeBatchId = batch.Id,
-                    AppealNo = row.AppealNo,
-                    ObjectionNo = row.ObjectionNo,
-                    PremiseId = row.PremiseId,
-                    RecipientEmail = row.Email,
-                    PropertyDesc = row.PropertyDesc,
-                    RecipientName = row.Addr1,
-                    Status = RunStatus.Generated,
-                    CreatedAtUtc = nowUtc
-                };
 
                 try
                 {
@@ -174,8 +184,7 @@ namespace GV23_Notice.Services.Step3
                     result.Failed++;
                 }
 
-                _db.NoticeRunLogs.Add(log);
-                await _db.SaveChangesAsync(ct);
+                await _db.SaveChangesAsync(ct);   // Polling sees Generated→Printed for this record
             }
 
             return result;

@@ -198,8 +198,10 @@ namespace GV23_Notice.Controllers
                 .Select(b => b.Id)
                 .ToListAsync(ct);
 
+            // No batches yet — job may still be starting (e.g. S52 range print is creating the batch).
+            // Return done=false so the progress overlay keeps polling rather than stopping at 0%.
             if (batchIds.Count == 0)
-                return Json(new { total = 0, printed = 0, sent = 0, failed = 0, generated = 0, done = true });
+                return Json(new { total = 0, printed = 0, sent = 0, failed = 0, generated = 0, done = false });
 
             var counts = await _db.NoticeRunLogs
                 .Where(r => batchIds.Contains(r.NoticeBatchId))

@@ -38,6 +38,9 @@ namespace GV23_Notice.Data
 
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
 
+        public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
+
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -196,6 +199,15 @@ namespace GV23_Notice.Data
             {
                 entity.HasNoKey();
                 entity.ToView(null);
+            });
+            modelBuilder.Entity<Domain.Workflow.Entities.PublicHoliday>(b =>
+            {
+                b.ToTable("PublicHolidays");
+                b.HasIndex(x => x.HolidayDate).IsUnique();
+                b.HasIndex(x => new { x.Year, x.ValuationPeriodCode });
+                b.Property(x => x.HolidayDate).HasConversion(
+                    d => d.ToDateTime(TimeOnly.MinValue),
+                    d => DateOnly.FromDateTime(d));
             });
         }
     }

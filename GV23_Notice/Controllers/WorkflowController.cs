@@ -214,7 +214,7 @@ namespace GV23_Notice.Controllers
                 if (!vm.AppealCloseOverridden)
                 {
                     var letter = DateOnly.FromDateTime(vm.LetterDate.Date);
-                    var close = await _s53Calc.CalculateAsync(vm.RollId, letter, 45, ct);
+                    var close = await _s53Calc.CalculateAsync(vm.ValuationPeriodCode, letter, 45, ct);
                     vm.AppealCloseDate = close.ToDateTime(TimeOnly.MinValue);
                 }
                 else
@@ -699,18 +699,19 @@ namespace GV23_Notice.Controllers
         }
 
         [HttpGet("CalcS53AppealCloseDate")]
-        public async Task<IActionResult> CalcS53AppealCloseDate(int rollId, DateTime letterDate, CancellationToken ct)
+        public async Task<IActionResult> CalcS53AppealCloseDate(
+            string? valuationPeriodCode,
+            DateTime letterDate,
+            CancellationToken ct)
         {
-            if (rollId <= 0) return BadRequest("rollId is required.");
-
             var close = await _s53Calc.CalculateAsync(
-                rollId,
+                valuationPeriodCode,
                 DateOnly.FromDateTime(letterDate.Date),
                 45,
                 ct
             );
 
-            // Return ISO for input[type=date]
+            // Return ISO string for input[type=date]
             return Ok(new { appealCloseDate = close.ToString("yyyy-MM-dd") });
         }
 

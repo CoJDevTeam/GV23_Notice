@@ -41,88 +41,7 @@
 
 @if (Model.IsS52)
 {
-    <!-- ════ S52 RANGE PRINT PANEL ════ -->
-    <div class="batch-overlay" id="batchOverlay">
-        <div class="batch-panel" id="batchPanel">
-
-            <div class="bp-header">
-                <div class="bp-header-left">
-                    <div class="bp-header-title">🖨 Range Print</div>
-                    <div class="bp-header-sub">@Model.RollShortCode &nbsp;·&nbsp; @noticeLabel</div>
-                </div>
-                <button class="bp-close" onclick="closeBatchPanel()" title="Close">✕</button>
-            </div>
-
-            <div class="bp-notice-badge">
-                <div class="bp-notice-icon">S52</div>
-                <div>
-                    <div class="bp-notice-name">@noticeLabel</div>
-                    <div class="bp-notice-roll">@Model.RollShortCode — @Model.RollName &nbsp;·&nbsp; v@Model.Version</div>
-                </div>
-                <span class="@s52BadgeClass" style="margin-left:auto;font-size:.65rem;">@s52SubTypeLabel</span>
-            </div>
-
-            <div class="bp-body">
-
-                <!-- Range info -->
-                <div class="bp-section-label">📅 Batch Range</div>
-                <div class="bp-field-group">
-                    <div class="bp-field">
-                        <div class="bp-label">Sub-Type</div>
-                        <div class="bp-val"><span class="@s52BadgeClass">@s52SubTypeLabel</span></div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">From Date</div>
-                        <div class="bp-val">@(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">To Date</div>
-                        <div class="bp-val">@(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                </div>
-
-                <!-- Record count -->
-                <div class="bp-records-block">
-                    <div class="bp-rec-num">@Model.S52RangeCount.ToString("N0")</div>
-                    <div class="bp-rec-label">
-                        <strong>Records in range</strong>
-                        @s52SubTypeLabel notices to print
-                    </div>
-                </div>
-
-                @if (Model.CreatedBatches.Count > 0)
-                {
-                    <div class="bp-section-label">📊 Already Printed</div>
-                    <div class="bp-field-group">
-                        <div class="bp-field" style="grid-column:span 2;">
-                            <div class="bp-label">Batches created</div>
-                            <div class="bp-val">@Model.CreatedBatches.Count batch@(Model.CreatedBatches.Count == 1 ? "" : "es") — @Model.CreatedBatches.Sum(b => b.NumberOfRecords).ToString("N0") records</div>
-                        </div>
-                    </div>
-                }
-
-                <div class="bp-warn-note">
-                    <span>ℹ️</span>
-                    <span>Printing generates a PDF for every record in the range and saves each to the Appeal No folder. This action cannot be undone.</span>
-                </div>
-            </div>
-
-            <div class="bp-footer">
-                <form asp-action="S52PrintRange" asp-controller="Step3" method="post">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                    <input type="hidden" name="isReview"   value="@Model.S52IsReview.ToString().ToLower()" />
-                    <input type="hidden" name="key"        value="@Model.ApprovalKey" />
-                    <button type="submit" class="btn-create-batch"
-                            @(Model.S52RangeCount == 0 ? "disabled" : "")>
-                        🖨 Print @Model.S52RangeCount.ToString("N0") Records
-                    </button>
-                </form>
-                <button class="btn-cancel-batch" onclick="closeBatchPanel()">Cancel</button>
-            </div>
-
-        </div>
-    </div>
+    <!-- S52: no batch slide panel — Print view handles the range print -->
 }
 else
 {
@@ -456,7 +375,7 @@ else
             <button class="btn-cancel-batch" onclick="closeBatchPanel()">Cancel</button>
         </div>
 
-  
+
 }
 <!-- ════════════════════════════════════════════════════════════
      FULL-SCREEN SHELL
@@ -655,22 +574,16 @@ else
 
                     <div class="s3-lock-note">
                         <span>ℹ️</span>
-                        <span>No batch creation — click Print Range to generate all PDFs at once.</span>
+                        <span>Click <strong>Go to Print</strong> to start printing all records in range.</span>
                     </div>
 
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button type="button" class="btn-open-batch-panel" onclick="openBatchPanel('create')" style="flex:1;"
-                            @(Model.S52RangeCount == 0 ? "disabled" : "")>
-                            🖨 Print Range (@Model.S52RangeCount.ToString("N0"))
-                        </button>
-                    </div>
+                    <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
+                       class="btn-open-batch-panel" style="display:block;text-align:center;text-decoration:none;">
+                        🖨 Go to Print
+                    </a>
 
                     @if (Model.CreatedBatches.Count > 0)
                     {
-                        <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
-                           class="btn-goto-print-sidebar">
-                            🖨 Go to Print Dashboard
-                        </a>
                         <a href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })"
                            class="btn-goto-print-sidebar" style="background:#1a7a4a;margin-top:6px;">
                             📧 Go to Send Email

@@ -10,7 +10,14 @@
     var cap = Model.MaxEmailsPerSend;
 }
 
-<link href="~/css/step3/step3kickoffcss.css" rel="stylesheet" />
+<link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
+
+<!-- PAGE LOADER -->
+<div id="pageLoader">
+    <div class="ld-logo">GV23 <span>Notices</span></div>
+    <div class="ld-spinner"></div>
+    <div class="ld-bar"><div class="ld-bar-fill"></div></div>
+</div>
 <style>
     .se-fs {
         position: fixed;
@@ -972,7 +979,15 @@
                     <div>
                         <div class="se-fl">.eml Copies Saved To</div>
                         <div class="se-fv" style="font-size:.65rem;color:#666;font-weight:400;word-break:break-all;line-height:1.5">
-                            [Root]\@(Model.RollShortCode)_@(Model.Notice)\Batches\[BatchName]_Emails\[PropertyDesc].eml
+                            @if (Model.IsS52)
+                            {
+                                var s52Sub = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
+                                <text>[Appeal Root]\[Appeal_No]\@s52Sub\[Appeal_No]_[PropertyDesc]_@(Model.S52IsReview ? "S52" : "AD").eml</text>
+                            }
+                            else
+                            {
+                                <text>[Root]\@(Model.RollShortCode)_@(Model.Notice)\Batches\[BatchName]_Emails\[PropertyDesc].eml</text>
+                            }
                         </div>
                     </div>
                 </div>
@@ -1133,7 +1148,17 @@
             <div class="ep-chip"><div class="ep-chip-num red" id="epChipFailed">0</div><div class="ep-chip-lbl">Failed</div></div>
             <div class="ep-chip"><div class="ep-chip-num grey" id="epChipNoEmail">0</div><div class="ep-chip-lbl">No Email</div></div>
         </div>
-        <div class="ep-path">📁 .eml copies: <code>[Root]\@(Model.RollShortCode)_@(Model.Notice)\Batches\[BatchName]_Emails\[Property].eml</code></div>
+        <div class="ep-path">📁 .eml copies:
+            @if (Model.IsS52)
+            {
+                var s52Sub = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
+                <code>[Appeal Root]\[Appeal_No]\@s52Sub\[Appeal_No]_[PropertyDesc]_@(Model.S52IsReview ? "S52" : "AD").eml</code>
+            }
+            else
+            {
+                <code>[Root]\@(Model.RollShortCode)_@(Model.Notice)\Batches\[BatchName]_Emails\[Property].eml</code>
+            }
+        </div>
         <div class="ep-working" id="epWorking"><span class="ep-pulse">✉️ Sending in progress…</span></div>
         <div class="ep-done-banner" id="epDoneBanner">
             <div class="ep-done-icon">🎉</div>
@@ -1244,5 +1269,19 @@
             document.getElementById('epOverlay').classList.remove('active');
             window.location.reload();
         }
+
+        // ── Page loader dismiss ───────────────────────────────────
+        (function () {
+            function dismiss() {
+                var el = document.getElementById('pageLoader');
+                if (el) el.classList.add('hidden');
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function () { setTimeout(dismiss, 350); });
+            } else {
+                setTimeout(dismiss, 350);
+            }
+            setTimeout(dismiss, 2000);
+        })();
     </script>
 }

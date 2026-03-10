@@ -27,6 +27,20 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public int TotalFailed { get; set; }
 
         public List<Step3PrintBatchRowVm> Batches { get; set; } = new();
+
+        // ── S52 range-print (no batch creation) ─────────────────────────────
+        /// <summary>True when this workflow is a Section 52 notice.</summary>
+        public bool IsS52 { get; set; }
+        /// <summary>True = Review sub-type, False = Appeal Decision.</summary>
+        public bool S52IsReview { get; set; }
+        /// <summary>Total records in the configured date range.</summary>
+        public int S52RangeCount { get; set; }
+        /// <summary>SettingsId — needed so Print view can POST to S52PrintRange.</summary>
+        public int S52SettingsId { get; set; }
+        /// <summary>ApprovalKey — needed for S52PrintRange redirect.</summary>
+        public Guid S52ApprovalKey { get; set; }
+        public DateTime? S52FromDate { get; set; }
+        public DateTime? S52ToDate { get; set; }
     }
 
     public sealed class Step3PrintBatchRowVm
