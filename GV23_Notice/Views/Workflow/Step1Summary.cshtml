@@ -154,6 +154,58 @@
                     </div>
                 }
 
+                <!-- S52 block -->
+                @if (Model.Notice == NoticeKind.S52)
+                {
+                    <div class="wf-card">
+                        <div class="wf-card-title">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+                            Appeal Notices — Backlog Processing
+                        </div>
+                        <div class="wf-detail-list">
+                            <div class="wf-detail-row">
+                                <span class="wf-detail-label">Sub-Type to Send</span>
+                                <span class="wf-detail-value">
+                                    @if (Model.S52SendMode == S52SendMode.ReviewOnly)
+                                    {
+                                        <span class="wf-badge" style="background:#e8eeff;color:#3355cc;">Section 52 Review Notice only</span>
+                                    }
+                                    else if (Model.S52SendMode == S52SendMode.AppealDecisionOnly)
+                                    {
+                                        <span class="wf-badge" style="background:#fff3cd;color:#856404;">Appeal Decision Notice only</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="wf-badge" style="background:#e8f5e9;color:#1b5e20;">Both — Section 52 Review AND Appeal Decision</span>
+                                    }
+                                </span>
+                            </div>
+                            @if (Model.ShowReview)
+                            {
+                                <div class="wf-detail-row">
+                                    <span class="wf-detail-label">Review Batch From</span>
+                                    <span class="wf-detail-value mono">@(Model.BulkFromDate?.ToString("yyyy-MM-dd") ?? "—")</span>
+                                </div>
+                                <div class="wf-detail-row">
+                                    <span class="wf-detail-label">Review Batch To</span>
+                                    <span class="wf-detail-value mono">@(Model.BulkToDate?.ToString("yyyy-MM-dd") ?? "—")</span>
+                                </div>
+                            }
+                            @if (Model.ShowAppealDecision)
+                            {
+                                <div class="wf-detail-row">
+                                    <span class="wf-detail-label">Appeal Decision Batch From</span>
+                                    <span class="wf-detail-value mono">@(Model.BulkFromDate?.ToString("yyyy-MM-dd") ?? "—")</span>
+                                </div>
+                                <div class="wf-detail-row">
+                                    <span class="wf-detail-label">Appeal Decision Batch To</span>
+                                    <span class="wf-detail-value mono">@(Model.BulkToDate?.ToString("yyyy-MM-dd") ?? "—")</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
                 <!-- S53 block -->
                 @if (Model.Notice == NoticeKind.S53)
                 {
@@ -337,17 +389,17 @@
         /* ── TempData toasts ── */
         @if (TempData["Error"] != null)
         {
-                <text>
-                document.addEventListener("DOMContentLoaded", () =>
-                    WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
-                </text>
+                    <text>
+                    document.addEventListener("DOMContentLoaded", () =>
+                        WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
+                    </text>
         }
         @if (TempData["Success"] != null)
         {
-                <text>
-                document.addEventListener("DOMContentLoaded", () =>
-                    WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
-                </text>
+                    <text>
+                    document.addEventListener("DOMContentLoaded", () =>
+                        WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
+                    </text>
         }
 
         /* ── Approve form ── */

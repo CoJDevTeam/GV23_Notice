@@ -40,6 +40,7 @@ namespace GV23_Notice.Controllers
         private readonly IPreviewDbDataService _previewRepo;
         private readonly ITempFileStore _tempFiles;
         private readonly INoticeStep2SnapshotService _snap;
+        private readonly GV23_Notice.Services.Step3.IS52RangePrintService _s52Range;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -53,7 +54,9 @@ namespace GV23_Notice.Controllers
      IS49RollRepository s49Roll,
      INoticeSettingsAuditService audit,
      IPreviewDbDataService previewDb,
-     ITempFileStore tempFiles, INoticeStep2SnapshotService snap)   // ✅ add
+     ITempFileStore tempFiles,
+     INoticeStep2SnapshotService snap,
+     GV23_Notice.Services.Step3.IS52RangePrintService s52Range)
         {
             _db = db;
             _settings = settings;
@@ -69,6 +72,7 @@ namespace GV23_Notice.Controllers
             _audit = audit;
             _previewRepo = previewDb;
             _snap = snap;
+            _s52Range = s52Range;
 
             _tempFiles = tempFiles;     // ✅ assign
         }
@@ -347,7 +351,7 @@ namespace GV23_Notice.Controllers
                 // s52
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
-                IsSection52Review = s.IsSection52Review,
+                S52SendMode = s.S52SendMode,
 
                 // s53
                 BatchDate = s.BatchDate,
@@ -597,7 +601,7 @@ namespace GV23_Notice.Controllers
                 // S52
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
-                IsSection52Review = s.IsSection52Review,
+                S52SendMode = s.S52SendMode,
 
                 // S53
                 BatchDate = s.BatchDate,
@@ -637,7 +641,14 @@ namespace GV23_Notice.Controllers
 
             e.BulkFromDate = vm.BulkFromDate?.Date;
             e.BulkToDate = vm.BulkToDate?.Date;
-            e.IsSection52Review = vm.IsSection52Review;
+
+            // S52 send-mode (drives which sub-type to show Data Team)
+            if (vm.Notice == NoticeKind.S52)
+            {
+                e.S52SendMode = vm.S52SendMode;
+                // Keep legacy bool in sync for batch-naming and email template
+                e.IsSection52Review = vm.S52SendMode == S52SendMode.ReviewOnly;
+            }
 
             e.BatchDate = vm.BatchDate?.Date;
             e.AppealCloseDate = vm.AppealCloseDate?.Date;
@@ -725,14 +736,14 @@ namespace GV23_Notice.Controllers
             var v = PreviewVariantParser.Parse(variant);
             var m = PreviewModeParser.Parse(mode);
 
-            // ✅ Section 52 needs appealNo
-            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(appealNo))
+            // For S52: default variant based on SendMode when not explicitly chosen
+            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(variant))
             {
-                TempData["Error"] = "Appeal No is required for Section 52 previews.";
-                return RedirectToAction(nameof(Step1), new { settingsId });
+                variant = s.S52SendMode == S52SendMode.ReviewOnly ? "S52Review" : "S52Appeal";
+                v = PreviewVariantParser.Parse(variant);
             }
 
-            // 3) Build preview (REAL DB row via stored procs inside service)
+            // 3) Build preview — S52 uses date-range lookup (no appealNo needed from URL)
             var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
 
             // 4) Save pdf to temp and get URL for iframe
@@ -788,7 +799,7 @@ namespace GV23_Notice.Controllers
 
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
-                IsSection52Review = s.IsSection52Review,
+                S52SendMode = s.S52SendMode,
 
                 BatchDate = s.BatchDate,
                 AppealCloseDate = s.AppealCloseDate
@@ -1042,21 +1053,16 @@ namespace GV23_Notice.Controllers
             if (string.IsNullOrWhiteSpace(kickoffBaseUrl))
                 throw new InvalidOperationException("Could not build Step3Kickoff URL.");
 
-            // For S52 we must embed the appealNo AND the variant so the Data Team
-            // can click the link without getting a BadRequest.  We also generate a
-            // second link for the opposite S52 variant so both can be in one email.
-            string? s52AppealKickoffUrl = null;
-            string? s52ReviewKickoffUrl = null;
-
-            if (s.Notice == NoticeKind.S52 && !string.IsNullOrWhiteSpace(dto.AppealNo))
+            // S52: build separate kickoff URLs per sub-type so Data Team gets individual links
+            string? appealKickoffUrl = null;
+            string? reviewKickoffUrl = null;
+            if (s.Notice == NoticeKind.S52)
             {
-                s52AppealKickoffUrl = Url.Action(nameof(Step3Kickoff), "Workflow",
-                    new { settingsId = s.Id, appealNo = dto.AppealNo, variant = "S52Appeal" },
-                    protocol: Request.Scheme);
-
-                s52ReviewKickoffUrl = Url.Action(nameof(Step3Kickoff), "Workflow",
-                    new { settingsId = s.Id, appealNo = dto.AppealNo, variant = "S52Review" },
-                    protocol: Request.Scheme);
+                var join = kickoffBaseUrl.Contains('?') ? "&" : "?";
+                if (s.S52SendMode != S52SendMode.ReviewOnly)
+                    appealKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&variant=S52Appeal";
+                if (s.S52SendMode != S52SendMode.AppealDecisionOnly)
+                    reviewKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&variant=S52Review";
             }
 
             var (approvalSubject, approvalBodyHtml) = _wfEmails.BuildApprovalEmail(
@@ -1065,8 +1071,8 @@ namespace GV23_Notice.Controllers
                 approvedBy,
                 s.ApprovalKey.Value,
                 kickoffBaseUrl,
-                appealKickoffUrl: s52AppealKickoffUrl,
-                reviewKickoffUrl: s52ReviewKickoffUrl);
+                appealKickoffUrl,
+                reviewKickoffUrl);
 
             var domain = ResolveDomain(s.Notice);
 
@@ -1259,8 +1265,26 @@ namespace GV23_Notice.Controllers
             var v = PreviewVariantParser.Parse(variant);
             var m = PreviewModeParser.Parse(mode);
 
-            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(appealNo))
-                return BadRequest("AppealNo is required for Section 52 in Step 3 kickoff.");
+            // ── S52: default variant from S52SendMode when not supplied ──────
+            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(variant))
+            {
+                variant = s.S52SendMode switch
+                {
+                    Domain.Workflow.S52SendMode.ReviewOnly => "S52Review",
+                    Domain.Workflow.S52SendMode.AppealDecisionOnly => "S52Appeal",
+                    _ => "S52Review"  // Both: default Review
+                };
+                v = PreviewVariantParser.Parse(variant);
+            }
+
+            // ── S52 range count (shown in kickoff panel instead of batch info) ─
+            var s52RangeCount = 0;
+            var s52IsReview = (v == PreviewVariant.S52ReviewDecision);
+            if (s.Notice == NoticeKind.S52)
+            {
+                try { s52RangeCount = await _s52Range.CountRangeAsync(s.Id, s52IsReview, ct); }
+                catch (Exception ex) { _log.LogWarning(ex, "S52 range count failed for settingsId={Id}", s.Id); }
+            }
 
             var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
 
@@ -1319,7 +1343,6 @@ namespace GV23_Notice.Controllers
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
                 IsSection52Review = s.IsSection52Review,
-               
                 S53BatchDate = s.BatchDate,
                 AppealCloseDate = s.AppealCloseDate,
                 ExtractionDate = s.ExtractionDate,
@@ -1341,7 +1364,12 @@ namespace GV23_Notice.Controllers
 
                 SelectedVariant = string.IsNullOrWhiteSpace(variant) ? "Default" : variant!,
                 SelectedMode = string.IsNullOrWhiteSpace(mode) ? "single" : mode!,
-                AppealNo = appealNo
+                AppealNo = appealNo,
+
+                // S52 range-print
+                IsS52 = s.Notice == NoticeKind.S52,
+                S52IsReview = s52IsReview,
+                S52RangeCount = s52RangeCount,
             };
 
             return View(vm);

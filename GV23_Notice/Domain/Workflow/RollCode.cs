@@ -52,4 +52,10 @@
         NoEmail = 4,
             Printed = 5
     }
+    public enum S52SendMode
+    {
+        ReviewOnly = 1,
+        AppealDecisionOnly = 2,
+        Both = 3
+    }
 }

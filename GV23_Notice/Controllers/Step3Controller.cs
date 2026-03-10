@@ -19,6 +19,7 @@ namespace GV23_Notice.Controllers
         private readonly INoticeBatchPrintService _print;
         private readonly IStep3PrintQueryService _printQuery;
         private readonly INoticeBatchEmailService _emailSvc;
+        private readonly IS52RangePrintService _s52Range;
         private readonly AppDbContext _db;
 
         public Step3Controller(
@@ -29,6 +30,7 @@ namespace GV23_Notice.Controllers
             INoticeBatchPrintService print,
             IStep3PrintQueryService printQuery,
             INoticeBatchEmailService emailSvc,
+            IS52RangePrintService s52Range,
             AppDbContext db)
         {
             _svc = svc;
@@ -38,6 +40,7 @@ namespace GV23_Notice.Controllers
             _print = print;
             _printQuery = printQuery;
             _emailSvc = emailSvc;
+            _s52Range = s52Range;
             _db = db;
         }
 
@@ -127,6 +130,24 @@ namespace GV23_Notice.Controllers
             TempData["Success"] = $"All batches printed: {res.Printed} notices saved across {res.TotalBatches} batches. " +
                                   (res.Failed > 0 ? $"{res.Failed} failed." : "");
             return RedirectToAction(nameof(Print), new { key });
+        }
+
+        // ── S52 RANGE PRINT ─────────────────────────────────────────────────
+        // Skips batch-creation UI — creates tracking batch + prints all in one call.
+        [HttpPost("S52PrintRange")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> S52PrintRange(
+            int settingsId, bool isReview, Guid key, CancellationToken ct)
+        {
+            if (settingsId <= 0) return BadRequest("Invalid settingsId.");
+            var user = User?.Identity?.Name ?? "Unknown";
+
+            var res = await _s52Range.PrintRangeAsync(settingsId, isReview, user, ct);
+
+            TempData["Success"] = $"S52 print complete: {res.Printed} saved." +
+                                  (res.Failed > 0 ? $" {res.Failed} failed." : "");
+
+            return RedirectToAction(nameof(Print), new { key = res.WorkflowKey });
         }
 
         // ── SEND EMAIL ──────────────────────────────────────────────────────

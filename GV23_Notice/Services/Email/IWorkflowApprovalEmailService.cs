@@ -29,6 +29,7 @@ namespace GV23_Notice.Services.Email
             RollRegistry roll,
             string requestedBy,
             string reason,
-            Guid workflowKey, string step2Url);
+            Guid workflowKey,
+            string step2Url);
     }
 }

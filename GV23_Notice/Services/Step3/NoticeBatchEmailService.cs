@@ -110,10 +110,27 @@ namespace GV23_Notice.Services.Email
                     var req = BuildEmailRequest(settings, roll, log);
                     var (subject, bodyHtml) = _templates.Build(req);
 
-                    // Save .eml copy to disk
-                    var emlPath = _paths.BuildBatchEmlPath(
-                        roll, settings.Notice, batchName,
-                        log.PropertyDesc ?? log.ObjectionNo ?? log.PremiseId ?? log.Id.ToString());
+                    string emlPath;
+                    if (settings.Notice == NoticeKind.S51)
+                    {
+                        var emlKey = log.ObjectionNo ?? log.PremiseId ?? log.Id.ToString();
+                        var emlDesc = log.PropertyDesc ?? emlKey;
+                        emlPath = _paths.BuildS51EmlPath(roll, emlKey, emlDesc);
+                    }
+                    else if (settings.Notice == NoticeKind.S52)
+                    {
+                        var isReview = settings.IsSection52Review == true;
+                        var emlKey = log.AppealNo ?? log.Id.ToString();
+                        var emlDesc = log.PropertyDesc ?? emlKey;
+                        emlPath = _paths.BuildS52EmlPath(roll, emlKey, emlDesc, isReview);
+                    }
+                    else
+                    {
+                        emlPath = _paths.BuildBatchEmlPath(
+                            roll, settings.Notice, batchName,
+                            log.PropertyDesc ?? log.ObjectionNo ?? log.PremiseId ?? log.Id.ToString());
+                    }
+
 
                     await SaveEmlAsync(emlPath, log.RecipientEmail!, subject, bodyHtml, log.PdfPath!, ct);
                     log.EmlPath = emlPath;

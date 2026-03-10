@@ -13,8 +13,8 @@ namespace GV23_Notice.Services.Preview
         private readonly string _noticeDbConnStr;
         private readonly AppDbContext _db;
 
-      
-        public PreviewDbDataService(IConfiguration cfg,AppDbContext db)
+
+        public PreviewDbDataService(IConfiguration cfg, AppDbContext db)
         {
             _db = db;
             _noticeDbConnStr = cfg.GetConnectionString("DefaultConnection")
@@ -138,7 +138,7 @@ namespace GV23_Notice.Services.Preview
                 PremiseId = row.Str("Premise_iD") ?? row.Str("PremiseId"),
                 PropertyDesc = row.Str("Property_desc") ?? row.Str("PropertyDesc"),
                 Email = row.Str("Email") ?? row.Str("EMAIL_ADDR"),
-                valuationKey= row.Str("Valuation_Key"),
+                valuationKey = row.Str("Valuation_Key"),
                 Addr1 = row.Str("ADDR1"),
                 Addr2 = row.Str("ADDR2"),
                 Addr3 = row.Str("ADDR3"),
@@ -171,7 +171,7 @@ namespace GV23_Notice.Services.Preview
                 Old2MarketValue = row.Str("Old2_Market_Value"),
                 Old3MarketValue = row.Str("Old3_Market_Value"),
 
-               
+
                 // Section 6 new
                 NewCategory = row.Str("New_Category"),
                 New2Category = row.Str("New2_Category"),
@@ -191,17 +191,35 @@ namespace GV23_Notice.Services.Preview
         }
         public async Task<S52PreviewDbData> S52PreviewDbDataAsync(int rollId, string appealNo, bool isReview, CancellationToken ct)
         {
+            // appealNo may be empty when coming from date-range preview (Step2 backlog flow)
+            // Use the date-range SPs when appealNo is blank
+            string proc;
             if (string.IsNullOrWhiteSpace(appealNo))
-                throw new ArgumentException("AppealNo is required.", nameof(appealNo));
-
-            var proc = isReview
-                ? "dbo.S52_Preview_SelectReviewTop1"
-                : "dbo.S52_Preview_SelectAppealTop1";
+            {
+                proc = isReview
+                    ? "dbo.S52_Preview_SelectReviewByRange"
+                    : "dbo.S52_Preview_SelectAppealByRange";
+            }
+            else
+            {
+                proc = isReview
+                    ? "dbo.S52_Preview_SelectReviewTop1"
+                    : "dbo.S52_Preview_SelectAppealTop1";
+            }
 
             var row = await ExecSingleAsync(proc, cmd =>
             {
                 cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
-                cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50) { Value = appealNo.Trim() });
+                if (string.IsNullOrWhiteSpace(appealNo))
+                {
+                    // Date-range SPs — pass null dates → SP returns top 1 across all dates
+                    cmd.Parameters.Add(new SqlParameter("@FromDate", SqlDbType.Date) { Value = DBNull.Value });
+                    cmd.Parameters.Add(new SqlParameter("@ToDate", SqlDbType.Date) { Value = DBNull.Value });
+                }
+                else
+                {
+                    cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50) { Value = appealNo.Trim() });
+                }
             }, ct);
 
             if (row is null)
@@ -470,7 +488,7 @@ namespace GV23_Notice.Services.Preview
             return snap;
         }
 
-      
+
         public async Task<NoticePreviewSnapshot> InvalidByObjectionNoAsync(int settingsId, string objectionNo, bool isOmission, CancellationToken ct)
         {
             var variant = isOmission ? "InvalidOmission" : "InvalidObjection";
@@ -519,4 +537,3 @@ namespace GV23_Notice.Services.Preview
 
     }
 }
-

@@ -5,7 +5,7 @@
     var rolls = ViewBag.Rolls as List<SelectListItem> ?? new List<SelectListItem>();
 }
 
-<link href="~/css/admincss/step1css.css" rel="stylesheet" />
+<link href="~/css/admincss/step1css1.css" rel="stylesheet" />
 <!-- ════════════ LOADER ════════════ -->
 <div id="wf-loader" role="status" aria-label="Loading">
     <div class="wf-spinner"></div>
@@ -77,7 +77,7 @@
                         <select id="noticeSelect" name="Notice">
                             <option value="S49" selected="@(Model.Notice == NoticeKind.S49)">Section 49 (S49)</option>
                             <option value="S51" selected="@(Model.Notice == NoticeKind.S51)">Section 51 (S51)</option>
-                            <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Section 52 (S52)</option>
+                            <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Appeal Notice (S52/AD)</option>
                             <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 (S53)</option>
                             <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny (DJ)</option>
                             <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity (IN)</option>
@@ -169,46 +169,64 @@
                     </div>
                 </div>
 
-                <!-- S52 -->
+                <!-- S52 — Appeal Notices -->
                 <div id="blockS52" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S52</span> Section 52 — Bulk Approval</div>
+                    <div class="nb-header"><span class="nb-pill">S52</span> Appeal Notices &mdash; Backlog Processing</div>
 
-                    <!-- Sub-type selector: Appeal Decision vs Section 52 Review -->
-                    <div class="wf-row c2" style="margin-bottom:14px;">
-                        <div class="wf-field">
-                            <label>Sub-type <span class="opt">(required)</span></label>
-                            <div style="display:flex;gap:24px;margin-top:6px;">
-                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
-                                    <input type="radio" name="IsSection52Review" value="false"
-                                           id="s52SubAD"
-                                           @(Model != null && Model.IsSection52Review == false ? "checked" : (Model == null ? "checked" : ""))
-                                           onchange="onS52SubTypeChange()" />
-                                    Appeal Decision
-                                </label>
-                                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;">
-                                    <input type="radio" name="IsSection52Review" value="true"
-                                           id="s52SubRV"
-                                           @(Model != null && Model.IsSection52Review == true ? "checked" : "")
-                                           onchange="onS52SubTypeChange()" />
-                                    Section 52 Review
-                                </label>
-                            </div>
-                            <span class="hint" style="margin-top:6px;display:block;">
-                                <b>Appeal Decision</b> — Outcome of a valuation appeal (A_UserID ≠ "System_Generated").<br />
-                                <b>Section 52 Review</b> — Municipal Valuer self-review decision (A_UserID = "System_Generated").
-                            </span>
+                    <div class="wf-field" style="margin-bottom:14px;">
+                        <label style="font-weight:600;margin-bottom:8px;display:block;">Select which notice(s) to send to Data Team <span style="color:#c00;">*</span></label>
+                        <div class="s52-radio-group">
+                            <label class="s52-radio-opt">
+                                <input type="radio" name="S52SendMode" value="1"
+                                       @(Model.S52SendMode == S52SendMode.ReviewOnly ? "checked" : "")
+                                       onchange="onS52ModeChange(this)" />
+                                <span class="s52-radio-label">
+                                    <strong>Section 52 Review Notice</strong>
+                                    <small>Municipal Valuer review of objection outcome</small>
+                                </span>
+                            </label>
+                            <label class="s52-radio-opt">
+                                <input type="radio" name="S52SendMode" value="2"
+                                       @(Model.S52SendMode == S52SendMode.AppealDecisionOnly ? "checked" : "")
+                                       onchange="onS52ModeChange(this)" />
+                                <span class="s52-radio-label">
+                                    <strong>Appeal Decision Notice</strong>
+                                    <small>Valuation Appeal Board decision outcome</small>
+                                </span>
+                            </label>
+                            <label class="s52-radio-opt">
+                                <input type="radio" name="S52SendMode" value="3"
+                                       @((int)Model.S52SendMode == 3 || (int)Model.S52SendMode == 0 ? "checked" : "")
+                                       onchange="onS52ModeChange(this)" />
+                                <span class="s52-radio-label">
+                                    <strong>Both</strong>
+                                    <small>Send Section 52 Review AND Appeal Decision notices</small>
+                                </span>
+                            </label>
                         </div>
+                        <input type="hidden" asp-for="S52SendMode" id="s52SendModeHidden" />
                     </div>
 
-                    <div id="blockS52Bulk" style="display:none;">
+                    <div id="blockS52Review" style="display:none;">
+                        <div class="nb-header" style="font-size:12px;background:#f0f4ff;border-left:3px solid #4a6cf7;padding:6px 12px;margin-bottom:10px;">
+                            Section 52 Review &mdash; Batch Date Range
+                        </div>
                         <div class="wf-row c2">
-                            <div class="wf-field"><label>Bulk From Date</label><input type="date" asp-for="BulkFromDate" /></div>
-                            <div class="wf-field"><label>Bulk To Date</label><input type="date" asp-for="BulkToDate" /></div>
+                            <div class="wf-field"><label>Batch Date From</label><input type="date" asp-for="BulkFromDate" /></div>
+                            <div class="wf-field"><label>Batch Date To</label><input type="date" asp-for="BulkToDate" /></div>
                         </div>
-                        <span class="hint" style="margin-top:8px;display:block;">Bulk date range filters on the Appeal/Review decision date in the roll DB. The To date is inclusive (end-of-day).</span>
+                        <span class="hint" style="margin-top:8px;display:block;">Reads Batch_Date from the Review table within this range. Returns top 1 record (top 3 for split properties).</span>
                     </div>
-                    <div id="blockS52Single" style="display:none;">
-                        <span class="hint">Single mode: the Letter Date is used as the single-day query range.</span>
+
+                    <div id="blockS52Appeal" style="display:none;">
+                        <div class="nb-header" style="font-size:12px;background:#fff4e0;border-left:3px solid #e6a800;padding:6px 12px;margin-bottom:10px;">
+                            Appeal Decision &mdash; Batch Date Range
+                        </div>
+                        <div class="wf-row c2">
+                            <div class="wf-field"><label>Batch Date From</label><input type="date" asp-for="BulkFromDate" /></div>
+                            <div class="wf-field"><label>Batch Date To</label><input type="date" asp-for="BulkToDate" /></div>
+                        </div>
+                        <span class="hint" style="margin-top:8px;display:block;">Reads Batch_Date from the Appeal Decision table within this range. Returns top 1 record (top 3 for split properties).</span>
                     </div>
                 </div>
 
@@ -481,15 +499,6 @@
             out.value = toIsoDate(dt);
         }
 
-        function onS52SubTypeChange() {
-            // Keep the hidden asp-for field in sync with the radio buttons
-            // (The radio uses name="IsSection52Review" so it posts directly, but
-            //  we also update the hidden field for model binding safety.)
-            const rv = document.querySelector('input[name="IsSection52Review"]:checked')?.value === "true";
-            const hidden = document.querySelector('input[type="hidden"][name="IsSection52Review"]');
-            if (hidden) hidden.value = rv ? "true" : "false";
-        }
-
         async function calcS53AppealClose() {
             if (document.getElementById("noticeSelect")?.value !== "S53") return;
             if (document.getElementById("overrideS53")?.checked) return;
@@ -577,6 +586,29 @@
             document.getElementById("fyStart").value = start;
             document.getElementById("fyEnd").value   = end;
             document.getElementById("fyText").value  = text;
+        });
+
+        // ── S52 radio: show/hide date sub-blocks and sync hidden field ────────
+        function onS52ModeChange(radio) {
+            if (radio) document.getElementById('s52SendModeHidden').value = radio.value;
+            onS52ModeChangeFromValue();
+        }
+        function onS52ModeChangeFromValue() {
+            const val = parseInt(document.getElementById('s52SendModeHidden').value || '3');
+            // 1=ReviewOnly, 2=AppealDecisionOnly, 3=Both
+            document.getElementById('blockS52Review').style.display  = (val === 1 || val === 3) ? 'block' : 'none';
+            document.getElementById('blockS52Appeal').style.display  = (val === 2 || val === 3) ? 'block' : 'none';
+            // sync radio buttons
+            document.querySelectorAll('input[name="S52SendMode"]').forEach(r => {
+                r.checked = (parseInt(r.value) === val);
+            });
+        }
+        // Run on load to restore state from model
+        document.addEventListener('DOMContentLoaded', function() {
+            if (document.getElementById('blockS52') &&
+                document.getElementById('blockS52').style.display !== 'none') {
+                onS52ModeChangeFromValue();
+            }
         });
     </script>
 }

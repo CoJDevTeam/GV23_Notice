@@ -43,7 +43,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"]</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link href="~/css/step2css.css" rel="stylesheet" />
+   @*  <link href="~/css/step2css.css" rel="stylesheet" /> *@
+    <link href="~/css/admincss/step2css.css" rel="stylesheet" />
 </head>
 <body>
 
@@ -104,41 +105,39 @@
         }
         else if (isS52)
         {
+            bool canReview = Model.S52CanShowReview;
+            bool canAppeal = Model.S52CanShowAppealDecision;
             <div class="tab-row">
                 <span class="tab-label">Variant</span>
-                <a class="tab-btn @((selectedVariant == "S52Appeal" || selectedVariant == "Default") ? "active" : "")"
-                   href="@Step2Link("S52Appeal", selectedMode)">Appeal Decision</a>
-                <a class="tab-btn @(selectedVariant == "S52Review" ? "active" : "")"
-                   href="@Step2Link("S52Review", selectedMode)">Section 52 Review</a>
+                @if (canAppeal)
+                {
+                    <a class="tab-btn @((selectedVariant == "S52Appeal" || selectedVariant == "Default") ? "active" : "")"
+                       href="@Step2Link("S52Appeal", selectedMode)">Appeal Decision</a>
+                }
+                else
+                {
+                    <span class="tab-btn tab-disabled" title="Not selected on Step 1 — change Sub-Type to include Appeal Decision">Appeal Decision</span>
+                }
+                @if (canReview)
+                {
+                    <a class="tab-btn @(selectedVariant == "S52Review" ? "active" : "")"
+                       href="@Step2Link("S52Review", selectedMode)">Section 52 Review</a>
+                }
+                else
+                {
+                    <span class="tab-btn tab-disabled" title="Not selected on Step 1 — change Sub-Type to include Section 52 Review">Section 52 Review</span>
+                }
                 <div class="tab-divider"></div>
                 <span class="tab-label">Mode</span>
                 <a class="tab-btn @(selectedMode == "single" ? "active" : "")" href="@Step2LinkKeepVariant("single")">Single</a>
                 <a class="tab-btn @(selectedMode == "emailmulti" ? "active" : "")" href="@Step2LinkKeepVariant("emailmulti")">Email Multi</a>
             </div>
-            @* AppealNo lookup — required to load an S52 preview from the DB *@
-            <div class="tab-row" style="margin-top:8px;align-items:center;gap:10px;flex-wrap:wrap;">
-                <span class="tab-label">Appeal No</span>
-                <form method="get" action="@Url.Action("Step2","Workflow")" style="display:flex;gap:8px;align-items:center;">
-                    <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                    <input type="hidden" name="variant" value="@selectedVariant" />
-                    <input type="hidden" name="mode" value="@selectedMode" />
-                    <input type="text" name="appealNo" value="@Model.AppealNo"
-                           placeholder="e.g. APL-GV23-0001"
-                           style="font-size:12px;padding:5px 9px;border:1px solid #ccc;border-radius:4px;width:200px;" />
-                    <button type="submit"
-                            style="font-size:12px;padding:5px 12px;background:#e6b000;border:none;border-radius:4px;cursor:pointer;font-weight:600;">
-                        Load Preview
-                    </button>
-                    @if (!string.IsNullOrWhiteSpace(Model.AppealNo))
-                    {
-                        <span style="font-size:11px;color:#555;">Previewing: <b>@Model.AppealNo</b></span>
-                    }
-                    else
-                    {
-                        <span style="font-size:11px;color:#c0392b;">⚠ Enter an Appeal No to load the preview</span>
-                    }
-                </form>
-            </div>
+            @if (canReview && canAppeal)
+            {
+                <div class="tab-info-banner" style="background:#fffbe6;border:1px solid #e6b000;border-radius:6px;padding:8px 14px;font-size:12px;color:#555;margin:8px 0 0;">
+                    ✅ <strong>Both</strong> sub-types selected — review each tab before approving.
+                </div>
+            }
         }
         else if (supportsSingleEmailMulti && !isInvalid)
         {
@@ -360,10 +359,6 @@
                 <input type="hidden" name="settingsId" value="@Model.SettingsId" />
                 <input type="hidden" name="variant" value="@selectedVariant" />
                 <input type="hidden" name="mode" value="@selectedMode" />
-                @if (!string.IsNullOrWhiteSpace(Model.AppealNo))
-                {
-                    <input type="hidden" name="appealNo" value="@Model.AppealNo" />
-                }
 
                 <div class="modal-head">
                     <h5>Approve — Generate Handover Email</h5>
@@ -380,10 +375,6 @@
                     <div class="modal-summary">
                         <div class="ms-row"><span class="ms-key">Roll</span><span class="ms-val">@Model.RollShortCode — @Model.RollName</span></div>
                         <div class="ms-row"><span class="ms-key">Notice</span><span class="ms-val">@Model.Notice</span></div>
-                        @if (Model.Notice == NoticeKind.S52)
-                        {
-                            <div class="ms-row"><span class="ms-key">Sub-type</span><span class="ms-val">@(Model.IsSection52Review == true ? "Section 52 Review" : "Appeal Decision")</span></div>
-                        }
                         <div class="ms-row"><span class="ms-key">Variant</span><span class="ms-val">@selectedVariant</span></div>
                         <div class="ms-row"><span class="ms-key">Mode</span><span class="ms-val">@selectedMode</span></div>
                         <div class="ms-row"><span class="ms-key">Letter Date</span><span class="ms-val">@Model.LetterDate.ToString("yyyy-MM-dd")</span></div>
@@ -401,14 +392,6 @@
                         @if (Model.Notice == NoticeKind.S52)
                         {
                             <div class="ms-row"><span class="ms-key">Bulk Range</span><span class="ms-val">@(Model.BulkFromDate?.ToString("yyyy-MM-dd") ?? "—") → @(Model.BulkToDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                            @if (!string.IsNullOrWhiteSpace(Model.AppealNo))
-                            {
-                                <div class="ms-row"><span class="ms-key">Appeal No (preview)</span><span class="ms-val">@Model.AppealNo</span></div>
-                            }
-                            <div class="ms-row" style="background:#fffbe6;border-left:3px solid #e6b000;padding:8px 12px;">
-                                <span class="ms-key" style="color:#b38900;">ℹ Links</span>
-                                <span class="ms-val" style="color:#555;font-size:12px;">The approval email will contain <strong>two kickoff links</strong> — one for Appeal Decision, one for Section 52 Review.</span>
-                            </div>
                         }
                         @if (Model.Notice == NoticeKind.S53)
                         {

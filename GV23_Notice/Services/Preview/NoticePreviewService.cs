@@ -171,12 +171,11 @@ namespace GV23_Notice.Services.Notices
                     {
                         var isReview = (variant == PreviewVariant.S52ReviewDecision);
 
-                        if (string.IsNullOrWhiteSpace(appealNo))
-                            throw new InvalidOperationException("AppealNo is required for Section 52 preview.");
+                        // appealNo may be blank when using date-range preview (backlog flow).
+                        // PreviewDbDataService routes to the ByRange SPs automatically when blank.
+                        var db = await _previewDb.S52PreviewDbDataAsync(roll.RollId, appealNo ?? "", isReview, ct);
 
-                        var db = await _previewDb.S52PreviewDbDataAsync(roll.RollId, appealNo!, isReview, ct);
-
-                        sampleAppealNo = db.AppealNo ?? appealNo!;
+                        sampleAppealNo = db.AppealNo ?? appealNo ?? "";
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
                         samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
@@ -506,14 +505,14 @@ namespace GV23_Notice.Services.Notices
                 RollName = rollName,
                 ObjectionNo = db.ObjectionNo ?? "",
                 Section51Pin = db.Section51Pin,
-                
+
 
                 Addr1 = db.Addr1 ?? "",
                 Addr2 = db.Addr2 ?? "",
                 Addr3 = db.Addr3 ?? "",
                 Addr4 = db.Addr4 ?? "",
                 Addr5 = db.Addr5 ?? "",
-                ValuationKey=db.valuationKey,
+                ValuationKey = db.valuationKey,
                 PropertyDesc = db.PropertyDesc ?? "",
 
                 Section6 = new Section6Row
@@ -541,7 +540,7 @@ namespace GV23_Notice.Services.Notices
                     New2_Extent = db.New2Extent?.ToString(CultureInfo.InvariantCulture),
                     New3_Extent = db.New3Extent?.ToString(CultureInfo.InvariantCulture),
 
-                   
+
 
                 }
             };

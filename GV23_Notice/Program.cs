@@ -22,6 +22,9 @@ using GV23_Notice.Services.Storage;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.EntityFrameworkCore;
 
+// QuestPDF license — Community (free for organisations < $1M annual revenue)
+QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // DB
@@ -107,6 +110,11 @@ builder.Services.AddScoped<INoticePathService, NoticePathService>();
 builder.Services.AddScoped<INoticeBatchPrintService, NoticeBatchPrintService>();
 builder.Services.AddScoped<GV23_Notice.Services.Step3.IStep3PrintQueryService,
                            GV23_Notice.Services.Step3.Step3PrintQueryService>();
+
+builder.Services.AddScoped<GV23_Notice.Services.Step3.IS52RangePrintService,
+                           GV23_Notice.Services.Step3.S52RangePrintService>();
+// Also register concrete Section52PdfService so S52RangePrintService and NoticeBatchPrintService can inject it
+builder.Services.AddScoped<GV23_Notice.Services.Notices.Section52.Section52PdfService>();
 builder.Services.Configure<GV23_Notice.Domain.Email.EmailOptions>(
     builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<INoticeBatchEmailService,

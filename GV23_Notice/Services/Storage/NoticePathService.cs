@@ -66,7 +66,7 @@ namespace GV23_Notice.Services.Storage
             if (notice == NoticeKind.S51)
             {
                 var main = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
-                const string inner = "Section 51 Notice";          // literal spaces — matches your folder
+                const string inner = "Section 51 Notice";
                 var file = $"{main}_{safeProp}_S51{suffix}.pdf";
                 return Path.Combine(root, main, inner, file);
             }
@@ -112,6 +112,48 @@ namespace GV23_Notice.Services.Storage
             var fallbackMain = SafeName(roll.ShortCode) ?? "Roll";
             var fallbackFile = $"{safeKey}_{safeProp}_{notice}{suffix}.pdf";
             return Path.Combine(root, fallbackMain, fallbackFile);
+        }
+
+        // ── S52 direct paths ────────────────────────────────────────────────
+        // root\{Appeal_No}\Section 52 Review\{Appeal_No}_{PropertyDesc}_S52.pdf
+        // root\{Appeal_No}\Appeal Decision\{Appeal_No}_{PropertyDesc}_AD.pdf
+
+        public string BuildS52PdfPath(
+            RollRegistry roll,
+            string appealNo,
+            string propertyDesc,
+            bool isReview)
+        {
+            var root = GetRootPath(roll, NoticeKind.S52);
+            var safeAppeal = SafeName(appealNo.Trim());
+            var safeProp = SafeName(propertyDesc.Trim());
+
+            var appealFolder = safeAppeal.Length > 0 ? safeAppeal : "Unknown_Appeal";
+            var subFolder = isReview ? "Section 52 Review" : "Appeal Decision";
+            var fileSuffix = isReview ? "S52" : "AD";
+            var propPart = safeProp.Length > 0 ? safeProp : "Property";
+            var fileName = $"{appealFolder}_{propPart}_{fileSuffix}.pdf";
+
+            return Path.Combine(root, appealFolder, subFolder, fileName);
+        }
+
+        public string BuildS52EmlPath(
+            RollRegistry roll,
+            string appealNo,
+            string propertyDesc,
+            bool isReview)
+        {
+            var root = GetRootPath(roll, NoticeKind.S52);
+            var safeAppeal = SafeName(appealNo.Trim());
+            var safeProp = SafeName(propertyDesc.Trim());
+
+            var appealFolder = safeAppeal.Length > 0 ? safeAppeal : "Unknown_Appeal";
+            var subFolder = isReview ? "Section 52 Review" : "Appeal Decision";
+            var fileSuffix = isReview ? "S52" : "AD";
+            var propPart = safeProp.Length > 0 ? safeProp : "Property";
+            var fileName = $"{appealFolder}_{propPart}_{fileSuffix}.eml";
+
+            return Path.Combine(root, appealFolder, subFolder, fileName);
         }
 
         public string BuildBatchPdfPath(
@@ -180,6 +222,24 @@ namespace GV23_Notice.Services.Storage
             var fileName = $"{(safeProp.Length > 0 ? safeProp : "Property")}.eml";
 
             return Path.Combine(root, mainFolder, "Batches", emailsFolder, fileName);
+        }
+
+        public string BuildS51EmlPath(
+            RollRegistry roll,
+            string objectionNo,
+            string propertyDesc)
+        {
+            var root = GetRootPath(roll, NoticeKind.S51);
+            var safeKey = SafeName(objectionNo);
+            var safeProp = SafeName(propertyDesc);
+
+            // Same folder structure as the PDF:
+            // {root}\{ObjectionNo}\Section 51 Notice\{ObjectionNo}_{PropertyDesc}.eml
+            var objFolder = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
+            const string noticeFolder = "Section 51 Notice";
+            var fileName = $"{objFolder}_{(safeProp.Length > 0 ? safeProp : "Property")}.eml";
+
+            return Path.Combine(root, objFolder, noticeFolder, fileName);
         }
 
         private static string SafeName(string? name)

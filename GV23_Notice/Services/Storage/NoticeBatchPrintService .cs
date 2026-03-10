@@ -1,5 +1,6 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Services.Notices.Section51;
+using GV23_Notice.Services.Notices.Section52;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Data;
@@ -21,6 +22,7 @@ namespace GV23_Notice.Services.Storage
         private readonly IS49RollRepository _s49Repo;
         private readonly ISection49PdfBuilder _s49Builder;
         private readonly ISection51PdfBuilder _s51Builder;
+        private readonly Section52PdfService _s52Builder;
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<NoticeBatchPrintService> _log;
         private readonly IConfiguration _config;
@@ -31,6 +33,7 @@ namespace GV23_Notice.Services.Storage
             IS49RollRepository s49Repo,
             ISection49PdfBuilder s49Builder,
             ISection51PdfBuilder s51Builder,
+            Section52PdfService s52Builder,
             IWebHostEnvironment env,
             ILogger<NoticeBatchPrintService> log,
             IConfiguration config)
@@ -40,6 +43,7 @@ namespace GV23_Notice.Services.Storage
             _s49Repo = s49Repo;
             _s49Builder = s49Builder;
             _s51Builder = s51Builder;
+            _s52Builder = s52Builder;
             _env = env;
             _log = log;
             _config = config;
@@ -141,23 +145,38 @@ namespace GV23_Notice.Services.Storage
                     (pdfBytes, propertyDesc) = await BuildS51PdfAsync(settings, roll, batch, log, ct);
                     break;
 
+                case NoticeKind.S52:
+                    (pdfBytes, propertyDesc) = await BuildS52PdfAsync(settings, roll, log, ct);
+                    break;
+
                 // For other notice types: fall back to snapshot-based print
                 default:
                     (pdfBytes, propertyDesc) = await BuildFromSnapshotAsync(settings, log, ct);
                     break;
             }
 
-            // Build save path — S51 uses ObjectionNo-based folder structure, not batch folder
+            // Build save path
+            // S51: {root}\{ObjectionNo}\Section 51 Notice\...
+            // S52: {root}\{Appeal_No}\Section 52 Review\ or \Appeal Decision\...
+            // Others: batch folder
             string pdfPath;
             if (settings.Notice == NoticeKind.S51)
             {
-                // root\{ObjectionNo}\Section 51 Notice\{ObjectionNo}_{PropertyDesc}_S51.pdf
                 pdfPath = _paths.BuildPdfPath(
                     roll: roll,
                     notice: settings.Notice,
                     keyNo: log.ObjectionNo ?? propertyDesc,
                     propertyDesc: propertyDesc,
                     copyRole: null);
+            }
+            else if (settings.Notice == NoticeKind.S52)
+            {
+                var isReview = settings.IsSection52Review == true;
+                pdfPath = _paths.BuildS52PdfPath(
+                    roll: roll,
+                    appealNo: log.AppealNo ?? "",
+                    propertyDesc: propertyDesc,
+                    isReview: isReview);
             }
             else
             {
@@ -371,6 +390,98 @@ namespace GV23_Notice.Services.Storage
             };
 
             var pdfBytes = _s51Builder.BuildNotice(data, ctx);
+            return (pdfBytes, propertyDesc);
+        }
+
+        // ── S52: load from Appeal_Decision by AppealNo → build PDF ──────────
+        private async Task<(byte[] pdfBytes, string propertyDesc)> BuildS52PdfAsync(
+            NoticeSettings settings,
+            Domain.Rolls.RollRegistry roll,
+            NoticeRunLog log,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(log.AppealNo))
+                throw new InvalidOperationException($"RunLog {log.Id} has no AppealNo for S52 print.");
+
+            var connStr = _config.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException("DefaultConnection missing.");
+
+            bool isReview = settings.IsSection52Review == true;
+            var proc = isReview
+                ? "dbo.S52_Preview_SelectReviewTop1"
+                : "dbo.S52_Preview_SelectAppealTop1";
+
+            AppealDecisionRow? row = null;
+
+            await using var cn = new SqlConnection(connStr);
+            await cn.OpenAsync(ct);
+            await using var cmd = cn.CreateCommand();
+            cmd.CommandText = proc;
+            cmd.CommandType = CommandType.StoredProcedure;
+            cmd.CommandTimeout = 60;
+            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = roll.RollId });
+            cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50) { Value = log.AppealNo.Trim() });
+
+            await using var rd = await cmd.ExecuteReaderAsync(ct);
+
+            var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < rd.FieldCount; i++) colMap[rd.GetName(i)] = i;
+
+            string? Str(string col) => colMap.TryGetValue(col, out var o) && !rd.IsDBNull(o) ? rd.GetString(o) : null;
+            decimal? Dec(string col)
+            {
+                if (!colMap.TryGetValue(col, out var o) || rd.IsDBNull(o)) return null;
+                var v = rd.GetValue(o);
+                if (v is decimal d) return d;
+                return decimal.TryParse(v.ToString(), out var p) ? p : null;
+            }
+            string N(decimal? v) => v?.ToString(CultureInfo.InvariantCulture) ?? "";
+
+            if (await rd.ReadAsync(ct))
+            {
+                row = new AppealDecisionRow
+                {
+                    A_UserID = Str("A_UserID"),
+                    Appeal_No = Str("Appeal_No"),
+                    Objection_No = Str("Objection_No"),
+                    valuation_Key = Str("valuation_Key"),
+                    Property_desc = Str("Property_desc"),
+                    Email = Str("Email"),
+                    ADDR1 = Str("ADDR1"),
+                    ADDR2 = Str("ADDR2"),
+                    ADDR3 = Str("ADDR3"),
+                    ADDR4 = Str("ADDR4"),
+                    ADDR5 = Str("ADDR5"),
+                    Town = Str("Town"),
+                    ERF = Str("ERF"),
+                    PTN = Str("PTN"),
+                    RE = Str("RE"),
+                    App_Market_Value = N(Dec("App_Market_Value")),
+                    App_Market_Value2 = N(Dec("App_Market_Value2")),
+                    App_Market_Value3 = N(Dec("App_Market_Value3")),
+                    App_Extent = N(Dec("App_Extent")),
+                    App_Extent2 = N(Dec("App_Extent2")),
+                    App_Extent3 = N(Dec("App_Extent3")),
+                    App_Category = Str("App_Category"),
+                    App_Category2 = Str("App_Category2"),
+                    App_Category3 = Str("App_Category3"),
+                };
+            }
+
+            if (row is null)
+                throw new InvalidOperationException(
+                    $"S52 print: no data found for AppealNo={log.AppealNo} in RollId={roll.RollId}.");
+
+            var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
+            var ctx = new Section52PdfContext
+            {
+                HeaderImagePath = headerPath,
+                LetterDate = DateOnly.FromDateTime(settings.LetterDate)
+            };
+
+            var pdfBytes = _s52Builder.BuildNotice(row, ctx);
+            var propertyDesc = row.Property_desc ?? log.AppealNo ?? log.Id.ToString();
+
             return (pdfBytes, propertyDesc);
         }
 

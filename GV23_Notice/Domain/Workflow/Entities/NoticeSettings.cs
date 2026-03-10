@@ -10,6 +10,11 @@ namespace GV23_Notice.Domain.Workflow.Entities
         public NoticeKind Notice { get; set; }
         public BatchMode Mode { get; set; }
 
+        /// <summary>
+        /// Which S52 sub-notice(s) Admin selected to send to Data Team.
+        /// ReviewOnly=1 | AppealDecisionOnly=2 | Both=3
+        /// </summary>
+        public S52SendMode S52SendMode { get; set; } = S52SendMode.Both;
         public int RollId { get; set; }
 
         // Versioning: increments per Roll+Notice+Mode

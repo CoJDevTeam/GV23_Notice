@@ -48,8 +48,8 @@ namespace GV23_Notice.Models.Workflow.ViewModels
 
         public string AppealNo { get; set; } = "";
 
-        public string? PortalUrl { get; set; } 
-         
+        public string? PortalUrl { get; set; }
+
 
         public string? EnquiriesLine { get; set; }
 
@@ -60,19 +60,25 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string SelectedVariant { get; set; } = ""; // e.g. "InvalidOmission"
         public string SelectedMode { get; set; } = "single"; // single | multi
 
-     
+
 
         public string PdfUrl { get; set; } = "";
 
-     
+
         public DateTime? CityManagerSignDate { get; set; }
 
-     
+
 
         public DateTime? BulkFromDate { get; set; }
         public DateTime? BulkToDate { get; set; }
 
-       
+        /// <summary>Which S52 sub-type(s) to preview/approve. Drives tab enable/disable in Step2 view.</summary>
+        public S52SendMode S52SendMode { get; set; } = S52SendMode.Both;
+
+        public bool S52CanShowReview => S52SendMode == S52SendMode.ReviewOnly || S52SendMode == S52SendMode.Both;
+        public bool S52CanShowAppealDecision => S52SendMode == S52SendMode.AppealDecisionOnly || S52SendMode == S52SendMode.Both;
+
+
 
         public DateTime? ExtractionDate { get; set; }
         public int? ExtractPeriodDays { get; set; }
@@ -82,8 +88,6 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string? SignaturePath { get; set; }
         public bool IsConfirmed { get; set; }
         public bool IsApproved { get; set; }
-
-        public bool IsSection52Review { get; set; }
 
     }
 }

@@ -52,18 +52,15 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         [DataType(DataType.Date)]
         public DateTime? EvidenceCloseDate { get; set; } // will be auto-set = LetterDate + 30
 
-        // S52 sub-type + bulk range
-        /// <summary>
-        /// true  = Section 52 Review (A_UserID = "System_Generated")
-        /// false = Appeal Decision
-        /// </summary>
-        public bool IsSection52Review { get; set; }
-
+        // S52 bulk range
         [DataType(DataType.Date)]
         public DateTime? BulkFromDate { get; set; }
 
         [DataType(DataType.Date)]
         public DateTime? BulkToDate { get; set; }
+
+        /// <summary>Which S52 sub-type(s) to send: ReviewOnly / AppealDecisionOnly / Both</summary>
+        public S52SendMode S52SendMode { get; set; } = S52SendMode.Both;
 
         // S53
         [DataType(DataType.Date)]
