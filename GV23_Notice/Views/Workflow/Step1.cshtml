@@ -22,7 +22,7 @@
 
     <div class="wf-titlebar">
         <div class="logo-mark">GV</div>
-        <h2>Unified Notice Workflow — Step 1</h2>
+        <h2>Setting Notice — Step 1</h2>
         <span class="admin-badge">Admin</span>
     </div>
 
@@ -49,13 +49,13 @@
                 </div>
                 <div class="wf-row c2">
                     <div class="wf-field">
-                        <label>Valuation Period</label>
+                        <label>Valuation Period(GV)<span style="color:red;">*</span></label>
                         <select asp-for="ValuationPeriodCode" asp-items="ViewBag.ValuationPeriods" id="valuationPeriod">
                             <option value="">— Select period —</option>
                         </select>
                     </div>
                     <div class="wf-field">
-                        <label>Financial Year <span class="opt">(1 July – 30 June)</span></label>
+                        <label>Financial Year <span class="opt">(1 July – 30 June)</span><span style="color:red;">*</span></label>
                         <select id="financialYearSelect">
                             <option value="">— Select valuation period first —</option>
                         </select>
@@ -66,27 +66,27 @@
                 </div>
                 <div class="wf-row c3" style="margin-top:18px;">
                     <div class="wf-field">
-                        <label>Roll</label>
+                        <label>Roll<span style="color:red;">*</span></label>
                         <select asp-for="RollId" asp-items="rolls" id="rollSelect">
                             <option value="0">— Select Roll —</option>
                         </select>
                         <span class="text-danger" asp-validation-for="RollId"></span>
                     </div>
                     <div class="wf-field">
-                        <label>Notice Type</label>
+                        <label>Notice Type<span style="color:red">*</span></label>
                         <select id="noticeSelect" name="Notice">
-                            <option value="S49" selected="@(Model.Notice == NoticeKind.S49)">Section 49 (S49)</option>
-                            <option value="S51" selected="@(Model.Notice == NoticeKind.S51)">Section 51 (S51)</option>
-                            <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Appeal Notice (S52/AD)</option>
-                            <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 (S53)</option>
-                            <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny (DJ)</option>
-                            <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity (IN)</option>
-                            <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option>
+                            <option value="S49" selected="@(Model.Notice == NoticeKind.S49)">Section 49 Notice</option>
+                            <option value="S51" selected="@(Model.Notice == NoticeKind.S51)">Section 51 Notice</option>
+                            <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Appeal Notices</option>
+                            <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 Notice</option>
+                            <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny Notice</option>
+                            <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity Notices</option>
+                          @*   <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option> *@
                         </select>
                         <input type="hidden" asp-for="Notice" id="noticeHidden" />
                     </div>
                     <div class="wf-field">
-                        <label>Batch Mode</label>
+                        <label>Batch Mode <span class="opt">(optional)</span></label>
                         <select asp-for="Mode" id="modeSelect">
                             <option value="@BatchMode.Single">Single</option>
                             <option value="@BatchMode.Bulk">Bulk</option>
@@ -139,11 +139,11 @@
 
                 <!-- S49 -->
                 <div id="blockS49" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S49</span> Section 49 — Objection Window</div>
+                    <div class="nb-header"><span class="nb-pill">S49</span> Section 49 Notice — Objection Window</div>
                     <div class="wf-row c3">
                         <div class="wf-field"><label>Objection Start Date</label><input type="date" asp-for="ObjectionStartDate" /></div>
                         <div class="wf-field"><label>Objection End Date</label><input type="date" asp-for="ObjectionEndDate" /></div>
-                        <div class="wf-field"><label>Extension Date <span class="opt">(optional)</span></label><input type="date" asp-for="ExtensionDate" /></div>
+                        <div class="wf-field"><label>Extension Objection Date <span class="opt">(optional)</span></label><input type="date" asp-for="ExtensionDate" /></div>
                     </div>
                     <div class="wf-row c2" style="margin-top:18px;">
                         <div class="wf-field">
@@ -159,7 +159,7 @@
 
                 <!-- S51 -->
                 <div id="blockS51" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S51</span> Section 51 — Evidence Period</div>
+                    <div class="nb-header"><span class="nb-pill">S51</span> Section 51 Notice— Upload Evidence Period</div>
                     <div class="wf-row c2">
                         <div class="wf-field">
                             <label>Evidence Closing Date <span class="opt">(auto = Letter Date + 30)</span></label>
@@ -209,7 +209,7 @@
 
                     <div id="blockS52Review" style="display:none;">
                         <div class="nb-header" style="font-size:12px;background:#f0f4ff;border-left:3px solid #4a6cf7;padding:6px 12px;margin-bottom:10px;">
-                            Section 52 Review &mdash; Batch Date Range
+                            Appeal Notices(Section 51 Review Notice and Appeal Decision Notice) &mdash; Batch Date Range
                         </div>
                         <div class="wf-row c2">
                             <div class="wf-field"><label>Batch Date From</label><input type="date" asp-for="BulkFromDate" /></div>
@@ -232,7 +232,7 @@
 
                 <!-- S53 -->
                 <div id="blockS53" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S53</span> Section 53 — Appeal Period</div>
+                    <div class="nb-header"><span class="nb-pill">S53</span> Section 53 Notice — Appeal Period</div>
                     <div class="wf-row c3">
                         <div class="wf-field"><label>Batch Date <span class="opt">(default Today)</span></label><input type="date" asp-for="BatchDate" /></div>
                         <div class="wf-field">
@@ -270,7 +270,7 @@
 
                 <!-- DJ / IN -->
                 <div id="blockDJIN" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">DJ / IN</span> Dear Jonny / Invalidity</div>
+                    <div class="nb-header"><span class="nb-pill">DJ / IN</span> Dear Jonny Notice / Invalidity Notice</div>
                     <span class="hint">Only the Letter Date and optional common fields are required for this notice type.</span>
                 </div>
 
@@ -313,7 +313,7 @@
 
                 <a class="wf-btn wf-btn-outline" href="@Url.Action("SettingsLibrary", "Workflow")">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                    Reuse Approved Settings
+                   Update Settings
                 </a>
             </div>
 

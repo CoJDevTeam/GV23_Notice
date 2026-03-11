@@ -118,12 +118,12 @@
                                 </td>
                                 <td style="color:var(--grey-mid);font-size:12px;">v@r.Version</td>
                                 <td style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--grey-dark);">
-                                    @r.LetterDate.ToString("yyyy-MM-dd")
+                                    @r.LetterDate.ToString("dd-MM-yyyy")
                                 </td>
                                 <td>
                                     @if (string.IsNullOrWhiteSpace(r.SignaturePath))
                                     {
-                                        <span class="wf-badge badge-sig-miss">⚠ Missing</span>
+                                        <span class="wf-badge badge-sig-miss">⚠ Not Required</span>
                                     }
                                     else
                                     {
@@ -135,7 +135,7 @@
                                         <a class="wf-btn wf-btn-primary"
                                            href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
                                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                                            Reuse
+                                            Update Notice Settings
                                         </a>
                                         <a class="wf-btn wf-btn-secondary"
                                            href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
