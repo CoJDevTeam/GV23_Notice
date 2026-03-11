@@ -19,7 +19,6 @@ namespace GV23_Notice.Controllers
         private readonly INoticeBatchPrintService _print;
         private readonly IStep3PrintQueryService _printQuery;
         private readonly INoticeBatchEmailService _emailSvc;
-        private readonly IS52RangePrintService _s52Range;
         private readonly AppDbContext _db;
 
         public Step3Controller(
@@ -30,7 +29,6 @@ namespace GV23_Notice.Controllers
             INoticeBatchPrintService print,
             IStep3PrintQueryService printQuery,
             INoticeBatchEmailService emailSvc,
-            IS52RangePrintService s52Range,
             AppDbContext db)
         {
             _svc = svc;
@@ -40,7 +38,6 @@ namespace GV23_Notice.Controllers
             _print = print;
             _printQuery = printQuery;
             _emailSvc = emailSvc;
-            _s52Range = s52Range;
             _db = db;
         }
 
@@ -93,7 +90,7 @@ namespace GV23_Notice.Controllers
             var user = User?.Identity?.Name ?? "Unknown";
             var date = (batchDate ?? DateTime.Today).Date;
 
-            // Resolve settingsId so we can redirect back to Kickoff
+            // Resolve settingsId so we can redirect back to the Kickoff page
             var s = await _db.NoticeSettings
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.ApprovalKey == key || x.WorkflowKey == key, ct);
@@ -104,14 +101,13 @@ namespace GV23_Notice.Controllers
             {
                 await _batchCreate.CreateBatchAsync(key, date, user, ct);
                 TempData["Success"] = "Batch created successfully.";
+                return RedirectToAction("Step3Kickoff", "Workflow", new { settingsId = s.Id, key, showBatches = true });
             }
             catch (Exception ex)
             {
                 TempData["Error"] = ex.Message;
+                return RedirectToAction("Step3Kickoff", "Workflow", new { settingsId = s.Id, key });
             }
-
-            // Always return to Kickoff so user stays in context
-            return RedirectToAction("Step3Kickoff", "Workflow", new { settingsId = s.Id, key });
         }
 
         // ── PRINT ───────────────────────────────────────────────────────────
@@ -147,24 +143,6 @@ namespace GV23_Notice.Controllers
             TempData["Success"] = $"All batches printed: {res.Printed} notices saved across {res.TotalBatches} batches. " +
                                   (res.Failed > 0 ? $"{res.Failed} failed." : "");
             return RedirectToAction(nameof(Print), new { key });
-        }
-
-        // ── S52 RANGE PRINT ─────────────────────────────────────────────────
-        // Skips batch-creation UI — creates tracking batch + prints all in one call.
-        [HttpPost("S52PrintRange")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> S52PrintRange(
-            int settingsId, bool isReview, Guid key, CancellationToken ct)
-        {
-            if (settingsId <= 0) return BadRequest("Invalid settingsId.");
-            var user = User?.Identity?.Name ?? "Unknown";
-
-            var res = await _s52Range.PrintRangeAsync(settingsId, isReview, user, ct);
-
-            TempData["Success"] = $"S52 print complete: {res.Printed} saved." +
-                                  (res.Failed > 0 ? $" {res.Failed} failed." : "");
-
-            return RedirectToAction(nameof(Print), new { key = res.WorkflowKey });
         }
 
         // ── SEND EMAIL ──────────────────────────────────────────────────────
@@ -215,10 +193,8 @@ namespace GV23_Notice.Controllers
                 .Select(b => b.Id)
                 .ToListAsync(ct);
 
-            // No batches yet — job may still be starting (e.g. S52 range print is creating the batch).
-            // Return done=false so the progress overlay keeps polling rather than stopping at 0%.
             if (batchIds.Count == 0)
-                return Json(new { total = 0, printed = 0, sent = 0, failed = 0, generated = 0, done = false });
+                return Json(new { total = 0, printed = 0, sent = 0, failed = 0, generated = 0, done = true });
 
             var counts = await _db.NoticeRunLogs
                 .Where(r => batchIds.Contains(r.NoticeBatchId))

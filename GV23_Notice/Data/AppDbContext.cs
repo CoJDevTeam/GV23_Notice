@@ -42,6 +42,11 @@ namespace GV23_Notice.Data
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
 
         public DbSet<PublicHoliday> PublicHolidays => Set<PublicHoliday>();
+      
+        public DbSet<S52BatchPickRow> S52BatchPickRows => Set<S52BatchPickRow>();
+      
+        public DbSet<DjBatchPickRow> DjBatchPickRows => Set<DjBatchPickRow>();
+        public DbSet<InBatchPickRow> InBatchPickRows => Set<InBatchPickRow>();
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -54,6 +59,23 @@ namespace GV23_Notice.Data
                 entity.HasNoKey();
                 entity.ToView(null);
             });
+            modelBuilder.Entity<S49BatchPickRow>().HasNoKey();
+            modelBuilder.Entity<S49BatchPickRow>().ToView(null);
+
+            modelBuilder.Entity<S51BatchPickRow>().HasNoKey();
+            modelBuilder.Entity<S51BatchPickRow>().ToView(null);
+
+            modelBuilder.Entity<S52BatchPickRow>().HasNoKey();
+            modelBuilder.Entity<S52BatchPickRow>().ToView(null);
+
+            modelBuilder.Entity<S53BatchPickRow>().HasNoKey();
+            modelBuilder.Entity<S53BatchPickRow>().ToView(null);
+
+            modelBuilder.Entity<DjBatchPickRow>().HasNoKey();
+            modelBuilder.Entity<DjBatchPickRow>().ToView(null);
+
+            modelBuilder.Entity<InBatchPickRow>().HasNoKey();
+            modelBuilder.Entity<InBatchPickRow>().ToView(null);
 
             modelBuilder.Entity<NoticeSettings>(b =>
             {

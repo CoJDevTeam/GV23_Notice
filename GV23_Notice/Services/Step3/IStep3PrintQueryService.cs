@@ -15,12 +15,10 @@ namespace GV23_Notice.Services.Step3
     public sealed class Step3PrintQueryService : IStep3PrintQueryService
     {
         private readonly AppDbContext _db;
-        private readonly IS52RangePrintService _s52Range;
 
-        public Step3PrintQueryService(AppDbContext db, IS52RangePrintService s52Range)
+        public Step3PrintQueryService(AppDbContext db)
         {
             _db = db;
-            _s52Range = s52Range;
         }
 
         public async Task<Step3PrintVm> BuildPrintVmAsync(Guid workflowKey, CancellationToken ct)
@@ -63,9 +61,10 @@ namespace GV23_Notice.Services.Step3
                 };
             }).ToList();
 
-            var vm = new Step3PrintVm
+            return new Step3PrintVm
             {
                 WorkflowKey = workflowKey,
+                SettingsId = s.Id,
                 RollId = s.RollId,
                 RollShortCode = roll.ShortCode ?? "",
                 RollName = roll.Name ?? "",
@@ -81,23 +80,13 @@ namespace GV23_Notice.Services.Step3
                 TotalRecordsBatched = batches.Sum(b => b.NumberOfRecords),
                 TotalPrinted = rows.Sum(r => r.PrintedCount),
                 TotalFailed = rows.Sum(r => r.FailedCount),
-                Batches = rows
+                Batches = rows,
+                // S52 fields
+                IsS52 = s.Notice == NoticeKind.S52,
+                S52IsReview = s.IsSection52Review,
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate,
             };
-
-            // S52: populate range-print fields so Print view can show count + Print button
-            if (s.Notice == NoticeKind.S52)
-            {
-                vm.IsS52 = true;
-                vm.S52IsReview = s.IsSection52Review == true;
-                vm.S52SettingsId = s.Id;
-                vm.S52ApprovalKey = s.ApprovalKey ?? s.WorkflowKey ?? Guid.Empty;
-                vm.S52FromDate = s.BulkFromDate;
-                vm.S52ToDate = s.BulkToDate;
-                try { vm.S52RangeCount = await _s52Range.CountRangeAsync(s.Id, vm.S52IsReview, ct); }
-                catch { vm.S52RangeCount = 0; }
-            }
-
-            return vm;
         }
 
         public async Task<Step3SendEmailVm> BuildEmailVmAsync(Guid workflowKey, CancellationToken ct)
@@ -155,8 +144,6 @@ namespace GV23_Notice.Services.Step3
                 TotalPrinted = rows.Sum(r => r.PrintedCount),
                 TotalSent = rows.Sum(r => r.SentCount),
                 MaxEmailsPerSend = 2000,
-                IsS52 = s.Notice == NoticeKind.S52,
-                S52IsReview = s.IsSection52Review == true,
                 Batches = rows
             };
         }

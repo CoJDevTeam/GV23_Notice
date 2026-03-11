@@ -1,11 +1,14 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3PrintVm
 @using GV23_Notice.Domain.Workflow
-
 @{
     ViewData["Title"] = "Step 3 — Print Batches";
     var key = Model.WorkflowKey;
     bool anyPrintable = Model.Batches.Any(b => b.GeneratedCount > 0);
     bool allDone = Model.Batches.Any() && Model.Batches.All(b => b.GeneratedCount == 0);
+
+    string subTypeLabel = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
+    // URL back to kickoff — WorkflowKey IS the ApprovalKey
+    string kickoffUrl = Url.Action("Step3Kickoff", "Workflow", new { settingsId = Model.SettingsId, key = Model.WorkflowKey }) ?? "#";
 }
 
 <link href="~/css/Step3/Step3KickoffCss.css" rel="stylesheet" />
@@ -695,7 +698,59 @@
         border-radius: 50%;
         animation: spin .7s linear infinite
     }
+    /* S52 range card */
+    .sp-s52-card {
+        background: #fff;
+        margin: 16px;
+        border-radius: 10px;
+        border: 2px solid #E6B000;
+        padding: 20px;
+        text-align: center
+    }
 
+    .sp-s52-title {
+        font-size: .95rem;
+        font-weight: 800;
+        color: #0d0d0d;
+        margin-bottom: 6px
+    }
+
+    .sp-s52-sub {
+        font-size: .75rem;
+        color: #777;
+        margin-bottom: 16px;
+        line-height: 1.6
+    }
+
+    .sp-s52-dates {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        margin-bottom: 20px
+    }
+
+    .sp-s52-date-chip {
+        background: #f9f9f9;
+        border: 1px solid #ebebeb;
+        border-radius: 8px;
+        padding: 10px 18px;
+        text-align: center
+    }
+
+    .sp-s52-date-lbl {
+        font-size: .58rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: #9a9a9a;
+        margin-bottom: 3px
+    }
+
+    .sp-s52-date-val {
+        font-size: .85rem;
+        font-weight: 800;
+        color: #1a1a1a
+    }
     /* ── PRINT PROGRESS OVERLAY ──────────────────────────── */
     .pp-overlay {
         position: fixed;
@@ -752,7 +807,7 @@
         color: #9a9a9a;
         margin-top: 2px
     }
-    /* big progress bar */
+
     .pp-bar-wrap {
         height: 14px;
         background: #f0f0f0;
@@ -798,7 +853,7 @@
         .pp-counts strong {
             color: #1a1a1a
         }
-    /* status chips */
+
     .pp-chips {
         display: flex;
         gap: 8px;
@@ -843,7 +898,7 @@
         color: #9a9a9a;
         margin-top: 3px
     }
-    /* folder path */
+
     .pp-path {
         background: #f5f5f5;
         border-radius: 7px;
@@ -858,7 +913,7 @@
             color: #D4A500;
             font-weight: 700
         }
-    /* done state */
+
     .pp-done-banner {
         background: linear-gradient(135deg,#0f5032,#1a8a4a);
         border-radius: 10px;
@@ -889,7 +944,7 @@
         opacity: .8;
         margin-top: 2px
     }
-    /* close / next btn */
+
     .pp-btn {
         display: flex;
         align-items: center;
@@ -935,15 +990,23 @@
         <div class="sp-chip"><span class="sp-cl">Roll</span><span class="sp-cv">@Model.RollShortCode — @Model.RollName</span></div>
         <div class="sp-chip"><span class="sp-cl">Notice</span><span class="sp-cv">@Model.Notice</span></div>
         <div class="sp-chip"><span class="sp-cl">Version</span><span class="sp-cv">@Model.VersionText</span></div>
-        <div class="sp-chip"><span class="sp-cl">Batches</span><span class="sp-cv">@Model.TotalBatches</span></div>
-        <div class="sp-chip"><span class="sp-cl">Printed</span><span class="sp-cv">@Model.TotalPrinted.ToString("N0")</span></div>
-        @if (Model.TotalFailed > 0)
+        @if (Model.IsS52)
         {
-            <div class="sp-chip"><span class="sp-cl">Failed</span><span style="color:#f87171;font-weight:700">@Model.TotalFailed</span></div>
+            <div class="sp-chip"><span class="sp-cl">Type</span><span class="sp-cv">@subTypeLabel</span></div>
+            <div class="sp-chip"><span class="sp-cl">Range</span><span class="sp-cv">@(Model.BulkFromDate?.ToString("dd MMM") ?? "?") – @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "?")</span></div>
+        }
+        else
+        {
+            <div class="sp-chip"><span class="sp-cl">Batches</span><span class="sp-cv">@Model.TotalBatches</span></div>
+            <div class="sp-chip"><span class="sp-cl">Printed</span><span class="sp-cv">@Model.TotalPrinted.ToString("N0")</span></div>
+            @if (Model.TotalFailed > 0)
+            {
+                <div class="sp-chip"><span class="sp-cl">Failed</span><span style="color:#f87171;font-weight:700">@Model.TotalFailed</span></div>
+            }
         }
     </div>
 
-    <!-- STEP TRAIL -->
+    <!-- STEP TRAIL — different for S52 (no Batches step) vs standard -->
     <div class="sp-trail">
         <div style="display:flex;align-items:center;gap:6px">
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Configure</div>
@@ -951,14 +1014,17 @@
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Approve</div>
             <div class="sp-arrow">›</div>
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Kickoff</div>
+            @if (!Model.IsS52)
+            {
+                <div class="sp-arrow">›</div>
+                <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Batches</div>
+            }
             <div class="sp-arrow">›</div>
-            <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Batches</div>
+            <div class="sp-bc active"><div class="sp-bc-dot">@(Model.IsS52 ? "4" : "5")</div>Print</div>
             <div class="sp-arrow">›</div>
-            <div class="sp-bc active"><div class="sp-bc-dot">5</div>Print</div>
-            <div class="sp-arrow">›</div>
-            <div class="sp-bc"><div class="sp-bc-dot">6</div>Send Email</div>
+            <div class="sp-bc"><div class="sp-bc-dot">@(Model.IsS52 ? "5" : "6")</div>Send Email</div>
         </div>
-        <div class="sp-trail-label">Print Batches &nbsp;·&nbsp; <span>Step 3 / Step 3</span></div>
+        <div class="sp-trail-label">Print @(Model.IsS52 ? "Range" : "Batches") &nbsp;·&nbsp; <span>Step 3</span></div>
     </div>
 
     <!-- BODY -->
@@ -976,8 +1042,29 @@
                 <div class="sp-alert sp-alert-err">⚠ @TempData["Error"]</div>
             }
 
-            @* S52 renders its own stats inside the range panel *@
-            @if (!Model.IsS52)
+            <!-- Stats — S52 shows range info, others show batch stats -->
+            @if (Model.IsS52)
+            {
+                <div class="sp-stats">
+                    <div class="sp-stat">
+                        <div class="sp-sn gold">@subTypeLabel</div>
+                        <div class="sp-sl">Print Type</div>
+                    </div>
+                    <div class="sp-stat">
+                        <div class="sp-sn">@(Model.BulkFromDate?.ToString("dd MMM") ?? "—")</div>
+                        <div class="sp-sl">From Date</div>
+                    </div>
+                    <div class="sp-stat">
+                        <div class="sp-sn">@(Model.BulkToDate?.ToString("dd MMM") ?? "—")</div>
+                        <div class="sp-sl">To Date</div>
+                    </div>
+                    <div class="sp-stat">
+                        <div class="sp-sn green">@Model.TotalPrinted.ToString("N0")</div>
+                        <div class="sp-sl">Printed</div>
+                    </div>
+                </div>
+            }
+            else
             {
                 <div class="sp-stats">
                     <div class="sp-stat">
@@ -997,9 +1084,39 @@
                         <div class="sp-sl">Failed</div>
                     </div>
                 </div>
+            }
 
-                <!-- Bulk actions -->
-                <div class="sp-actions">
+            <!-- Bulk actions -->
+            <div class="sp-actions">
+                @if (Model.IsS52)
+                {
+                    <!-- S52: Print All button triggers range print across all batches -->
+                    @if (anyPrintable)
+                    {
+                        <button type="button" class="btn-gold" onclick="submitPrintAll()">
+                            🖨 Print All Batches
+                        </button>
+                        <form id="printAllForm" action="/Step3/PrintAll" method="post" style="display:none">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="key" value="@key" />
+                        </form>
+                    }
+                    else if (Model.Batches.Any())
+                    {
+                        <div class="btn-gold disabled" style="opacity:.5">🖨 Print All Batches</div>
+                    }
+                    <!-- S52: Go to Send Email -->
+                    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
+                        📧 Go to Send Email →
+                    </a>
+                    <!-- S52: Back to Kickoff -->
+                    <a href="@kickoffUrl" class="btn-outline-dark">
+                        ← Back to Kickoff
+                    </a>
+                }
+                else
+                {
+                    <!-- Standard notices: Print All -->
                     @if (anyPrintable)
                     {
                         <button type="button" class="btn-gold" onclick="submitPrintAll()">
@@ -1014,26 +1131,22 @@
                     {
                         <div class="btn-gold disabled" style="opacity:.5">🖨 Print All Batches</div>
                     }
-
                     <!-- Navigate to Send Email -->
                     <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
                         📧 Go to Send Email →
                     </a>
-
-                    <!-- Back to create more batches -->
-                    <a href="@Url.Action("Step2", "Step3", new { key })" class="btn-outline-dark">
+                    <!-- Back to Kickoff to create more batches -->
+                    <a href="@kickoffUrl" class="btn-outline-dark">
                         📦 Create More Batches
                     </a>
-                </div>
+                }
+            </div>
 
-                <!-- Save path info -->
-                <div class="sp-path-info">
-                    <b>📁 Save location:</b><br />
-                    <code>@($"C:\\[Roll Root]\\{Model.RollShortCode}_{Model.Notice}\\Batches\\[BatchName]\\[PropertyDesc]_{Model.Notice}.pdf")</code>
-                </div>
-
-            }
- @* end @if (!Model.IsS52) stats block *@
+            <!-- Save path info -->
+            <div class="sp-path-info">
+                <b>📁 Save location:</b><br />
+                <code>@($"C:\\[Roll Root]\\{Model.RollShortCode}_{Model.Notice}\\Batches\\[BatchName]\\[PropertyDesc]_{Model.Notice}.pdf")</code>
+            </div>
 
             <!-- Workflow summary card -->
             <div class="sp-card">
@@ -1042,45 +1155,62 @@
                     <div class="sp-grid2">
                         <div class="sp-field"><div class="sp-fl">Notice</div><div class="sp-fv">@Model.Notice</div></div>
                         <div class="sp-field"><div class="sp-fl">Version</div><div class="sp-fv">@Model.VersionText</div></div>
-                        <div class="sp-field sp-span2" style="grid-column:span 2">
+                        <div class="sp-field" style="grid-column:span 2">
                             <div class="sp-fl">Letter Date</div>
                             <div class="sp-fv @(Model.LetterDate == null ? "empty" : "")">@(Model.LetterDate?.ToString("dd MMM yyyy") ?? "—")</div>
                         </div>
-                        <div class="sp-field">
-                            <div class="sp-fl">Obj. Start</div>
-                            <div class="sp-fv @(Model.ObjectionStartDate == null ? "empty" : "")">@(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                        </div>
-                        <div class="sp-field">
-                            <div class="sp-fl">Obj. End</div>
-                            <div class="sp-fv @(Model.ObjectionEndDate == null ? "empty" : "")">@(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                        </div>
-                        @if (Model.ExtensionDate.HasValue)
+                        @if (!Model.IsS52)
                         {
-                            <div class="sp-field"><div class="sp-fl">Extension</div><div class="sp-fv">@Model.ExtensionDate.Value.ToString("dd MMM yyyy")</div></div>
+                            <div class="sp-field">
+                                <div class="sp-fl">Obj. Start</div>
+                                <div class="sp-fv @(Model.ObjectionStartDate == null ? "empty" : "")">@(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")</div>
+                            </div>
+                            <div class="sp-field">
+                                <div class="sp-fl">Obj. End</div>
+                                <div class="sp-fv @(Model.ObjectionEndDate == null ? "empty" : "")">@(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</div>
+                            </div>
+                            @if (Model.ExtensionDate.HasValue)
+                            {
+                                <div class="sp-field"><div class="sp-fl">Extension</div><div class="sp-fv">@Model.ExtensionDate.Value.ToString("dd MMM yyyy")</div></div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="sp-field">
+                                <div class="sp-fl">From Date</div>
+                                <div class="sp-fv">@(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "—")</div>
+                            </div>
+                            <div class="sp-field">
+                                <div class="sp-fl">To Date</div>
+                                <div class="sp-fv">@(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "—")</div>
+                            </div>
                         }
                         <div class="sp-field" style="grid-column:span 2">
                             <div class="sp-fl">Financial Years</div>
                             <div class="sp-fv @(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "empty" : "")">@(Model.FinancialYearsText ?? "—")</div>
                         </div>
                     </div>
-                    <hr class="sp-divider" />
-                    <div class="sp-field">
-                        <div class="sp-fl">Signature</div><div class="sp-fv">
-                            @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
-                            {
-                                <span class="sp-badge-ok">✓ Uploaded</span>
-                            }
-                            else
-                            {
+                    @if (!Model.IsS52)
+                    {
+                        <hr class="sp-divider" />
+                        <div class="sp-field">
+                            <div class="sp-fl">Signature</div><div class="sp-fv">
+                                @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
+                                {
+                                    <span class="sp-badge-ok">✓ Uploaded</span>
+                                }
+                                else
+                                {
 
-                                <span class="sp-badge-warn">⚠ Missing</span>
-                            }
+                                    <span class="sp-badge-warn">⚠ Missing</span>
+                                }
+                            </div>
                         </div>
-                    </div>
+                    }
                 </div>
             </div>
 
-            @if (allDone)
+            @if (allDone && !Model.IsS52)
             {
                 <div class="sp-complete-banner" style="margin:14px 16px;border-radius:10px">
                     <div style="font-size:2rem;flex-shrink:0">🎉</div>
@@ -1098,224 +1228,120 @@
                 <div class="sp-rh-title">
                     <div class="sp-rh-icon">🖨</div>
                     Print Dashboard — @Model.Notice — @Model.RollShortCode
+                    @if (Model.IsS52)
+                    {
+                        <span style="margin-left:6px;font-size:.68rem;opacity:.7">(@subTypeLabel)</span>
+                    }
                 </div>
                 <span class="sp-badge-info">@Model.Batches.Count batch@(Model.Batches.Count == 1 ? "" : "es")</span>
             </div>
             <div class="sp-rb">
-                @if (Model.IsS52)
+                @if (!Model.Batches.Any())
                 {
-                    <!-- ── S52: Range Print panel (no batch creation) ────────────── -->
-                    var s52SubLabel = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
-
-                    <!-- S52 stats (override the standard stats above) -->
-                    <div class="sp-stats" style="margin-top:0">
-                        <div class="sp-stat">
-                            <div class="sp-sn gold">@Model.S52RangeCount.ToString("N0")</div>
-                            <div class="sp-sl">Records in Range</div>
-                        </div>
-                        <div class="sp-stat">
-                            <div class="sp-sn green">@Model.TotalPrinted.ToString("N0")</div>
-                            <div class="sp-sl">Printed</div>
-                        </div>
-                        <div class="sp-stat">
-                            <div class="sp-sn @(Model.TotalFailed > 0 ? "red" : "")">@Model.TotalFailed.ToString("N0")</div>
-                            <div class="sp-sl">Failed</div>
-                        </div>
-                    </div>
-
-                    <!-- Range info card -->
-                    <div class="sp-card" style="margin:0 0 16px;">
-                        <div class="sp-card-hdr"><span>📅</span><h4>@s52SubLabel — Batch Range</h4></div>
-                        <div class="sp-card-body">
-                            <div class="sp-grid2">
-                                <div class="sp-field">
-                                    <div class="sp-fl">Sub-Type</div>
-                                    <div class="sp-fv">@s52SubLabel</div>
-                                </div>
-                                <div class="sp-field">
-                                    <div class="sp-fl">Records Found</div>
-                                    <div class="sp-fv">@Model.S52RangeCount.ToString("N0")</div>
-                                </div>
-                                <div class="sp-field">
-                                    <div class="sp-fl">From Date</div>
-                                    <div class="sp-fv">@(Model.S52FromDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                                </div>
-                                <div class="sp-field">
-                                    <div class="sp-fl">To Date</div>
-                                    <div class="sp-fv">@(Model.S52ToDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Save path -->
-                    <div class="sp-path-info">
-                        <b>📁 Save location:</b><br />
-                        <code>[Appeal Root]\[Appeal_No]\@(Model.S52IsReview ? "Section 52 Review" : "Appeal Decision")\[Appeal_No]_[PropertyDesc]_@(Model.S52IsReview ? "S52" : "AD").pdf</code>
-                    </div>
-
-                    <!-- Print button -->
-                    <div class="sp-actions">
-                        @if (Model.S52RangeCount > 0)
+                    <div class="sp-empty">
+                        <div class="sp-empty-icon">📦</div>
+                        @if (Model.IsS52)
                         {
-                            <button type="button" class="btn-gold"
-                                    onclick="submitS52PrintRange(@Model.S52SettingsId, @Model.S52IsReview.ToString().ToLower(), '@Model.S52ApprovalKey', @Model.S52RangeCount)">
-                                🖨 Print @Model.S52RangeCount.ToString("N0") Records
-                            </button>
-                            <form id="s52PrintRangeForm" action="/Step3/S52PrintRange" method="post" style="display:none">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="settingsId" value="@Model.S52SettingsId" />
-                                <input type="hidden" name="isReview" value="@Model.S52IsReview.ToString().ToLower()" />
-                                <input type="hidden" name="key" value="@Model.S52ApprovalKey" />
-                            </form>
+                            <div style="font-size:.95rem;font-weight:800;color:#1a1a1a;margin-bottom:6px">No Batches Found</div>
+                            <div style="font-size:.75rem;color:#9a9a9a;line-height:1.7;max-width:300px">
+                                No S52 batches have been created yet.<br />Return to the Kickoff page and use the batch panel if records are available.
+                            </div>
+                            <a href="@kickoffUrl" class="btn-gold" style="margin-top:20px;max-width:220px">
+                                ← Back to Kickoff
+                            </a>
                         }
                         else
                         {
-                            <div class="btn-gold disabled" style="opacity:.5">🖨 No Records in Range</div>
-                        }
-
-                        <a href="@Url.Action("SendEmail", "Step3", new { key = Model.WorkflowKey })" class="btn-outline-gold">
-                            📧 Go to Send Email →
-                        </a>
-                    </div>
-
-                    <!-- Previously printed batches (if any re-runs) -->
-                    @if (Model.Batches.Any())
-                    {
-                        <div class="sp-card" style="margin-top:16px;">
-                            <div class="sp-card-hdr"><span>📋</span><h4>Print History</h4></div>
-                            <div class="sp-card-body" style="padding:0;">
-                                <table class="sp-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Run</th>
-                                            <th>Records</th>
-                                            <th>Status</th>
-                                            <th>Created</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var b in Model.Batches)
-                                        {
-                                            <tr>
-                                                <td><span class="sp-code">@b.BatchName</span></td>
-                                                <td>@b.NumberOfRecords.ToString("N0")</td>
-                                                <td>
-                                                    @if (b.PrintedCount > 0)
-                                                    {
-                                                        <span class="sp-status-pill sp-status-done">✓ @b.PrintedCount</span>
-                                                    }
-                                                    @if (b.FailedCount > 0)
-                                                    {
-                                                        <span class="sp-status-pill sp-status-fail">✗ @b.FailedCount</span>
-                                                    }
-                                                </td>
-                                                <td class="sp-dt">@b.CreatedAtUtc.ToString("dd MMM HH:mm")</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    }
-                }
-                else
-                {
-                    <!-- ── Standard batch print ────────────────────────────────────── -->
-                    @if (!Model.Batches.Any())
-                    {
-                        <div class="sp-empty">
-                            <div class="sp-empty-icon">📦</div>
                             <div style="font-size:.95rem;font-weight:800;color:#1a1a1a;margin-bottom:6px">No Batches Found</div>
                             <div style="font-size:.75rem;color:#9a9a9a;line-height:1.7;max-width:300px">
                                 Go back to <strong>Create Batches</strong> to create batches first.
                             </div>
-                            <a href="@Url.Action("Step2", "Step3", new { key })" class="btn-gold" style="margin-top:20px;max-width:220px">
+                            <a href="@kickoffUrl" class="btn-gold" style="margin-top:20px;max-width:220px">
                                 📦 Go to Create Batches
                             </a>
-                        </div>
-                    }
-                    else
-                    {
-                        <table class="sp-table">
-                            <thead>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <table class="sp-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Batch Code</th>
+                                <th>Date</th>
+                                <th>Records</th>
+                                <th>Status</th>
+                                <th style="text-align:center">Print</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                int rowNum = 0;
+                            }
+                            @foreach (var b in Model.Batches)
+                            {
+                                rowNum++;
+                                var total = b.NumberOfRecords;
+                                var pct = total == 0 ? 0 : (int)Math.Round(b.PrintedCount * 100m / total);
+                                pct = Math.Clamp(pct, 0, 100);
                                 <tr>
-                                    <th>#</th>
-                                    <th>Batch Code</th>
-                                    <th>Date</th>
-                                    <th>Records</th>
-                                    <th>Status</th>
-                                    <th style="text-align:center">Print</th>
+                                    <td class="sp-dt" style="color:#bbb;width:30px">@rowNum</td>
+                                    <td>
+                                        <span class="sp-code">@b.BatchName</span>
+                                        <div class="sp-meta-sub">@b.CreatedBy · @b.CreatedAtUtc.ToString("dd MMM yyyy HH:mm")</div>
+                                    </td>
+                                    <td class="sp-dt">@b.BatchDate.ToString("dd MMM yyyy")</td>
+                                    <td>
+                                        <span style="font-weight:700">@b.NumberOfRecords.ToString("N0")</span>
+                                        <div class="sp-mini-prog">
+                                            <div class="sp-mini-fill @(pct == 100 ? "done" : "")" style="width:@pct%"></div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="sp-status-bar">
+                                            @if (b.PrintedCount > 0)
+                                            {
+                                                <span class="sp-status-pill sp-status-done">✓ @b.PrintedCount printed</span>
+                                            }
+                                            @if (b.GeneratedCount > 0)
+                                            {
+                                                <span class="sp-status-pill sp-status-gen">⏳ @b.GeneratedCount pending</span>
+                                            }
+                                            @if (b.SentCount > 0)
+                                            {
+                                                <span class="sp-status-pill sp-status-sent">📧 @b.SentCount sent</span>
+                                            }
+                                            @if (b.FailedCount > 0)
+                                            {
+                                                <span class="sp-status-pill sp-status-fail">✗ @b.FailedCount failed</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td style="text-align:center">
+                                        @if (b.GeneratedCount > 0 || b.FailedCount > 0)
+                                        {
+                                            <button type="button" class="btn-print-row"
+                                                    onclick="submitPrintBatch(@b.BatchId, '@b.BatchName', @b.NumberOfRecords, this)">
+                                                🖨 @(b.PrintedCount > 0 ? "Retry" : "Print")
+                                            </button>
+                                            <form id="printForm_@b.BatchId"
+                                                  action="/Step3/PrintBatch" method="post" style="display:none">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="batchId" value="@b.BatchId" />
+                                                <input type="hidden" name="key" value="@key" />
+                                            </form>
+                                        }
+                                        else
+                                        {
+                                            <span class="sp-badge-ok">✓ Done</span>
+                                        }
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @{
-                                    int rowNum = 0;
-                                }
-                                @foreach (var b in Model.Batches)
-                                {
-                                    rowNum++;
-                                    var total = b.NumberOfRecords;
-                                    var pct = total == 0 ? 0 : (int)Math.Round(b.PrintedCount * 100m / total);
-                                    pct = Math.Clamp(pct, 0, 100);
-                                    <tr>
-                                        <td class="sp-dt" style="color:#bbb;width:30px">@rowNum</td>
-                                        <td>
-                                            <span class="sp-code">@b.BatchName</span>
-                                            <div class="sp-meta-sub">@b.CreatedBy · @b.CreatedAtUtc.ToString("dd MMM yyyy HH:mm")</div>
-                                        </td>
-                                        <td class="sp-dt">@b.BatchDate.ToString("dd MMM yyyy")</td>
-                                        <td>
-                                            <span style="font-weight:700">@b.NumberOfRecords.ToString("N0")</span>
-                                            <div class="sp-mini-prog">
-                                                <div class="sp-mini-fill @(pct == 100 ? "done" : "")" style="width:@pct%"></div>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <div class="sp-status-bar">
-                                                @if (b.PrintedCount > 0)
-                                                {
-                                                    <span class="sp-status-pill sp-status-done">✓ @b.PrintedCount printed</span>
-                                                }
-                                                @if (b.GeneratedCount > 0)
-                                                {
-                                                    <span class="sp-status-pill sp-status-gen">⏳ @b.GeneratedCount pending</span>
-                                                }
-                                                @if (b.SentCount > 0)
-                                                {
-                                                    <span class="sp-status-pill sp-status-sent">📧 @b.SentCount sent</span>
-                                                }
-                                                @if (b.FailedCount > 0)
-                                                {
-                                                    <span class="sp-status-pill sp-status-fail">✗ @b.FailedCount failed</span>
-                                                }
-                                            </div>
-                                        </td>
-                                        <td style="text-align:center">
-                                            @if (b.GeneratedCount > 0 || b.FailedCount > 0)
-                                            {
-                                                <button type="button" class="btn-print-row"
-                                                        onclick="submitPrintBatch(@b.BatchId, '@b.BatchName', @b.NumberOfRecords, this)">
-                                                    🖨 @(b.PrintedCount > 0 ? "Retry" : "Print")
-                                                </button>
-                                                <form id="printForm_@b.BatchId"
-                                                      action="/Step3/PrintBatch" method="post" style="display:none">
-                                                    @Html.AntiForgeryToken()
-                                                    <input type="hidden" name="batchId" value="@b.BatchId" />
-                                                    <input type="hidden" name="key" value="@key" />
-                                                </form>
-                                            }
-                                            else
-                                            {
-                                                <span class="sp-badge-ok">✓ Done</span>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    }
-                } < !--end else (standard batches)-- >
+                            }
+                        </tbody>
+                    </table>
+                }
             </div>
         </div><!-- /sp-right -->
 
@@ -1331,8 +1357,6 @@
                 <div class="pp-sub" id="ppBatchName">Please wait</div>
             </div>
         </div>
-
-        <!-- big progress bar -->
         <div class="pp-bar-wrap">
             <div class="pp-bar-fill" id="ppBarFill"></div>
         </div>
@@ -1344,8 +1368,6 @@
                 <div>Remaining: <strong id="ppRemaining">—</strong></div>
             </div>
         </div>
-
-        <!-- chips -->
         <div class="pp-chips">
             <div class="pp-chip">
                 <div class="pp-chip-num gold" id="ppChipGen">—</div>
@@ -1360,18 +1382,12 @@
                 <div class="pp-chip-lbl">Failed</div>
             </div>
         </div>
-
-        <!-- save path -->
         <div class="pp-path">
             📁 Saving to: <code id="ppPath">@($"[Roll Root]\\{Model.RollShortCode}_{Model.Notice}\\Batches\\[BatchName]\\[Property]_{Model.Notice}.pdf")</code>
         </div>
-
-        <!-- working indicator -->
         <div id="ppWorking" style="text-align:center;font-size:.72rem;color:#9a9a9a;margin-bottom:16px">
             <span class="pp-pulse">⏳ Printing in progress…</span>
         </div>
-
-        <!-- done banner -->
         <div class="pp-done-banner" id="ppDoneBanner">
             <div class="pp-done-icon">🎉</div>
             <div>
@@ -1379,8 +1395,6 @@
                 <div class="pp-done-sub" id="ppDoneSub">All notices saved to folder</div>
             </div>
         </div>
-
-        <!-- close/next button — appears when done -->
         <button class="pp-btn" id="ppCloseBtn" onclick="closePrintOverlay()">
             ✓ Done — Close
         </button>
@@ -1388,17 +1402,9 @@
 </div>
 
 <script>
-    let _pollTimer   = null;
-    let _currentKey  = '@key';
+    let _pollTimer  = null;
+    let _currentKey = '@key';
 
-    // ── S52 Range Print ─────────────────────────────────────────────────
-    function submitS52PrintRange(settingsId, isReview, workflowKey, totalRecords) {
-        _currentKey = workflowKey;
-        startPrint(0, 'Section 52 Range', totalRecords);
-        document.getElementById('s52PrintRangeForm').submit();
-    }
-
-    // Called by per-batch Print button
     function submitPrintBatch(batchId, batchName, totalRecords, btn) {
         btn.disabled = true;
         btn.innerHTML = '<span class="sp-spin"></span> Starting…';
@@ -1406,7 +1412,6 @@
         document.getElementById('printForm_' + batchId).submit();
     }
 
-    // Called by Print All button
     function submitPrintAll() {
         const totalRecords = @Model.Batches.Sum(b => b.GeneratedCount + b.FailedCount);
         startPrint(0, 'All Batches', totalRecords);
@@ -1414,9 +1419,8 @@
     }
 
     function startPrint(batchId, batchName, totalRecords) {
-        // Show overlay immediately
         document.getElementById('ppOverlay').classList.add('active');
-        document.getElementById('ppTitle').textContent    = 'Printing batch…';
+        document.getElementById('ppTitle').textContent     = 'Printing batch…';
         document.getElementById('ppBatchName').textContent = batchName;
         document.getElementById('ppTotal').textContent     = totalRecords;
         document.getElementById('ppRemaining').textContent = totalRecords;
@@ -1431,8 +1435,6 @@
         document.getElementById('ppCloseBtn').classList.remove('active');
         document.getElementById('ppPath').textContent =
             `[Roll Root]\\@(Model.RollShortCode)_@(Model.Notice)\\Batches\\${batchName}\\[Property]_@(Model.Notice).pdf`;
-
-        // Poll every 600ms
         _pollTimer = setInterval(() => pollProgress(batchId), 600);
     }
 
@@ -1464,7 +1466,6 @@
                     clearInterval(_pollTimer);
                     bar.classList.add('done');
                     document.getElementById('ppWorking').style.display = 'none';
-
                     const banner = document.getElementById('ppDoneBanner');
                     banner.classList.add('active');
                     document.getElementById('ppDoneTitle').textContent =
@@ -1483,12 +1484,6 @@
     function closePrintOverlay() {
         clearInterval(_pollTimer);
         document.getElementById('ppOverlay').classList.remove('active');
-        // Reload page to refresh status counts
         window.location.reload();
-    }
-
-    function spinBtn(el) {
-        el.disabled = true;
-        el.innerHTML = '<span class="sp-spin"></span> Working…';
     }
 </script>

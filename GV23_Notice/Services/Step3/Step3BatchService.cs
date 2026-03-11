@@ -232,25 +232,70 @@ namespace GV23_Notice.Services.Step3
                 case NoticeKind.S53:
                     {
                         if (!s.AppealCloseDate.HasValue)
-                            throw new InvalidOperationException("S53 batch requires AppealCloseDate to be calculated first (Step 1).");
+                            throw new InvalidOperationException("S53 batch requires AppealCloseDate to be set in Step 1.");
 
-                        var appealCloseDate = s.AppealCloseDate.Value.Date;
-                        var sapNo = createdBy; // Windows identity = SAP number
+                        // Dates come from NoticeSettings (calculated in Step 1)
+                        // so NoticeBatches.BatchDate == Objection_MVD.Batch_Date exactly
+                        var s53BatchDate = s.BatchDate.HasValue ? s.BatchDate.Value.Date : batchDateUtc;
+                        var s53AppealClose = s.AppealCloseDate.Value.Date;
+                        var sapNo = createdBy;
 
-                        // SP inserts into [SourceDb].dbo.Objection_MVD applying the 3 objector-type rules
-                        // and runs InsertAuditTrail_MVD for each objection.
-                        // Returns one row per Objection_MVD row inserted.
-                        var picked = await _db.Set<S53BatchPickRow>()
-                            .FromSqlRaw(
-                                "EXEC dbo.S53_Step3_InsertTop500IntoMvdTable @p0, @p1, @p2, @p3, @p4",
-                                s.RollId,
-                                batchName,
-                                batchDateUtc,
-                                appealCloseDate,
-                                sapNo)
-                            .ToListAsync(ct);
+                        batch.BatchDate = s53BatchDate;   // keep NoticeBatches in sync
 
-                        var runLogs = picked
+                        // ── Dedicated SqlConnection — completely separate from EF's connection
+                        // Reason: EF releases its connection after SaveChangesAsync above.
+                        // Re-using it causes state conflicts when the reader is open.
+                        // A fresh SqlConnection avoids all of that.
+                        var connStr = _db.Database.GetConnectionString()
+                                      ?? throw new InvalidOperationException("Connection string not found.");
+
+                        var s53Rows = new List<S53BatchPickRow>();
+
+                        using (var spConn = new Microsoft.Data.SqlClient.SqlConnection(connStr))
+                        {
+                            await spConn.OpenAsync(ct);
+
+                            using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
+                                "EXEC dbo.S53_Step3_InsertTop500IntoMvdTable " +
+                                "@RollId, @BatchName, @BatchDate, @AppealCloseDate, @SapNo",
+                                spConn)
+                            {
+                                CommandTimeout = 180
+                            };
+
+                            cmd.Parameters.AddWithValue("@RollId", s.RollId);
+                            cmd.Parameters.AddWithValue("@BatchName", batchName);
+                            cmd.Parameters.AddWithValue("@BatchDate", s53BatchDate);
+                            cmd.Parameters.AddWithValue("@AppealCloseDate", s53AppealClose);
+                            cmd.Parameters.AddWithValue("@SapNo", sapNo);
+
+                            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                            // The SP returns multiple result sets (one per sp_executesql call).
+                            // Advance through them until we find the final SELECT with 4 columns.
+                            do
+                            {
+                                if (reader.FieldCount == 4)
+                                {
+                                    while (await reader.ReadAsync(ct))
+                                    {
+                                        s53Rows.Add(new S53BatchPickRow
+                                        {
+                                            ObjectionNo = reader.IsDBNull(0) ? null : reader.GetString(0),
+                                            PremiseId = reader.IsDBNull(1) ? null : reader.GetString(1),
+                                            RecipientEmail = reader.IsDBNull(2) ? null : reader.GetString(2),
+                                            ObjectorType = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                        });
+                                    }
+                                    break;  // found and read the data result set
+                                }
+                            }
+                            while (await reader.NextResultAsync(ct));
+                        }
+                        // spConn is disposed here — fully closed before EF SaveChanges below
+
+                        // ── Create NoticeRunLog entries ─────────────────────────────────────
+                        var runLogs = s53Rows
                             .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
                             .Select(x => new NoticeRunLog
                             {
@@ -258,12 +303,16 @@ namespace GV23_Notice.Services.Step3
                                 ObjectionNo = x.ObjectionNo,
                                 PremiseId = x.PremiseId,
                                 RecipientEmail = x.RecipientEmail,
+                                // RecipientName stores the ObjectorType so the print
+                                // service knows which Objection_MVD row/filename to use.
+                                RecipientName = x.ObjectorType,
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
                             }).ToList();
 
                         _db.NoticeRunLogs.AddRange(runLogs);
                         batch.NumberOfRecords = runLogs.Count;
+
                         await _db.SaveChangesAsync(ct);
                         return batch.Id;
                     }

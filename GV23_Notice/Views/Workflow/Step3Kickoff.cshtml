@@ -18,19 +18,17 @@
     {
         NoticeKind.S49 => "Section 49 — Valuation Notice",
         NoticeKind.S51 => "Section 51 — Third Party Objection",
-        NoticeKind.S52 => Model.S52IsReview ? "Section 52 — Review Notice" : "Section 52 — Appeal Decision",
+        NoticeKind.S52 => Model.IsSection52Review == true ? "Section 52 — Review" : "Section 52 — Appeal Decision",
         NoticeKind.S53 => "Section 53 — MVD Outcome",
-        NoticeKind.DJ  => "Dear Johnny Letter",
-        NoticeKind.IN  => Model.IsInvalidOmission == true ? "Invalid — Omission" : "Invalid — Objection",
+        NoticeKind.DJ => "Dear Johnny Letter",
+        NoticeKind.IN => Model.IsInvalidOmission == true ? "Invalid — Omission" : "Invalid — Objection",
         NoticeKind.S78 => "Section 78 — Inspection Notice",
         _ => Model.Notice.ToString()
     };
-
-    string s52SubTypeLabel = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
-    string s52BadgeClass   = Model.S52IsReview ? "s3-badge-blue" : "s3-badge-amber";
 }
 
-<link href="~/css/step3/step3kickoffcss1.css" rel="stylesheet" />
+<link href="~/css/step3/step3kickoffcss11.css" rel="stylesheet" />
+<link href="~/css/step3/kickoffcss.css" rel="stylesheet" />
 
 <!-- PAGE LOADER -->
 <div id="pageLoader">
@@ -39,12 +37,18 @@
     <div class="ld-bar"><div class="ld-bar-fill"></div></div>
 </div>
 
-@if (Model.IsS52)
-{
-    <!-- S52: no batch slide panel — Print view handles the range print -->
-}
-else
-{
+<!-- ════ BATCH SLIDE PANEL OVERLAY ════ -->
+<div class="batch-overlay" id="batchOverlay">
+    <div class="batch-panel" id="batchPanel">
+
+        <!-- Header -->
+        <div class="bp-header">
+            <div class="bp-header-left">
+                <div class="bp-header-title">📦 Batch Management</div>
+                <div class="bp-header-sub">@Model.RollShortCode &nbsp;·&nbsp; @Model.Notice &nbsp;·&nbsp; v@Model.Version</div>
+            </div>
+            <button class="bp-close" onclick="closeBatchPanel()" title="Close">✕</button>
+        </div>
 
         <!-- Notice badge -->
         <div class="bp-notice-badge">
@@ -266,7 +270,7 @@ else
         <!-- ── TAB PANE: BATCH DASHBOARD ── -->
         <div class="bp-body bp-pane" id="bpPaneDashboard" style="padding:0;flex-direction:column;">
 
-            <!-- Success alert -->
+            <!-- Success / Error alerts -->
             @if (TempData["Success"] != null)
             {
                 <div class="s3-alert-ok" style="margin:14px 16px 0;">✅ @TempData["Success"]</div>
@@ -379,7 +383,9 @@ else
             <button class="btn-cancel-batch" onclick="closeBatchPanel()">Cancel</button>
         </div>
 
-}
+    </div>
+</div>
+
 <!-- ════════════════════════════════════════════════════════════
      FULL-SCREEN SHELL
 ════════════════════════════════════════════════════════════ -->
@@ -563,73 +569,40 @@ else
 
             <!-- BATCH ACTION (sticky bottom) — opens panel -->
             <div class="s3-batch-card">
-                @if (Model.IsS52)
+                <div class="s3-batch-label">Batch Action</div>
+
+                <div class="s3-batch-info">
+                    <div class="s3-batch-count">500</div>
+                    <div class="s3-batch-count-label">
+                        <strong>Records per batch</strong>
+                        Next: <span style="color:#E6B000;font-weight:800;">@Model.NextBatchCode</span>
+                    </div>
+                    @if (Model.BatchesAlreadyCreated > 0)
+                    {
+                        <span class="s3-badge-blue" style="margin-left:auto;">@Model.BatchesAlreadyCreated done</span>
+                    }
+                </div>
+
+                <div class="s3-lock-note">
+                    <span>📋</span>
+                    <span>Review all fields before creating. The batch code is auto-assigned.</span>
+                </div>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="btn-open-batch-panel" onclick="openBatchPanel('create')" style="flex:1;">
+                        📦 Start Batch
+                    </button>
+                    <button type="button" class="btn-view-batches" onclick="openBatchPanel('dashboard')">
+                        📊 @Model.CreatedBatches.Count
+                    </button>
+                </div>
+
+                @if (Model.CreatedBatches.Count > 0)
                 {
-                    <div class="s3-batch-label">Range Print — @s52SubTypeLabel</div>
-
-                    <div class="s3-batch-info">
-                        <div class="s3-batch-count">@Model.S52RangeCount.ToString("N0")</div>
-                        <div class="s3-batch-count-label">
-                            <strong>Records in range</strong>
-                            @(Model.BulkFromDate?.ToString("dd MMM") ?? "?") – @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "?")
-                        </div>
-                    </div>
-
-                    <div class="s3-lock-note">
-                        <span>ℹ️</span>
-                        <span>Click <strong>Go to Print</strong> to start printing all records in range.</span>
-                    </div>
-
                     <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
-                       class="btn-open-batch-panel" style="display:block;text-align:center;text-decoration:none;">
-                        🖨 Go to Print
+                       class="btn-goto-print-sidebar">
+                        🖨 Go to Print Dashboard
                     </a>
-
-                    @if (Model.CreatedBatches.Count > 0)
-                    {
-                        <a href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })"
-                           class="btn-goto-print-sidebar" style="background:#1a7a4a;margin-top:6px;">
-                            📧 Go to Send Email
-                        </a>
-                    }
-                }
-                else
-                {
-                    <div class="s3-batch-label">Batch Action</div>
-
-                    <div class="s3-batch-info">
-                        <div class="s3-batch-count">500</div>
-                        <div class="s3-batch-count-label">
-                            <strong>Records per batch</strong>
-                            Next: <span style="color:#E6B000;font-weight:800;">@Model.NextBatchCode</span>
-                        </div>
-                        @if (Model.BatchesAlreadyCreated > 0)
-                        {
-                            <span class="s3-badge-blue" style="margin-left:auto;">@Model.BatchesAlreadyCreated done</span>
-                        }
-                    </div>
-
-                    <div class="s3-lock-note">
-                        <span>📋</span>
-                        <span>Review all fields before creating. The batch code is auto-assigned.</span>
-                    </div>
-
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button type="button" class="btn-open-batch-panel" onclick="openBatchPanel('create')" style="flex:1;">
-                            📦 Start Batch
-                        </button>
-                        <button type="button" class="btn-view-batches" onclick="openBatchPanel('dashboard')">
-                            📊 @Model.CreatedBatches.Count
-                        </button>
-                    </div>
-
-                    @if (Model.CreatedBatches.Count > 0)
-                    {
-                        <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
-                           class="btn-goto-print-sidebar">
-                            🖨 Go to Print Dashboard
-                        </a>
-                    }
                 }
             </div>
 
@@ -638,7 +611,7 @@ else
 </div><!-- /s3-fullscreen -->
 @section Scripts {
     <script>
-        // ── Page loader ──────────────────────────────────────────
+        // ── Page loader ─────────────────────────────────────────
         (function () {
             function dismiss() {
                 var el = document.getElementById('pageLoader');
@@ -652,48 +625,52 @@ else
             setTimeout(dismiss, 2000);
         })();
 
-        @if (!Model.IsS52)
-        {
-        <text>
-        // ── Panel tab switching ─────────────────────────────────
+        // ── Panel tab switching ──────────────────────────────────
         function switchPanelTab(tab) {
+            // Tabs
             document.querySelectorAll('.bp-tab').forEach(t => t.classList.remove('active'));
             document.getElementById(tab === 'create' ? 'bpTabCreate' : 'bpTabDashboard').classList.add('active');
+            // Panes
             document.querySelectorAll('.bp-pane').forEach(p => p.classList.remove('active'));
             document.getElementById(tab === 'create' ? 'bpPaneCreate' : 'bpPaneDashboard').classList.add('active');
+            // Footer: only show on create tab
             document.getElementById('bpFooter').style.display = tab === 'create' ? '' : 'none';
         }
 
-        // ── Open / close batch panel ────────────────────────────
+        // ── Open batch panel ────────────────────────────────────
         function openBatchPanel(tab) {
             document.getElementById('batchOverlay').classList.add('open');
             document.body.style.overflow = 'hidden';
             switchPanelTab(tab || 'create');
         }
+
         function closeBatchPanel() {
             document.getElementById('batchOverlay').classList.remove('open');
             document.body.style.overflow = '';
         }
 
+        // Close on overlay click (outside panel)
         document.getElementById('batchOverlay').addEventListener('click', function (e) {
             if (e.target === this) closeBatchPanel();
         });
 
+        // Sync date picker → hidden form input
         document.getElementById('batchDateInput').addEventListener('change', function () {
             document.getElementById('batchDateHidden').value = this.value;
         });
 
+        // Prevent double-submit
         document.getElementById('batchForm').addEventListener('submit', function () {
             var btn = document.getElementById('createBatchBtn');
             btn.disabled = true;
             btn.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #0d0d0d;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></span> Creating…';
         });
 
+        // Auto-open dashboard tab after successful batch creation
         @if (Model.ShowBatchTab)
         {
                 <text>openBatchPanel('dashboard');</text>
         }
-        </text>
-        }
     </script>
+   
 }

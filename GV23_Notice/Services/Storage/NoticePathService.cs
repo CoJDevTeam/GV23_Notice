@@ -242,6 +242,52 @@ namespace GV23_Notice.Services.Storage
             return Path.Combine(root, objFolder, noticeFolder, fileName);
         }
 
+
+        public string BuildS53PdfPath(
+            RollRegistry roll,
+            string objectionNo,
+            string propertyDesc,
+            string? objectorType)
+        {
+            var root = GetRootPath(roll, NoticeKind.S53);
+            var safeKey = SafeName(objectionNo);
+            var safeProp = SafeName(propertyDesc);
+            var objFolder = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
+            const string inner = "Section 53 MVD";
+
+            // Filename suffix depends on which copy this row represents
+            var fileName = objectorType switch
+            {
+                "Owner_Rep" => $"{objFolder}_{safeProp}_Owner_Rep_MVD.pdf",
+                "Owner_Third_Party" => $"{objFolder}_{safeProp}_Owner_Third_Party_MVD.pdf",
+                _ => $"{objFolder}_{safeProp}_MVD.pdf"   // Owner / Representative / Third_Party
+            };
+
+            return Path.Combine(root, objFolder, inner, fileName);
+        }
+
+        public string BuildS53EmlPath(
+            RollRegistry roll,
+            string objectionNo,
+            string propertyDesc,
+            string? objectorType)
+        {
+            var root = GetRootPath(roll, NoticeKind.S53);
+            var safeKey = SafeName(objectionNo);
+            var safeProp = SafeName(propertyDesc);
+            var objFolder = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
+            const string inner = "Section 53 MVD";
+
+            var fileName = objectorType switch
+            {
+                "Owner_Rep" => $"{objFolder}_{safeProp}_Owner_Rep_MVD.eml",
+                "Owner_Third_Party" => $"{objFolder}_{safeProp}_Owner_Third_Party_MVD.eml",
+                _ => $"{objFolder}_{safeProp}_MVD.eml"
+            };
+
+            return Path.Combine(root, objFolder, inner, fileName);
+        }
+
         private static string SafeName(string? name)
         {
             name ??= "";

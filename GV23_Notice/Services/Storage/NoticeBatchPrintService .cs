@@ -1,6 +1,8 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Services.Notices.Section51;
 using GV23_Notice.Services.Notices.Section52;
+using GV23_Notice.Services.Notices.Section53;
+using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using System.Data;
@@ -26,6 +28,7 @@ namespace GV23_Notice.Services.Storage
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<NoticeBatchPrintService> _log;
         private readonly IConfiguration _config;
+        private readonly ISection53PdfService _s53Builder;
 
         public NoticeBatchPrintService(
             AppDbContext db,
@@ -34,6 +37,7 @@ namespace GV23_Notice.Services.Storage
             ISection49PdfBuilder s49Builder,
             ISection51PdfBuilder s51Builder,
             Section52PdfService s52Builder,
+            ISection53PdfService s53Builder,
             IWebHostEnvironment env,
             ILogger<NoticeBatchPrintService> log,
             IConfiguration config)
@@ -44,6 +48,7 @@ namespace GV23_Notice.Services.Storage
             _s49Builder = s49Builder;
             _s51Builder = s51Builder;
             _s52Builder = s52Builder;
+            _s53Builder = s53Builder;
             _env = env;
             _log = log;
             _config = config;
@@ -100,6 +105,20 @@ namespace GV23_Notice.Services.Storage
                 }
             }
 
+            // ── S53 post-print: flip Printing-Pending → Email-Pending ─────────
+            if (settings.Notice == NoticeKind.S53 && result.Printed > 0)
+            {
+                try
+                {
+                    await SetS53EmailPendingAsync(roll.RollId, batch.BatchName, ct);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogError(ex, "S53 SetEmailPending failed for batch {BatchName}", batch.BatchName);
+                    // Non-fatal — PDFs are saved, status update can be retried
+                }
+            }
+
             return result;
         }
 
@@ -148,6 +167,10 @@ namespace GV23_Notice.Services.Storage
                 case NoticeKind.S52:
                     (pdfBytes, propertyDesc) = await BuildS52PdfAsync(settings, roll, log, ct);
                     break;
+
+                case NoticeKind.S53:
+                    await PrintOneS53Async(settings, roll, batch, log, ct);
+                    return;   // S53 handles its own path + save + status update
 
                 // For other notice types: fall back to snapshot-based print
                 default:
@@ -483,6 +506,156 @@ namespace GV23_Notice.Services.Storage
             var propertyDesc = row.Property_desc ?? log.AppealNo ?? log.Id.ToString();
 
             return (pdfBytes, propertyDesc);
+        }
+
+        // ── S53: load from Objection_MVD via SP → build PDF ────────────────
+        private async Task PrintOneS53Async(
+            NoticeSettings settings,
+            Domain.Rolls.RollRegistry roll,
+            NoticeBatch batch,
+            NoticeRunLog log,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(log.ObjectionNo))
+                throw new InvalidOperationException(
+                    $"RunLog {log.Id} has no ObjectionNo for S53 print.");
+
+            // ObjectorType was stored in RecipientName during batch creation.
+            // For RunLogs created before this field was populated (RecipientName is null),
+            // we look up the ObjectorType from Objection_MVD directly.
+            var cs = _config.GetConnectionString("DefaultConnection")
+                     ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+            string objectorType;
+            if (!string.IsNullOrWhiteSpace(log.RecipientName))
+            {
+                objectorType = log.RecipientName;
+            }
+            else
+            {
+                // Legacy RunLog — derive ObjectorType from Objection_MVD
+                var lookupSql = $@"
+                    DECLARE @src NVARCHAR(200);
+                    SELECT @src = SourceDb FROM dbo.RollRegistry WHERE RollId = {batch.RollId};
+                    EXEC sp_executesql
+                        N'SELECT TOP 1 Objector_Type FROM [' + @src + '].[dbo].[Objection_MVD] WHERE Objection_No=@o AND Batch_Name=@b ORDER BY Objector_Type',
+                        N'@o NVARCHAR(80), @b NVARCHAR(100)',
+                        @o='{log.ObjectionNo?.Replace("'", "''")}', @b='{batch.BatchName?.Replace("'", "''")}';";
+
+                await using var lookupConn = new SqlConnection(cs);
+                await lookupConn.OpenAsync(ct);
+                await using var lookupCmd = new SqlCommand(lookupSql, lookupConn) { CommandTimeout = 30 };
+                var rawType = await lookupCmd.ExecuteScalarAsync(ct);
+                objectorType = rawType?.ToString() ?? "Owner";
+            }
+
+            Section53MvdRow? mvdRow = null;
+
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.S53_GetMvdRow", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 60
+            };
+            cmd.Parameters.AddWithValue("@RollId", batch.RollId);
+            cmd.Parameters.AddWithValue("@ObjectionNo", log.ObjectionNo);
+            cmd.Parameters.AddWithValue("@BatchName", batch.BatchName);
+            cmd.Parameters.AddWithValue("@ObjectorType", objectorType);
+
+            await conn.OpenAsync(ct);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                throw new InvalidOperationException(
+                    $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, " +
+                    $"BatchName={batch.BatchName}, ObjectorType={objectorType}. " +
+                    "Ensure the batch was created successfully.");
+
+            static string? Str(SqlDataReader r, string col)
+            {
+                var v = r[col];
+                return v == DBNull.Value ? null : v?.ToString();
+            }
+
+            var appealCloseRaw = reader["AppealCloseDate"];
+            DateTime? appealClose = appealCloseRaw == DBNull.Value
+                ? null
+                : Convert.ToDateTime(appealCloseRaw);
+
+            mvdRow = new Section53MvdRow
+            {
+                ObjectionNo = Str(reader, "Objection_No") ?? log.ObjectionNo,
+                ValuationKey = Str(reader, "ValuationKey"),
+                PropertyDesc = Str(reader, "PropertyDesc"),
+                Email = Str(reader, "Email"),
+                Addr1 = Str(reader, "ADDR1"),
+                Addr2 = Str(reader, "ADDR2"),
+                Addr3 = Str(reader, "ADDR3"),
+                Addr4 = Str(reader, "ADDR4"),
+                Addr5 = Str(reader, "ADDR5"),
+                AppealCloseDate = appealClose,
+                Section52Review = Str(reader, "Section52Review"),
+
+                Gv_Category = Str(reader, "GV_Category"),
+                Gv_Category2 = Str(reader, "GV_Category2"),
+                Gv_Category3 = Str(reader, "GV_Category3"),
+                Gv_Market_Value = Str(reader, "GV_Market_Value"),
+                Gv_Market_Value2 = Str(reader, "GV_Market_Value2"),
+                Gv_Market_Value3 = Str(reader, "GV_Market_Value3"),
+                Gv_Extent = Str(reader, "GV_Extent"),
+                Gv_Extent2 = Str(reader, "GV_EXtent2"),
+                Gv_Extent3 = Str(reader, "GV_Extent3"),
+
+                Mvd_Category = Str(reader, "MVD_Category"),
+                Mvd_Category2 = Str(reader, "MVD_Category2"),
+                Mvd_Category3 = Str(reader, "MVD_Category3"),
+                Mvd_Market_Value = Str(reader, "MVD_Market_Value"),
+                Mvd_Market_Value2 = Str(reader, "MVD_Market_Value2"),
+                Mvd_Market_Value3 = Str(reader, "MVD_Market_Value3"),
+                Mvd_Extent = Str(reader, "MVD_Extent"),
+                Mvd_Extent2 = Str(reader, "MVD_Extent2"),
+                Mvd_Extent3 = Str(reader, "MVD_Extent3"),
+            };
+
+            var propertyDesc = mvdRow.PropertyDesc
+                               ?? log.ObjectionNo
+                               ?? log.PremiseId
+                               ?? "Property";
+
+            var letterDate = DateOnly.FromDateTime(settings.LetterDate);
+            var pdfBytes = _s53Builder.BuildNoticePdf(mvdRow, letterDate);
+
+            // ── Build paths ────────────────────────────────────────────────
+            var pdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
+            var emlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
+
+            SavePdf(pdfPath, pdfBytes);
+
+            log.PdfPath = pdfPath;
+            log.EmlPath = emlPath;
+            log.PropertyDesc = propertyDesc;
+            log.Status = RunStatus.Printed;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        // ── S53: flip Printing-Pending → Email-Pending after batch print ─────
+        private async Task SetS53EmailPendingAsync(
+            int rollId, string batchName, CancellationToken ct)
+        {
+            var cs = _config.GetConnectionString("DefaultConnection")
+                     ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.S53_Step3_SetEmailPending", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 60
+            };
+            cmd.Parameters.AddWithValue("@RollId", rollId);
+            cmd.Parameters.AddWithValue("@BatchName", batchName);
+
+            await conn.OpenAsync(ct);
+            await cmd.ExecuteNonQueryAsync(ct);
         }
 
         // ── Snapshot fallback for non-S49 notice types ──────────────────────

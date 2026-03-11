@@ -66,5 +66,28 @@ namespace GV23_Notice.Services.Storage
             RollRegistry roll,
             string objectionNo,
             string propertyDesc);
+
+        /// <summary>
+        /// S53 PDF path.
+        /// Folder : {root}\{ObjectionNo}\Section 53 MVD\
+        /// Files  :
+        ///   Owner / Representative / Third_Party → {ObjectionNo}_{PropertyDesc}_MVD.pdf
+        ///   Owner_Rep                            → {ObjectionNo}_{PropertyDesc}_Owner_Rep_MVD.pdf
+        ///   Owner_Third_Party                    → {ObjectionNo}_{PropertyDesc}_Owner_Third_Party_MVD.pdf
+        /// </summary>
+        string BuildS53PdfPath(
+            RollRegistry roll,
+            string objectionNo,
+            string propertyDesc,
+            string? objectorType);
+
+        /// <summary>
+        /// S53 .eml path — same folder as the PDF, .eml extension.
+        /// </summary>
+        string BuildS53EmlPath(
+            RollRegistry roll,
+            string objectionNo,
+            string propertyDesc,
+            string? objectorType);
     }
 }

@@ -60,14 +60,6 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string SelectedMode { get; set; } = "single";
         public string? AppealNo { get; set; }
 
-        // ── S52 range-print specific ─────────────────────────────────────────
-        /// <summary>True when the kickoff is for a Section 52 notice (no batch creation UI).</summary>
-        public bool IsS52 { get; set; }
-        /// <summary>True = Review sub-type, False = Appeal Decision sub-type.</summary>
-        public bool S52IsReview { get; set; }
-        /// <summary>Total records in the configured date range for the selected sub-type.</summary>
-        public int S52RangeCount { get; set; }
-
         // Real DB preview sample
         public string? SamplePremiseId { get; set; }
         public string? SampleEmail { get; set; }
@@ -76,6 +68,11 @@ namespace GV23_Notice.Models.Workflow.ViewModels
 
         public string PdfPreviewUrl { get; set; } = "";
         public string EmailPreviewHtml { get; set; } = "";
+
+        // ── S52 range-print fields ──────────────────────────────────
+        public bool IsS52 { get; set; }
+        public bool S52IsReview { get; set; }
+        public int S52RangeCount { get; set; }
 
         // ── Batch dashboard ─────────────────────────────────────────
         /// <summary>All batches already created for this workflow, newest first.</summary>
