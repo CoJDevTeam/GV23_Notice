@@ -4,9 +4,11 @@ using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Storage;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Data;
 using System.Net.Mail;
 using System.Text;
 
@@ -20,6 +22,7 @@ namespace GV23_Notice.Services.Email
         private readonly INoticePathService _paths;
         private readonly IS49RollRepository _s49Repo;
         private readonly ILogger<NoticeBatchEmailService> _log;
+        private readonly IConfiguration _config;
 
         private const int HardMaxEmails = 2000;
 
@@ -29,7 +32,8 @@ namespace GV23_Notice.Services.Email
             INoticeEmailTemplateService templates,
             INoticePathService paths,
             IS49RollRepository s49Repo,
-            ILogger<NoticeBatchEmailService> log)
+            ILogger<NoticeBatchEmailService> log,
+            IConfiguration config)
         {
             _db = db;
             _emailOpt = emailOpt.Value;
@@ -37,6 +41,7 @@ namespace GV23_Notice.Services.Email
             _paths = paths;
             _s49Repo = s49Repo;
             _log = log;
+            _config = config;
         }
 
         // ── Count ready-to-send records ──────────────────────────────────────
@@ -110,6 +115,91 @@ namespace GV23_Notice.Services.Email
                     var req = BuildEmailRequest(settings, roll, log);
                     var (subject, bodyHtml) = _templates.Build(req);
 
+                   
+
+                    // ── S53: paired email logic ───────────────────────────────────────
+                    // Mirrors the print pairing:
+                    //   Owner             → 1 email  (sent here)
+                    //   Representative    → 2 emails (Representative + Owner_Rep, both sent here)
+                    //   Owner_Rep         → secondary, already sent by Representative RunLog — mark Sent
+                    //   Third_Party       → 2 emails (Third_Party + Owner_Third_Party, both sent here)
+                    //   Owner_Third_Party → secondary, already sent by Third_Party RunLog — mark Sent
+                    if (settings.Notice == NoticeKind.S53)
+                    {
+                        var objectorType = log.RecipientName ?? "Owner";
+
+                        // Secondary RunLogs: primary already sent their email
+                        if (objectorType == "Owner_Rep" || objectorType == "Owner_Third_Party")
+                        {
+                            log.Status = RunStatus.Sent;
+                            log.SentAtUtc = DateTime.UtcNow;
+                            result.Sent++;
+                            await _db.SaveChangesAsync(ct);
+                            continue;
+                        }
+
+                        var cs53 = _config.GetConnectionString("DefaultConnection")
+                                   ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+                        // ── Primary email (this RunLog's own row) ────────────────────
+                        var primaryPdfPath = log.PdfPath
+                            ?? throw new FileNotFoundException(
+                                $"S53 RunLog {log.Id} has no PdfPath — was it printed?");
+                        var primaryEmlPath = log.EmlPath
+                            ?? _paths.BuildS53EmlPath(roll, log.ObjectionNo!, log.PropertyDesc ?? "", objectorType);
+
+                        await SaveEmlAsync(primaryEmlPath, log.RecipientEmail!, subject, bodyHtml, primaryPdfPath, ct);
+                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
+                        log.EmlPath = primaryEmlPath;
+
+                        // ── Paired email (Owner_Rep / Owner_Third_Party row) ──────────
+                        var pairedType = objectorType == "Representative" ? "Owner_Rep" : "Owner_Third_Party";
+                        var pairedRow = await FetchS53MvdEmailRowAsync(cs53, batch!, log.ObjectionNo!, batch!.BatchName, pairedType, ct);
+
+                        if (pairedRow.email != null)
+                        {
+                            var pairedPdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, log.PropertyDesc ?? "", pairedType);
+                            var pairedEmlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, log.PropertyDesc ?? "", pairedType);
+
+                            if (File.Exists(pairedPdfPath))
+                            {
+                                var pairedReq = BuildEmailRequest(settings, roll, log);
+                                pairedReq.RecipientEmail = pairedRow.email;
+                                var (pairedSubject, pairedBody) = _templates.Build(pairedReq);
+                                await SaveEmlAsync(pairedEmlPath, pairedRow.email, pairedSubject, pairedBody, pairedPdfPath, ct);
+
+                                var pairedSmtpLog = new NoticeRunLog
+                                {
+                                    NoticeBatchId = log.NoticeBatchId,
+                                    ObjectionNo = log.ObjectionNo,
+                                    PremiseId = log.PremiseId,
+                                    RecipientEmail = pairedRow.email,
+                                    RecipientName = pairedType,
+                                    PropertyDesc = log.PropertyDesc,
+                                    PdfPath = pairedPdfPath,
+                                    EmlPath = pairedEmlPath
+                                };
+                                await SendOneEmailAsync(pairedSubject, pairedBody, pairedSmtpLog, ct);
+                                _log.LogInformation("S53 paired email sent: {ObjectionNo} {PairedType}", log.ObjectionNo, pairedType);
+                            }
+                            else
+                            {
+                                _log.LogWarning("S53 paired PDF not found, skipping paired email: {Path}", pairedPdfPath);
+                            }
+                        }
+                        else
+                        {
+                            _log.LogWarning("S53 paired row has no email, skipping: {ObjectionNo} {PairedType}", log.ObjectionNo, pairedType);
+                        }
+
+                        log.Status = RunStatus.Sent;
+                        log.SentAtUtc = DateTime.UtcNow;
+                        result.Sent++;
+                        await _db.SaveChangesAsync(ct);
+                        continue;
+                    }
+                    // ── END S53 ──────────────────────────────────────────────────────
+
                     string emlPath;
                     if (settings.Notice == NoticeKind.S51)
                     {
@@ -178,7 +268,55 @@ namespace GV23_Notice.Services.Email
 
             return result;
         }
+        // ── S53: fetch email + address from Objection_MVD for paired row ───
+        private static async Task<(string? email, string? addr1)> FetchS53MvdEmailRowAsync(
+            string cs,
+            NoticeBatch batch,
+            string objectionNo,
+            string batchName,
+            string objectorType,
+            CancellationToken ct)
+        {
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.S53_GetMvdRow", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 60
+            };
+            cmd.Parameters.AddWithValue("@RollId", batch.RollId);
+            cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
+            cmd.Parameters.AddWithValue("@BatchName", batchName);
+            cmd.Parameters.AddWithValue("@ObjectorType", objectorType);
 
+            await conn.OpenAsync(ct);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct)) return (null, null);
+
+            string? Str(string col)
+            {
+                var v = reader[col];
+                return v == DBNull.Value ? null : v?.ToString();
+            }
+
+            return (Str("Email"), Str("ADDR1"));
+        }
+
+        // ── S53: flip Email-Pending → Notice-Sent ────────────────────────────
+        private static async Task SetS53NoticeSentAsync(
+            string cs, int rollId, string batchName, CancellationToken ct)
+        {
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.S53_Step3_SetNoticeSent", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 60
+            };
+            cmd.Parameters.AddWithValue("@RollId", rollId);
+            cmd.Parameters.AddWithValue("@BatchName", batchName);
+            await conn.OpenAsync(ct);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
         // ── Build NoticeEmailRequest from settings + run log ─────────────────
         private static NoticeEmailRequest BuildEmailRequest(
             NoticeSettings s,

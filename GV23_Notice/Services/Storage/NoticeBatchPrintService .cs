@@ -508,7 +508,15 @@ namespace GV23_Notice.Services.Storage
             return (pdfBytes, propertyDesc);
         }
 
-        // ── S53: load from Objection_MVD via SP → build PDF ────────────────
+        // ── S53: print PDFs from Objection_MVD ────────────────────────────
+        //
+        //  ObjectorType rules (stored in RunLog.RecipientName):
+        //    Owner             → 1 PDF  (this RunLog)
+        //    Representative    → 2 PDFs (Representative + Owner_Rep both printed by THIS RunLog)
+        //    Owner_Rep         → already printed by the Representative RunLog; just mark Printed
+        //    Third_Party       → 2 PDFs (Third_Party + Owner_Third_Party both printed by THIS RunLog)
+        //    Owner_Third_Party → already printed by the Third_Party RunLog; just mark Printed
+        //
         private async Task PrintOneS53Async(
             NoticeSettings settings,
             Domain.Rolls.RollRegistry roll,
@@ -520,37 +528,99 @@ namespace GV23_Notice.Services.Storage
                 throw new InvalidOperationException(
                     $"RunLog {log.Id} has no ObjectionNo for S53 print.");
 
-            // ObjectorType was stored in RecipientName during batch creation.
-            // For RunLogs created before this field was populated (RecipientName is null),
-            // we look up the ObjectorType from Objection_MVD directly.
             var cs = _config.GetConnectionString("DefaultConnection")
                      ?? throw new InvalidOperationException("DefaultConnection not configured.");
 
-            string objectorType;
-            if (!string.IsNullOrWhiteSpace(log.RecipientName))
+            // ── Resolve ObjectorType ─────────────────────────────────────────
+            var objectorType = !string.IsNullOrWhiteSpace(log.RecipientName)
+                ? log.RecipientName
+                : await LookupObjectorTypeAsync(cs, batch, log, ct);
+
+            // ── Secondary RunLogs: primary already printed their file ─────────
+            // Owner_Rep is the paired copy for Representative.
+            // Owner_Third_Party is the paired copy for Third_Party.
+            // When we hit these RunLogs, the primary RunLog (Representative /
+            // Third_Party) already wrote both PDFs — we just need to record
+            // the correct path and mark this RunLog Printed.
+            if (objectorType == "Owner_Rep" || objectorType == "Owner_Third_Party")
             {
-                objectorType = log.RecipientName;
+                // Fetch the row just to get PropertyDesc for the path
+                var secRow = await FetchMvdRowAsync(cs, batch, log.ObjectionNo, batch.BatchName, objectorType, ct);
+                var secPropDesc = secRow?.PropertyDesc ?? log.ObjectionNo ?? "Property";
+                var secPdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, secPropDesc, objectorType);
+                var secEmlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, secPropDesc, objectorType);
+
+                log.PdfPath = secPdfPath;
+                log.EmlPath = secEmlPath;
+                log.PropertyDesc = secPropDesc;
+                log.Status = RunStatus.Printed;
+                await _db.SaveChangesAsync(ct);
+                return;
             }
-            else
+
+            // ── Primary RunLog: fetch this row and print its PDF ─────────────
+            var mvdRow = await FetchMvdRowAsync(cs, batch, log.ObjectionNo, batch.BatchName, objectorType, ct)
+                         ?? throw new InvalidOperationException(
+                             $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, " +
+                             $"BatchName={batch.BatchName}, ObjectorType={objectorType}.");
+
+            var propertyDesc = mvdRow.PropertyDesc ?? log.ObjectionNo ?? log.PremiseId ?? "Property";
+            var letterDate = DateOnly.FromDateTime(settings.LetterDate);
+
+            // Print primary PDF
+            var pdfBytes = _s53Builder.BuildNoticePdf(mvdRow, letterDate);
+            var pdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
+            var emlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
+            SavePdf(pdfPath, pdfBytes);
+
+            // ── For Representative and Third_Party: also print the paired row ─
+            //    Representative  → also print Owner_Rep
+            //    Third_Party     → also print Owner_Third_Party
+            var pairedType = objectorType switch
             {
-                // Legacy RunLog — derive ObjectorType from Objection_MVD
-                var lookupSql = $@"
-                    DECLARE @src NVARCHAR(200);
-                    SELECT @src = SourceDb FROM dbo.RollRegistry WHERE RollId = {batch.RollId};
-                    EXEC sp_executesql
-                        N'SELECT TOP 1 Objector_Type FROM [' + @src + '].[dbo].[Objection_MVD] WHERE Objection_No=@o AND Batch_Name=@b ORDER BY Objector_Type',
-                        N'@o NVARCHAR(80), @b NVARCHAR(100)',
-                        @o='{log.ObjectionNo?.Replace("'", "''")}', @b='{batch.BatchName?.Replace("'", "''")}';";
+                "Representative" => "Owner_Rep",
+                "Third_Party" => "Owner_Third_Party",
+                _ => null
+            };
 
-                await using var lookupConn = new SqlConnection(cs);
-                await lookupConn.OpenAsync(ct);
-                await using var lookupCmd = new SqlCommand(lookupSql, lookupConn) { CommandTimeout = 30 };
-                var rawType = await lookupCmd.ExecuteScalarAsync(ct);
-                objectorType = rawType?.ToString() ?? "Owner";
+            if (pairedType != null)
+            {
+                var pairedRow = await FetchMvdRowAsync(cs, batch, log.ObjectionNo, batch.BatchName, pairedType, ct);
+                if (pairedRow != null)
+                {
+                    var pairedDesc = pairedRow.PropertyDesc ?? propertyDesc;
+                    var pairedBytes = _s53Builder.BuildNoticePdf(pairedRow, letterDate);
+                    var pairedPdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, pairedDesc, pairedType);
+                    SavePdf(pairedPdfPath, pairedBytes);
+
+                    _log.LogInformation(
+                        "S53 paired PDF printed: {ObjectionNo} {PairedType} → {Path}",
+                        log.ObjectionNo, pairedType, pairedPdfPath);
+                }
+                else
+                {
+                    _log.LogWarning(
+                        "S53 paired row not found: ObjectionNo={ObjectionNo} PairedType={PairedType} Batch={Batch}",
+                        log.ObjectionNo, pairedType, batch.BatchName);
+                }
             }
 
-            Section53MvdRow? mvdRow = null;
+            log.PdfPath = pdfPath;
+            log.EmlPath = emlPath;
+            log.PropertyDesc = propertyDesc;
+            log.Status = RunStatus.Printed;
+            await _db.SaveChangesAsync(ct);
+        }
 
+        // ── Fetch one Objection_MVD row via S53_GetMvdRow SP ────────────────
+        private async Task<Section53MvdRow?> FetchMvdRowAsync(
+            string cs,
+            NoticeBatch batch,
+            string objectionNo,
+            string batchName,
+            string objectorType,
+            CancellationToken ct)
+        {
             await using var conn = new SqlConnection(cs);
             await using var cmd = new SqlCommand("dbo.S53_GetMvdRow", conn)
             {
@@ -558,18 +628,14 @@ namespace GV23_Notice.Services.Storage
                 CommandTimeout = 60
             };
             cmd.Parameters.AddWithValue("@RollId", batch.RollId);
-            cmd.Parameters.AddWithValue("@ObjectionNo", log.ObjectionNo);
-            cmd.Parameters.AddWithValue("@BatchName", batch.BatchName);
+            cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
+            cmd.Parameters.AddWithValue("@BatchName", batchName);
             cmd.Parameters.AddWithValue("@ObjectorType", objectorType);
 
             await conn.OpenAsync(ct);
             await using var reader = await cmd.ExecuteReaderAsync(ct);
 
-            if (!await reader.ReadAsync(ct))
-                throw new InvalidOperationException(
-                    $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, " +
-                    $"BatchName={batch.BatchName}, ObjectorType={objectorType}. " +
-                    "Ensure the batch was created successfully.");
+            if (!await reader.ReadAsync(ct)) return null;
 
             static string? Str(SqlDataReader r, string col)
             {
@@ -582,9 +648,9 @@ namespace GV23_Notice.Services.Storage
                 ? null
                 : Convert.ToDateTime(appealCloseRaw);
 
-            mvdRow = new Section53MvdRow
+            return new Section53MvdRow
             {
-                ObjectionNo = Str(reader, "Objection_No") ?? log.ObjectionNo,
+                ObjectionNo = Str(reader, "Objection_No") ?? objectionNo,
                 ValuationKey = Str(reader, "ValuationKey"),
                 PropertyDesc = Str(reader, "PropertyDesc"),
                 Email = Str(reader, "Email"),
@@ -616,26 +682,57 @@ namespace GV23_Notice.Services.Storage
                 Mvd_Extent2 = Str(reader, "MVD_Extent2"),
                 Mvd_Extent3 = Str(reader, "MVD_Extent3"),
             };
+        }
 
-            var propertyDesc = mvdRow.PropertyDesc
-                               ?? log.ObjectionNo
-                               ?? log.PremiseId
-                               ?? "Property";
+        // ── Legacy ObjectorType lookup (RecipientName not populated) ─────────
+        private async Task<string> LookupObjectorTypeAsync(
+            string cs,
+            NoticeBatch batch,
+            NoticeRunLog log,
+            CancellationToken ct)
+        {
+            // Count siblings with lower Id to get 1-based rank
+            var safeObjNo = log.ObjectionNo!.Replace("'", "''");
+            var rankSql = $@"
+                SELECT COUNT(*) + 1
+                FROM   dbo.NoticeRunLogs
+                WHERE  NoticeBatchId = {log.NoticeBatchId}
+                  AND  ObjectionNo   = N'{safeObjNo}'
+                  AND  Id            < {log.Id};";
 
-            var letterDate = DateOnly.FromDateTime(settings.LetterDate);
-            var pdfBytes = _s53Builder.BuildNoticePdf(mvdRow, letterDate);
+            await using var rankConn = new SqlConnection(cs);
+            await rankConn.OpenAsync(ct);
+            await using var rankCmd = new SqlCommand(rankSql, rankConn) { CommandTimeout = 30 };
+            var rankRaw = await rankCmd.ExecuteScalarAsync(ct);
+            var rank = Convert.ToInt32(rankRaw ?? 1);
 
-            // ── Build paths ────────────────────────────────────────────────
-            var pdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
-            var emlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
+            // Pick the Nth ObjectorType alphabetically from Objection_MVD
+            var safeBatch = batch.BatchName.Replace("'", "''");
+            var lookupSql = $@"
+                DECLARE @src    NVARCHAR(200);
+                DECLARE @dynSql NVARCHAR(MAX);
+                SELECT @src = SourceDb FROM dbo.RollRegistry WHERE RollId = {batch.RollId};
+                SET @dynSql = N'
+                    SELECT Objector_Type
+                    FROM (
+                        SELECT Objector_Type,
+                               ROW_NUMBER() OVER (ORDER BY Objector_Type) AS rn
+                        FROM   [' + @src + N'].[dbo].[Objection_MVD]
+                        WHERE  Objection_No = @o
+                          AND  Batch_Name   = @b
+                    ) ranked
+                    WHERE rn = @rank';
+                EXEC sp_executesql @dynSql,
+                    N'@o NVARCHAR(80), @b NVARCHAR(100), @rank INT',
+                    @o    = N'{safeObjNo}',
+                    @b    = N'{safeBatch}',
+                    @rank = {rank};";
 
-            SavePdf(pdfPath, pdfBytes);
-
-            log.PdfPath = pdfPath;
-            log.EmlPath = emlPath;
-            log.PropertyDesc = propertyDesc;
-            log.Status = RunStatus.Printed;
-            await _db.SaveChangesAsync(ct);
+            await using var lookupConn = new SqlConnection(cs);
+            await lookupConn.OpenAsync(ct);
+            await using var lookupCmd = new SqlCommand(lookupSql, lookupConn) { CommandTimeout = 30 };
+            var rawType = await lookupCmd.ExecuteScalarAsync(ct);
+            return rawType?.ToString() ?? "Owner";
         }
 
         // ── S53: flip Printing-Pending → Email-Pending after batch print ─────
