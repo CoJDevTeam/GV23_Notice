@@ -16,6 +16,7 @@ using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using System.Xml.Linq;
 
 namespace GV23_Notice.Services.Notices
 {
@@ -78,6 +79,11 @@ namespace GV23_Notice.Services.Notices
             var roll = await _db.RollRegistry
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.RollId == settings.RollId, ct);
+
+            var rollName = await _db.RollRegistry
+    .Where(r => r.RollId == r.RollId)
+    .Select(r => r.Name)
+    .FirstOrDefaultAsync(ct) ?? "Valuation Roll";
 
             if (roll is null)
                 throw new InvalidOperationException("RollRegistry not found.");
@@ -199,13 +205,15 @@ namespace GV23_Notice.Services.Notices
 
                 case NoticeKind.S53:
                     {
-                        var db = await _previewDb.S53PreviewDbDataAsync(roll.RollId, ct);
+                        var preferMulti = isSplitPdf;
+                        var db = await _previewDb.S53PreviewDbDataAsync(roll.RollId, preferMulti, ct);
+                       
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
                         samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
 
-                        var row = MapS53ToRow(db, settings);
+                        var row = MapS53ToRow(db, settings, rollName);
                         pdfBytes = _s53.BuildNoticePdf(row, DateOnly.FromDateTime(settings.LetterDate));
                         pdfFileName = $"{roll.ShortCode}_S53_PREVIEW.pdf";
 
@@ -582,11 +590,8 @@ namespace GV23_Notice.Services.Notices
                 App_Market_Value3 = db.AppMarketValue3
             };
         }
-        private static Section53MvdRow MapS53ToRow(S53PreviewDbData db, NoticeSettings settings)
+        private static Section53MvdRow MapS53ToRow(S53PreviewDbData db, NoticeSettings settings, string rollName)
         {
-            string Money(decimal? v) => v.HasValue ? "R " + v.Value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ") : "";
-            string Num(decimal? v) => v.HasValue ? v.Value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ") : "";
-
             return new Section53MvdRow
             {
                 ObjectionNo = db.ObjectionNo,
@@ -602,32 +607,32 @@ namespace GV23_Notice.Services.Notices
 
                 AppealCloseDate = (settings.AppealCloseDate ?? db.AppealCloseDate) ?? settings.LetterDate.AddDays(45),
 
-                Gv_Category = db.GvCategory,
-                Gv_Category2 = db.GvCategory2,
-                Gv_Category3 = db.GvCategory3,
+                Gv_Category = db.GvCategory ?? "",
+                Gv_Category2 = db.GvCategory2 ?? "",
+                Gv_Category3 = db.GvCategory3 ?? "",
 
-                Gv_Market_Value = Money(db.GvMarketValue),
-                Gv_Market_Value2 = Money(db.GvMarketValue2),
-                Gv_Market_Value3 = Money(db.GvMarketValue3),
+                Gv_Market_Value = db.GvMarketValue ?? "",
+                Gv_Market_Value2 = db.GvMarketValue2 ?? "",
+                Gv_Market_Value3 = db.GvMarketValue3 ?? "",
 
-                Gv_Extent = Num(db.GvExtent),
-                Gv_Extent2 = Num(db.GvExtent2),
-                Gv_Extent3 = Num(db.GvExtent3),
+                Gv_Extent = db.GvExtent ?? "",
+                Gv_Extent2 = db.GvExtent2 ?? "",
+                Gv_Extent3 = db.GvExtent3 ?? "",
 
-                Mvd_Category = db.MvdCategory,
-                Mvd_Category2 = db.MvdCategory2,
-                Mvd_Category3 = db.MvdCategory3,
+                Mvd_Category = db.MvdCategory ?? "",
+                Mvd_Category2 = db.MvdCategory2 ?? "",
+                Mvd_Category3 = db.MvdCategory3 ?? "",
 
-                Mvd_Market_Value = Money(db.MvdMarketValue),
-                Mvd_Market_Value2 = Money(db.MvdMarketValue2),
-                Mvd_Market_Value3 = Money(db.MvdMarketValue3),
+                Mvd_Market_Value = db.MvdMarketValue ?? "",
+                Mvd_Market_Value2 = db.MvdMarketValue2 ?? "",
+                Mvd_Market_Value3 = db.MvdMarketValue3 ?? "",
 
-                Mvd_Extent = Num(db.MvdExtent),
-                Mvd_Extent2 = Num(db.MvdExtent2),
-                Mvd_Extent3 = Num(db.MvdExtent3),
+                Mvd_Extent = db.MvdExtent ?? "",
+                Mvd_Extent2 = db.MvdExtent2 ?? "",
+                Mvd_Extent3 = db.MvdExtent3 ?? "",
+                RollName = rollName,
             };
         }
-
         private static NoticeEmailRequest BuildEmailReqFromReal(
       NoticeSettings s,
       RollRegistry roll,

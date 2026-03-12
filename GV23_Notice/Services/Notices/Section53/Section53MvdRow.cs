@@ -28,7 +28,7 @@
 
             // Multi split flag (your PDF currently uses split columns on one record)
             public bool IsMulti { get; set; }
-
+            public string? RollName { get; set; }
             // ======================
             // Entry in Valuation Roll (GV)
             // ======================
@@ -58,6 +58,8 @@
             public string? Mvd_Market_Value3 { get; set; }
             public string? Mvd_Extent3 { get; set; }
             public string? Mvd_Category3 { get; set; }
+
+            public string? rollName { get; set; }
         }
     }
 }

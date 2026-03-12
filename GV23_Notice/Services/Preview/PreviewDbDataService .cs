@@ -264,63 +264,63 @@ namespace GV23_Notice.Services.Preview
             };
         }
 
-        public async Task<S53PreviewDbData> S53PreviewDbDataAsync(int rollId, CancellationToken ct)
+        public async Task<S53PreviewDbData> S53PreviewDbDataAsync(int rollId, bool preferMulti, CancellationToken ct)
         {
-            var row = await ExecSingleAsync("dbo.S53_Preview_SelectTop1", cmd =>
+            var procName = preferMulti
+                ? "dbo.S53_Preview_SelectTop1_Multi"
+                : "dbo.S53_Preview_SelectTop1_Single";
+
+            var row = await ExecSingleAsync(procName, cmd =>
             {
                 cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
             }, ct);
 
             if (row is null)
-                throw new InvalidOperationException("S53 preview: no data found.");
+                throw new InvalidOperationException($"S53 preview: no data found for {(preferMulti ? "multi" : "single")} mode.");
 
             return new S53PreviewDbData
             {
                 RollId = rollId,
-                ObjectionNo = row.Str("Objection_No") ?? "",
-
+                ObjectionNo = row.Str("Objection_No"),
                 PremiseId = row.Str("Premise_iD"),
-                ValuationKey = row.Str("valuation_Key") ?? row.Str("VALUATIONKEY"),
+                ValuationKey = row.Str("valuation_Key"),
                 PropertyDesc = row.Str("Property_desc"),
-                Email = row.Str("Email"),
 
+                Email = row.Str("Email"),
                 Addr1 = row.Str("ADDR1"),
                 Addr2 = row.Str("ADDR2"),
                 Addr3 = row.Str("ADDR3"),
                 Addr4 = row.Str("ADDR4"),
                 Addr5 = row.Str("ADDR5"),
 
-                GvMarketValue = row.Dec("GVMarketValue") ?? row.Dec("GV_Market_Value"),
-                GvMarketValue2 = row.Dec("GVMarketValue2") ?? row.Dec("GV_Market_Value2"),
-                GvMarketValue3 = row.Dec("GVMarketValue3") ?? row.Dec("GV_Market_Value3"),
+                GvMarketValue = row.Str("GV_Market_Value"),
+                GvMarketValue2 = row.Str("GV_Market_Value2"),
+                GvMarketValue3 = row.Str("GV_Market_Value3"),
 
-                GvExtent = row.Dec("GV_Extent"),
-                GvExtent2 = row.Dec("GV_EXtent2") ?? row.Dec("GV_Extent2"),
-                GvExtent3 = row.Dec("GV_Extent3"),
+                GvExtent = row.Str("GV_Extent"),
+                GvExtent2 = row.Str("GV_Extent2"),
+                GvExtent3 = row.Str("GV_Extent3"),
 
                 GvCategory = row.Str("GV_Category"),
                 GvCategory2 = row.Str("GV_Category2"),
                 GvCategory3 = row.Str("GV_Category3"),
 
-                MvdMarketValue = row.Dec("MVDMarketValue") ?? row.Dec("MVD_Market_Value"),
-                MvdMarketValue2 = row.Dec("MVDMarketValue2") ?? row.Dec("MVD_Market_Value2"),
-                MvdMarketValue3 = row.Dec("MVDMarketValue3") ?? row.Dec("MVD_Market_Value3"),
+                MvdMarketValue = row.Str("MVD_Market_Value"),
+                MvdMarketValue2 = row.Str("MVD_Market_Value2"),
+                MvdMarketValue3 = row.Str("MVD_Market_Value3"),
 
-                MvdExtent = row.Dec("MVD_Extent"),
-                MvdExtent2 = row.Dec("MVD_Extent2"),
-                MvdExtent3 = row.Dec("MVD_Extent3"),
+                MvdExtent = row.Str("MVD_Extent"),
+                MvdExtent2 = row.Str("MVD_Extent2"),
+                MvdExtent3 = row.Str("MVD_Extent3"),
 
                 MvdCategory = row.Str("MVD_Category"),
                 MvdCategory2 = row.Str("MVD_Category2"),
                 MvdCategory3 = row.Str("MVD_Category3"),
 
                 Section52Review = row.Str("Section52Review"),
-                BatchDate = row.Dt("Batch_Date"),
-                AppealCloseDate = row.Dt("Appeal_Close_Date"),
-                BatchName = row.Str("Batch_Name")
+                AppealCloseDate = row.Dt("Appeal_Close_Date")
             };
         }
-
         public async Task<DJPreviewDbData> DJPreviewDbDataAsync(int rollId, CancellationToken ct)
         {
             var row = await ExecSingleAsync("dbo.DJ_Preview_SelectPendingTop1", cmd =>

@@ -146,26 +146,26 @@ namespace GV23_Notice.Models.DTOs
         public string? Addr5 { get; set; }
 
         // GV (roll values)
-        public decimal? GvMarketValue { get; set; }
-        public decimal? GvMarketValue2 { get; set; }
-        public decimal? GvMarketValue3 { get; set; }
+        public string? GvMarketValue { get; set; }
+        public string? GvMarketValue2 { get; set; }
+        public string? GvMarketValue3 { get; set; }
 
-        public decimal? GvExtent { get; set; }
-        public decimal? GvExtent2 { get; set; }
-        public decimal? GvExtent3 { get; set; }
+        public string? GvExtent { get; set; }
+        public string? GvExtent2 { get; set; }
+        public string? GvExtent3 { get; set; }
 
         public string? GvCategory { get; set; }
         public string? GvCategory2 { get; set; }
         public string? GvCategory3 { get; set; }
 
         // MVD decision values
-        public decimal? MvdMarketValue { get; set; }
-        public decimal? MvdMarketValue2 { get; set; }
-        public decimal? MvdMarketValue3 { get; set; }
+        public string? MvdMarketValue { get; set; }
+        public string? MvdMarketValue2 { get; set; }
+        public string? MvdMarketValue3 { get; set; }
 
-        public decimal? MvdExtent { get; set; }
-        public decimal? MvdExtent2 { get; set; }
-        public decimal? MvdExtent3 { get; set; }
+        public string? MvdExtent { get; set; }
+        public string? MvdExtent2 { get; set; }
+        public string? MvdExtent3 { get; set; }
 
         public string? MvdCategory { get; set; }
         public string? MvdCategory2 { get; set; }
