@@ -140,7 +140,8 @@ namespace GV23_Notice.Services.Notices
 
                 case NoticeKind.S51:
                     {
-                        var db = await _previewDb.S51PreviewDbDataAsync(roll.RollId, ct);
+                        var preferMulti = isSplitPdf;
+                        var db = await _previewDb.S51PreviewDbDataAsync(roll.RollId, preferMulti, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = ""; // add later if in query
@@ -514,6 +515,8 @@ namespace GV23_Notice.Services.Notices
                 Addr5 = db.Addr5 ?? "",
                 ValuationKey = db.valuationKey,
                 PropertyDesc = db.PropertyDesc ?? "",
+                IsMulti = string.Equals(db.PropertyType?.Trim(), "Multi", StringComparison.OrdinalIgnoreCase),
+
 
                 Section6 = new Section6Row
                 {

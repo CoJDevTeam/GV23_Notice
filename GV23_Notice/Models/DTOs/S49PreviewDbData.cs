@@ -87,6 +87,10 @@ namespace GV23_Notice.Models.DTOs
         public string? New3MarketValue { get; set; }
 
         public string? ObjectionReasons { get; set; }
+        public string? PropertyType { get; set; }
+        public bool IsMulti =>
+            string.Equals(PropertyType?.Trim(), "Multi", StringComparison.OrdinalIgnoreCase);
+
     }
 
     public sealed class S52PreviewDbData

@@ -119,15 +119,22 @@ namespace GV23_Notice.Services.Preview
                 RollRows = rollRows
             };
         }
-        public async Task<S51PreviewDbData> S51PreviewDbDataAsync(int rollId, CancellationToken ct)
+        public async Task<S51PreviewDbData> S51PreviewDbDataAsync(
+      int rollId,
+      bool preferMulti,
+      CancellationToken ct)
         {
-            var row = await ExecSingleAsync("dbo.S51_Preview_SelectTop1", cmd =>
+            var procName = preferMulti
+                ? "dbo.S51_Preview_SelectTop1_Multi"
+                : "dbo.S51_Preview_SelectTop1_Single";
+
+            var row = await ExecSingleAsync(procName, cmd =>
             {
                 cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
             }, ct);
 
             if (row is null)
-                throw new InvalidOperationException("S51 preview: no data found.");
+                throw new InvalidOperationException($"S51 preview: no data found for {(preferMulti ? "multi" : "single")} mode.");
 
             return new S51PreviewDbData
             {
@@ -145,11 +152,9 @@ namespace GV23_Notice.Services.Preview
                 Addr4 = row.Str("ADDR4"),
                 Addr5 = row.Str("ADDR5"),
 
-                // Section 7
                 RandomPin = row.Str("RandomPin"),
                 Section51Pin = row.Str("Section51Pin") ?? row.Str("RandomPin"),
 
-                // Section 6 descriptive fields
                 OldPropertyDescription = row.Str("Old_Property_Description"),
                 OldAddress = row.Str("Old_Address"),
                 OldOwner = row.Str("Old_Owner"),
@@ -158,7 +163,6 @@ namespace GV23_Notice.Services.Preview
                 NewAddress = row.Str("New_Address"),
                 NewOwner = row.Str("New_Owner"),
 
-                // Section 6 old
                 OldCategory = row.Str("Old_Category"),
                 Old2Category = row.Str("Old2_Category"),
                 Old3Category = row.Str("Old3_Category"),
@@ -171,8 +175,6 @@ namespace GV23_Notice.Services.Preview
                 Old2MarketValue = row.Str("Old2_Market_Value"),
                 Old3MarketValue = row.Str("Old3_Market_Value"),
 
-
-                // Section 6 new
                 NewCategory = row.Str("New_Category"),
                 New2Category = row.Str("New2_Category"),
                 New3Category = row.Str("New3_Category"),
@@ -185,8 +187,8 @@ namespace GV23_Notice.Services.Preview
                 New2MarketValue = row.Str("New2_Market_Value"),
                 New3MarketValue = row.Str("New3_Market_Value"),
 
-
-                ObjectionReasons = row.Str("Objection_Reasons")
+                ObjectionReasons = row.Str("Objection_Reasons"),
+                PropertyType = row.Str("Property_Type"),
             };
         }
         public async Task<S52PreviewDbData> S52PreviewDbDataAsync(int rollId, string appealNo, bool isReview, CancellationToken ct)
