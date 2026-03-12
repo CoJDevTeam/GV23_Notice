@@ -47,6 +47,10 @@ namespace GV23_Notice.Services.Notices.DearJohnny
             var model = new Model(data, ctx);
 
             var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
+            var red7b = TextStyle.Default.FontFamily("Arial").FontSize(7).SemiBold().FontColor(Colors.Red.Medium);
+
+            var recipient = Safe(model.Addr1);
+            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear {recipient}";
 
             return Document.Create(container =>
             {
@@ -75,7 +79,7 @@ namespace GV23_Notice.Services.Notices.DearJohnny
                               .Style(small7);
 
                              t.Line(Safe(data.ValuationKey))
-                              .Style(small7.SemiBold());
+                              .Style(red7b.SemiBold());
                          });
                     page.Content().Column(col =>
                     {
@@ -127,23 +131,32 @@ namespace GV23_Notice.Services.Notices.DearJohnny
 
                         col.Item().PaddingTop(6).LineHorizontal(1.5f);
                         col.Item().PaddingTop(10);
-
-                        // 4) Property Description
-                        col.Item().Text("Property Description:").SemiBold();
-                        col.Item().PaddingTop(2).Text(model.PropertyDescription);
-
+                        col.Item().PaddingTop(1).Text(greeting).FontFamily("Arial").FontSize(9).Bold();
                         col.Item().PaddingTop(10);
 
-                        // 5) Body
                         col.Item().Text(t =>
                         {
                             t.Span("The objection number: ");
                             t.Span(model.ObjectionNo).SemiBold();
+                            t.Span(" for the property description ");
+                            t.Span(model.PropertyDescription?.Trim()).SemiBold();
                             t.Span(
                                 $" received to the above-mentioned property was not considered as the property was subject to a previous legislative process relating to the General Valuation Roll 2023 (GV2023) and was concluded prior to {model.RollName}. " +
                                 "It was considered as an objection, section 52 review or an appeal.");
                         });
 
+                        col.Item().PaddingTop(1);
+                        // 4) Property Description
+   //                     col.Item()
+   //.PaddingTop(2)
+   //.Text($"Property Description: {model.PropertyDescription}")
+   //.SemiBold();
+                        //col.Item().PaddingTop(2).Text();
+
+                        col.Item().PaddingTop(10);
+
+                        // 5) Body
+                      
                         col.Item().PaddingTop(10)
                             .Text("A section 53 notice will not be issued, as the objection is not valid for the reasons stated above.")
                             .Justify()
