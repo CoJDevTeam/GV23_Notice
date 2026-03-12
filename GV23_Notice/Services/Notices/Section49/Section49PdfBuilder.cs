@@ -21,6 +21,11 @@ namespace GV23_Notice.Services.Notices.Section49
             var body9 = TextStyle.Default.FontFamily("Arial").FontSize(9);
             var body9b = TextStyle.Default.FontFamily("Arial").FontSize(9).SemiBold();
             var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
+            var red9b = TextStyle.Default
+              .FontFamily("Arial")
+              .FontSize(9)
+              .SemiBold()
+              .FontColor(Colors.Red.Medium);
 
             var inspectionWindowText = ctx.ExtendedEndDate.HasValue
                 ? $"{ctx.InspectionStartDate:dd MMMM yyyy} – {ctx.ExtendedEndDate:dd MMMM yyyy} until 15:00"
@@ -70,7 +75,7 @@ namespace GV23_Notice.Services.Notices.Section49
                           .Style(small7);
 
                          t.Line(Safe(data.ValuationKey))
-                          .Style(small7.SemiBold());
+                          .Style(red9b.SemiBold());
                      });
                                 page.Content().Column(col =>
                             {
@@ -187,10 +192,11 @@ namespace GV23_Notice.Services.Notices.Section49
                                 .Text(text)
                                 .FontFamily("Arial").FontSize(8).SemiBold()
                                 .FontColor(Colors.White);
-
+                        HeaderCell("Property Category");
+                        HeaderCell("Area/m²");
                         HeaderCell("Market Value");
-                        HeaderCell("Extent");
-                        HeaderCell("Property Category"); 
+                        
+                       
                         HeaderCell("With Effective Date");
 
                         // Row cell helper

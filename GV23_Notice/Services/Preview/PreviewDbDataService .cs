@@ -250,9 +250,9 @@ namespace GV23_Notice.Services.Preview
                 Ptn = row.Str("PTN"),
                 Re = row.Str("RE"),
 
-                AppMarketValue = row.Dec("App_Market_Value"),
-                AppMarketValue2 = row.Dec("App_Market_Value2"),
-                AppMarketValue3 = row.Dec("App_Market_Value3"),
+                AppMarketValue = row.Str("App_Market_Value"),
+                AppMarketValue2 = row.Str("App_Market_Value2"),
+                AppMarketValue3 = row.Str("App_Market_Value3"),
 
                 AppExtent = row.Dec("App_Extent"),
                 AppExtent2 = row.Dec("App_Extent2"),

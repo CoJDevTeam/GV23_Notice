@@ -559,34 +559,29 @@ namespace GV23_Notice.Services.Notices
                 ADDR3 = db.Addr3,
                 ADDR4 = db.Addr4,
                 ADDR5 = db.Addr5,
-
                 Email = db.Email,
                 Property_desc = db.PropertyDesc,
-
                 Town = db.Town,
                 ERF = db.Erf,
                 PTN = db.Ptn,
                 RE = db.Re,
-
                 Objection_No = db.ObjectionNo,
                 Appeal_No = db.AppealNo,
+                valuation_Key = db.ValuationKey,
 
                 App_Category = db.AppCategory,
                 App_Category2 = db.AppCategory2,
                 App_Category3 = db.AppCategory3,
 
-                App_Extent = db.AppExtent?.ToString(CultureInfo.InvariantCulture),
-                App_Extent2 = db.AppExtent2?.ToString(CultureInfo.InvariantCulture),
-                App_Extent3 = db.AppExtent3?.ToString(CultureInfo.InvariantCulture),
+                App_Extent = db.AppExtent,
+                App_Extent2 = db.AppExtent2,
+                App_Extent3 = db.AppExtent3,
 
-                App_Market_Value = db.AppMarketValue?.ToString(CultureInfo.InvariantCulture),
-                App_Market_Value2 = db.AppMarketValue2?.ToString(CultureInfo.InvariantCulture),
-                App_Market_Value3 = db.AppMarketValue3?.ToString(CultureInfo.InvariantCulture),
-
-                valuation_Key = db.ValuationKey
+                App_Market_Value = db.AppMarketValue,
+                App_Market_Value2 = db.AppMarketValue2,
+                App_Market_Value3 = db.AppMarketValue3
             };
         }
-
         private static Section53MvdRow MapS53ToRow(S53PreviewDbData db, NoticeSettings settings)
         {
             string Money(decimal? v) => v.HasValue ? "R " + v.Value.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ") : "";

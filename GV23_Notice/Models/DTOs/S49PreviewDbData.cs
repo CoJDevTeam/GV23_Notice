@@ -116,9 +116,9 @@ namespace GV23_Notice.Models.DTOs
         public string? Ptn { get; set; }
         public string? Re { get; set; }
 
-        public decimal? AppMarketValue { get; set; }
-        public decimal? AppMarketValue2 { get; set; }
-        public decimal? AppMarketValue3 { get; set; }
+        public string? AppMarketValue { get; set; }
+        public string? AppMarketValue2 { get; set; }
+        public string? AppMarketValue3 { get; set; }
 
         public decimal? AppExtent { get; set; }
         public decimal? AppExtent2 { get; set; }
