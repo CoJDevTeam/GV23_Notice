@@ -9,10 +9,12 @@ using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.Notices;
+using GV23_Notice.Services.Notices.Section49;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.SnapShotStep2;
+using GV23_Notice.Services.Step3;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -40,7 +42,7 @@ namespace GV23_Notice.Controllers
         private readonly IPreviewDbDataService _previewRepo;
         private readonly ITempFileStore _tempFiles;
         private readonly INoticeStep2SnapshotService _snap;
-        private readonly GV23_Notice.Services.Step3.IS52RangePrintService _s52Range;
+        private readonly IS52RangePrintService _s52Range;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -56,7 +58,7 @@ namespace GV23_Notice.Controllers
      IPreviewDbDataService previewDb,
      ITempFileStore tempFiles,
      INoticeStep2SnapshotService snap,
-     GV23_Notice.Services.Step3.IS52RangePrintService s52Range)
+    IS52RangePrintService s52Range)
         {
             _db = db;
             _settings = settings;
@@ -1325,7 +1327,7 @@ namespace GV23_Notice.Controllers
             }
             var nextBatchCode = $"{batchPrefix}{nextSeq:0000}";
 
-            var kickoffBatchRows = createdBatchList.Select(b => new GV23_Notice.Models.Workflow.ViewModels.KickoffBatchRowVm
+            var kickoffBatchRows = createdBatchList.Select(b => new KickoffBatchRowVm
             {
                 BatchId = b.Id,
                 BatchName = b.BatchName,
@@ -1338,7 +1340,7 @@ namespace GV23_Notice.Controllers
                 ApprovedAtUtc = b.ApprovedAtUtc
             }).ToList();
 
-            var vm = new GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
+            var vm = new WorkflowStep3KickoffVm
             {
                 SettingsId = s.Id,
                 ApprovalKey = s.ApprovalKey.Value,
@@ -1404,7 +1406,7 @@ namespace GV23_Notice.Controllers
             return View(vm);
         }
 
-        private static string ComputeBatchPrefix(Domain.Workflow.Entities.NoticeSettings s, string rollShortCode)
+        private static string ComputeBatchPrefix(NoticeSettings s, string rollShortCode)
         {
             var code = rollShortCode.Replace(" ", "");
             return s.Notice switch
@@ -1454,8 +1456,8 @@ namespace GV23_Notice.Controllers
         private byte[] BuildS49RealPreviewPdf(
       NoticeSettings s,
       string rollShortCode,
-      List<GV23_Notice.Models.DTOs.S49RollRowDto> rollRows,
-      GV23_Notice.Models.DTOs.SapContactDto contact)
+      List<S49RollRowDto> rollRows,
+      SapContactDto contact)
         {
             if (rollRows == null || rollRows.Count == 0)
                 throw new InvalidOperationException("No roll rows found for S49 preview.");
@@ -1469,14 +1471,14 @@ namespace GV23_Notice.Controllers
                           rollRows.Any(r => !string.IsNullOrWhiteSpace(r.ValuationSplitIndicator));
 
             // Build rows for PDF table
-            List<GV23_Notice.Services.Notices.Section49.Section49PropertyRow> propertyRows;
+            List<Section49PropertyRow> propertyRows;
 
             if (isSplit)
             {
                 // Use your rule: 4 rows always (Multipurpose + BC + Residential + blank)
                 var splitRows = S49SplitHelper.Build4RowSplit(rollRows);
 
-                propertyRows = splitRows.Select(x => new GV23_Notice.Services.Notices.Section49.Section49PropertyRow
+                propertyRows = splitRows.Select(x => new Section49PropertyRow
                 {
                     Category = x.Category ?? "",
                     MarketValue = x.MarketValue <= 0 ? "" : x.MarketValue.ToString("N0"),
@@ -1487,9 +1489,9 @@ namespace GV23_Notice.Controllers
             else
             {
                 // Single property
-                propertyRows = new List<GV23_Notice.Services.Notices.Section49.Section49PropertyRow>
+                propertyRows = new List<Section49PropertyRow>
         {
-            new GV23_Notice.Services.Notices.Section49.Section49PropertyRow
+            new Section49PropertyRow
             {
                 Category = first.CatDesc ?? "",
                 MarketValue = first.MarketValue.ToString("N0"),
@@ -1500,7 +1502,7 @@ namespace GV23_Notice.Controllers
             }
 
             // ✅ Build the NEW expected model (Section49PdfData)
-            var data = new GV23_Notice.Services.Notices.Section49.Section49PdfData
+            var data = new Section49PdfData
             {
                 Addr1 = contact.Addr1 ?? "Owner",
                 Addr2 = contact.Addr2 ?? "",
@@ -1524,7 +1526,7 @@ namespace GV23_Notice.Controllers
             };
 
             // ✅ Use the correct context class name you implemented in the new builder
-            var ctx = new GV23_Notice.Services.Notices.Section49.Section49NoticeContext
+            var ctx = new Section49NoticeContext
             {
                 HeaderImagePath = headerPath,
                 SignaturePath = s.SignaturePath ?? "",
@@ -1539,7 +1541,7 @@ namespace GV23_Notice.Controllers
             };
 
             var builder = HttpContext.RequestServices
-                .GetRequiredService<GV23_Notice.Services.Notices.Section49.ISection49PdfBuilder>();
+                .GetRequiredService<ISection49PdfBuilder>();
 
             return builder.BuildNotice(data, ctx);
         }
@@ -1549,7 +1551,7 @@ namespace GV23_Notice.Controllers
         {
             public sealed record Row(string Category, decimal MarketValue, decimal Extent);
 
-            public static List<Row> Build4RowSplit(List<GV23_Notice.Models.DTOs.S49RollRowDto> rows)
+            public static List<Row> Build4RowSplit(List<S49RollRowDto> rows)
             {
                 // Normalise categories
                 decimal SumValue(string contains) =>
@@ -1621,7 +1623,7 @@ namespace GV23_Notice.Controllers
 
             var premiseIds = await _s49Roll.PickNextPremiseIdsAsync(s.RollId, 500, ct);
 
-            var run = new GV23_Notice.Domain.Workflow.Entities.S49BatchRun
+            var run = new S49BatchRun
             {
                 SettingsId = s.Id,
                 RollId = s.RollId,
@@ -1636,7 +1638,7 @@ namespace GV23_Notice.Controllers
             {
                 var (rows, contact) = await _s49Roll.LoadPremiseAsync(s.RollId, pid, ct);
 
-                run.Items.Add(new GV23_Notice.Domain.Workflow.Entities.S49BatchItem
+                run.Items.Add(new S49BatchItem
                 {
                     PremiseId = pid,
                     Email = contact?.Email,

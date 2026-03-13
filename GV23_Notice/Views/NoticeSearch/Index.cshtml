@@ -1,0 +1,485 @@
+﻿@model GV23_Notice.Models.DTOs.NoticeSearchResult
+@{
+    ViewData["Title"] = "Notice Search";
+    var hasResult  = Model != null;
+    var files      = Model?.Files ?? new List<GV23_Notice.Models.DTOs.NoticeFileResult>();
+    var townships  = ViewBag.Townships as List<string> ?? new List<string>();
+    var activeMode = (ViewBag.Mode as string) ?? (Model?.SearchMode ?? "PropertyDesc");
+}
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/dataTables.bootstrap5.min.css" />
+<link href="~/css/noticesearchcss.css" rel="stylesheet" />
+
+<div class="ns-shell">
+
+    <!-- META BAR -->
+    <div class="ns-meta">
+        <span class="ns-chip"><span class="ns-cl">MODULE</span><span class="ns-cv">Notice Search</span></span>
+        <span class="ns-chip"><span class="ns-cl">USER</span><span class="ns-cv">@User.Identity?.Name</span></span>
+        @if (hasResult)
+        {
+            <span class="ns-chip"><span class="ns-cl">RESULTS</span><span class="ns-cv">@files.Count</span></span>
+            <span class="ns-chip"><span class="ns-cl">PDFs</span><span class="ns-cv">@files.Count(f => f.PdfExists)</span></span>
+            <span class="ns-chip"><span class="ns-cl">EMAILS</span><span class="ns-cv">@files.Count(f => f.EmlExists)</span></span>
+        }
+    </div>
+
+    <div class="ns-body">
+
+        <!-- ══════ LEFT — Search Form ══════ -->
+        <div class="ns-left">
+            <div class="ns-panel-hdr">
+                <span class="ns-panel-icon">🔍</span>
+                <span class="ns-panel-title">Notice Search</span>
+            </div>
+
+            <form id="searchForm" method="post" asp-controller="NoticeSearch" asp-action="Search">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="mode" id="hiddenMode" value="@activeMode" />
+
+                <!-- RADIO -->
+                <div class="ns-section">
+                    <div class="ns-section-label">Search By</div>
+                    <div class="ns-radio-group">
+                        <label class="ns-radio @(activeMode=="PropertyDesc"?"active":"")">
+                            <input type="radio" name="_mode" value="PropertyDesc" @(activeMode=="PropertyDesc"?"checked":"") />
+                            <span class="ns-radio-dot"></span><span>Property Description</span>
+                        </label>
+                        <label class="ns-radio @(activeMode=="ObjectionNo"?"active":"")">
+                            <input type="radio" name="_mode" value="ObjectionNo" @(activeMode=="ObjectionNo"?"checked":"") />
+                            <span class="ns-radio-dot"></span><span>Objection No</span>
+                        </label>
+                        <label class="ns-radio @(activeMode=="AppealNo"?"active":"")">
+                            <input type="radio" name="_mode" value="AppealNo" @(activeMode=="AppealNo"?"checked":"") />
+                            <span class="ns-radio-dot"></span><span>Appeal No</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- PROPERTY DESC PANEL -->
+                <div id="panel-PropertyDesc" class="ns-panel @(activeMode=="PropertyDesc"?"":"ns-hidden")">
+                    <div class="ns-section">
+                        <div class="ns-section-label">Property Details</div>
+                        <div class="ns-field">
+                            <label class="ns-label">Township <span class="ns-req">*</span></label>
+                            <div class="ns-select-wrap">
+                                <select name="township" id="sel-township">
+                                    <option value="">— Select Township —</option>
+                                    @foreach (var t in townships)
+                                    {
+                                        var isSelected = Model?.SearchTerm?.Contains("Township:" + t) == true;
+
+                                        <option value="@t" selected="@isSelected">@t</option>
+                                    }
+                                </select>
+                                <span class="ns-sel-arrow">▾</span>
+                            </div>
+                            <div id="township-loading" class="ns-hint" style="display:none">Loading…</div>
+                        </div>
+                        <div class="ns-field">
+                            <label class="ns-label">Scheme Name</label>
+                            <div class="ns-select-wrap">
+                                <select name="scheme" id="sel-scheme">
+                                    <option value="">— All Schemes —</option>
+                                </select>
+                                <span class="ns-sel-arrow">▾</span>
+                            </div>
+                            <div id="scheme-loading" class="ns-hint" style="display:none">Loading…</div>
+                        </div>
+                        <div class="ns-field">
+                            <label class="ns-label">ERF / Stand No</label>
+                            <input type="text" name="erfNo" class="ns-input" placeholder="e.g. 12345" />
+                        </div>
+                        <div class="ns-field">
+                            <label class="ns-label">Street Address</label>
+                            <input type="text" name="address" class="ns-input" placeholder="e.g. 123 Main St" />
+                        </div>
+                        <div class="ns-field">
+                            <label class="ns-label">Unit No</label>
+                            <input type="text" name="unitNo" class="ns-input" placeholder="e.g. 4B" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- OBJECTION NO PANEL -->
+                <div id="panel-ObjectionNo" class="ns-panel @(activeMode=="ObjectionNo"?"":"ns-hidden")">
+                    <div class="ns-section">
+                        <div class="ns-section-label">Objection Reference</div>
+                        <div class="ns-field">
+                            <label class="ns-label">Objection No <span class="ns-req">*</span></label>
+                            <input type="text" name="objectionNo" class="ns-input" placeholder="e.g. OBJ-2025-001"
+                                   value="@(Model?.SearchMode=="ObjectionNo"?Model.SearchTerm:"")" />
+                        </div>
+                        <div class="ns-hint-box">Searches <strong>Obj_Property_Info</strong> across all rolls</div>
+                    </div>
+                </div>
+
+                <!-- APPEAL NO PANEL -->
+                <div id="panel-AppealNo" class="ns-panel @(activeMode=="AppealNo"?"":"ns-hidden")">
+                    <div class="ns-section">
+                        <div class="ns-section-label">Appeal Reference</div>
+                        <div class="ns-field">
+                            <label class="ns-label">Appeal No <span class="ns-req">*</span></label>
+                            <input type="text" name="appealNo" class="ns-input" placeholder="e.g. APP-2025-001"
+                                   value="@(Model?.SearchMode=="AppealNo"?Model.SearchTerm:"")" />
+                        </div>
+                        <div class="ns-hint-box">Searches <strong>Obj_Property_Info_Appeal</strong> across all rolls</div>
+                    </div>
+                </div>
+
+                <div class="ns-actions">
+                    <button type="submit" class="ns-btn-search">🔍 Search Notices</button>
+                    <a href="@Url.Action("Index","NoticeSearch")" class="ns-btn-clear">✕ Clear</a>
+                </div>
+            </form>
+
+            @if (hasResult && files.Any())
+            {
+                <div class="ns-eml-note">
+                    📧 Email (.eml) copies are included in the ZIP where available.
+                    They cannot be resent — download the ZIP to retrieve them.
+                </div>
+            }
+        </div>
+
+        <!-- ══════ RIGHT — Results ══════ -->
+        <div class="ns-right">
+
+            <div class="ns-rh">
+                <div class="ns-rh-title">
+                    <div class="ns-rh-icon">📋</div>
+                    SEARCH RESULTS
+                    @if (hasResult && files.Any())
+                    {
+                        <span class="ns-rh-badge" id="resultBadge">@files.Count notice@(files.Count==1?"":"s") found</span>
+                    }
+                </div>
+            </div>
+
+            <!-- ZIP TOOLBAR (above table, outside it) -->
+            @if (hasResult && files.Any())
+            {
+                <div class="ns-zip-toolbar">
+                    <div class="ns-zip-left">
+                        <label class="ns-chk-all-wrap">
+                            <input type="checkbox" id="chkSelectAll" onchange="handleSelectAll(this.checked)" />
+                            <span>Select All</span>
+                        </label>
+                        <span class="ns-sel-info"><span id="selCount">0</span> selected</span>
+                    </div>
+                    <div class="ns-zip-right">
+                        <span class="ns-zip-stats">
+                            <span class="ns-zstat pdf">📄 @files.Count(f=>f.PdfExists) PDFs</span>
+                            <span class="ns-zstat eml">📧 @files.Count(f=>f.EmlExists) Emails</span>
+                        </span>
+                        <button class="ns-btn-zip" id="btnZip" onclick="downloadZip()" disabled>
+                            <span>🗜</span> Download ZIP
+                            <span class="ns-zip-badge" id="zipCount">0</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hidden form for ZIP POST (carries file paths safely) -->
+                <form id="zipForm" method="post" asp-controller="NoticeSearch" asp-action="Download" style="display:none">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" id="zipFilePaths" name="filePaths" />
+                    <input type="hidden" id="zipMode"      name="mode"      value="@Model!.SearchMode" />
+                    <input type="hidden" id="zipTerm"      name="term"      value="@Model.SearchTerm" />
+                </form>
+            }
+
+            <div class="ns-rb">
+                @if (!hasResult)
+                {
+                    <div class="ns-empty">
+                        <div class="ns-empty-icon">🔍</div>
+                        <div class="ns-empty-title">Search for Notices</div>
+                        <div class="ns-empty-sub">Choose a search mode on the left, fill in the details, and click Search.</div>
+                    </div>
+                }
+                else if (!files.Any())
+                {
+                    <div class="ns-empty">
+                        <div class="ns-empty-icon">📭</div>
+                        <div class="ns-empty-title">No Notices Found</div>
+                        <div class="ns-empty-sub">No matching properties found in the roll databases.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="ns-dt-wrap">
+                        <table id="noticeTable" class="ns-dt display nowrap" style="width:100%">
+                            <thead>
+                                <tr>
+                                    <th class="ns-col-chk no-sort"></th>
+                                    <th>Roll</th>
+                                    <th>Property Description</th>
+                                    <th>Objection No</th>
+                                    <th>Appeal No</th>
+                                    <th>Notice</th>
+                                    <th>Objection Status</th>
+                                    <th>Files</th>
+                                    <th class="no-sort">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var f in files)
+                                {
+                                    var hasPdf = f.PdfExists;
+                                    var hasEml = f.EmlExists;
+                                    var hasAny = hasPdf || hasEml;
+
+                                    // Status CSS class from objection_Status text
+                                    var statCls = (f.ObjectionStatus ?? "").ToLower() switch {
+                                        var s when s.Contains("notice-sent")   => "ns-os-sent",
+                                        var s when s.Contains("email-pending") => "ns-os-pending",
+                                        var s when s.Contains("printing")      => "ns-os-printing",
+                                        var s when s.Contains("generated")     => "ns-os-generated",
+                                        var s when s.Contains("finalized")     => "ns-os-finalized",
+                                        var s when s.Contains("objection")     => "ns-os-objection",
+                                        _ => "ns-os-default"
+                                    };
+
+                                    // Encode paths into data attributes
+                                    var pdfAttr = hasPdf ? $"data-pdf=\"{System.Net.WebUtility.HtmlEncode(f.PdfPath!)}\"" : "";
+                                    var emlAttr = hasEml ? $"data-eml=\"{System.Net.WebUtility.HtmlEncode(f.EmlPath!)}\"" : "";
+                                    var viewUrl = hasPdf
+                                        ? Url.Action("ViewPdf","NoticeSearch", new { path = f.PdfPath })
+                                        : "#";
+                                    var dlUrl   = hasAny
+                                        ? Url.Action("Download","NoticeSearch") + "?singlePath=" +
+                                          Uri.EscapeDataString(hasPdf ? f.PdfPath! : f.EmlPath!)
+                                        : "#";
+
+                                    <tr @Html.Raw(pdfAttr) @Html.Raw(emlAttr)
+                                        data-has-any="@hasAny.ToString().ToLower()"
+                                        class="@(!hasAny ? "ns-row-nofile" : "")">
+
+                                        <td class="ns-col-chk">
+                                            @if (hasAny)
+                                            {
+                                                <input type="checkbox" class="ns-row-chk" onchange="updateSelection()" />
+                                            }
+                                            else
+                                            {
+                                                <span class="ns-warn" title="No files found on disk">⚠</span>
+                                            }
+                                        </td>
+
+                                        <td><span class="ns-roll">@f.RollName</span></td>
+
+                                        <td>
+                                            <div class="ns-prop-cell" title="@f.PropertyDesc">@f.PropertyDesc</div>
+                                            @if (!string.IsNullOrEmpty(f.ObjectorType))
+                                            {
+                                                <span class="ns-otype">@f.ObjectorType</span>
+                                            }
+                                        </td>
+
+                                        <td class="ns-mono">@(string.IsNullOrEmpty(f.ObjectionNo) ? "—" : f.ObjectionNo)</td>
+
+                                        <td class="ns-mono">@(string.IsNullOrEmpty(f.AppealNo) ? "—" : f.AppealNo)</td>
+
+                                        <td>
+                                            <span class="ns-nbadge ns-n-@f.NoticeType.ToLower().Replace(" ","").Replace("-","")">
+                                                @f.NoticeType
+                                            </span>
+                                        </td>
+
+                                        <td>
+                                            <span class="ns-os @statCls" title="@f.ObjectionStatus">
+                                                @(string.IsNullOrEmpty(f.ObjectionStatus) ? "—" : f.ObjectionStatus)
+                                            </span>
+                                        </td>
+
+                                        <td class="ns-files-cell">
+                                            @if (hasPdf) { <span class="ns-ftag ns-ftag-pdf">PDF</span> }
+                                            @if (hasEml) { <span class="ns-ftag ns-ftag-eml">EML</span> }
+                                            @if (!hasAny) { <span class="ns-ftag ns-ftag-none">None</span> }
+                                        </td>
+
+                                        <td class="ns-actions-cell">
+                                            @if (hasPdf)
+                                            {
+                                                <a href="@viewUrl" target="_blank"
+                                                   class="ns-act ns-act-view" title="View PDF in browser">
+                                                    👁 View PDF
+                                                </a>
+                                            }
+                                            @if (hasAny)
+                                            {
+                                                <button type="button" class="ns-act ns-act-dl"
+                                                        onclick="downloadSingle(this)" title="Download this notice">
+                                                    ⬇ Download
+                                                </button>
+                                            }
+                                            @if (hasEml)
+                                            {
+                                                <span class="ns-act ns-act-eml"
+                                                      title="Email copy available — included in ZIP download">
+                                                    📧 EML
+                                                </span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/dataTables.bootstrap5.min.js"></script>
+<script>
+$(document).ready(function () {
+
+    // ── DataTable init ────────────────────────────────────────────────────
+    if ($('#noticeTable').length) {
+        $('#noticeTable').DataTable({
+            pageLength: 25,
+            lengthMenu: [10, 25, 50, 100, 500],
+            order: [[3, 'asc']],
+            columnDefs: [
+                { orderable: false, targets: 'no-sort' },
+                { width: '36px',  targets: 0 },
+                { width: '70px',  targets: 1 },
+                { width: '80px',  targets: 5 },
+                { width: '150px', targets: 6 },
+                { width: '80px',  targets: 7 },
+                { width: '175px', targets: 8 }
+            ],
+            language: {
+                search:      'Filter:',
+                lengthMenu:  'Show _MENU_ rows',
+                info:        '_START_–_END_ of _TOTAL_ notices',
+                emptyTable:  'No notices found.',
+                zeroRecords: 'No matching notices.'
+            },
+            dom: '<"ns-dt-top"lf>rt<"ns-dt-bot"ip>'
+        });
+    }
+
+    // ── Radio toggle ──────────────────────────────────────────────────────
+    $('input[name="_mode"]').on('change', function () {
+        var mode = this.value;
+        $('#hiddenMode').val(mode);
+        $('.ns-panel').addClass('ns-hidden');
+        $('#panel-' + mode).removeClass('ns-hidden');
+        $('.ns-radio').removeClass('active');
+        $(this).closest('.ns-radio').addClass('active');
+    });
+
+    // ── Township → Scheme cascade ─────────────────────────────────────────
+    var $town   = $('#sel-township');
+    var $scheme = $('#sel-scheme');
+
+    if ($town.length) {
+        if ($town.find('option').length <= 1) {
+            $('#township-loading').show();
+            fetch('@Url.Action("GetTownships","NoticeSearch")')
+                .then(r => r.json())
+                .then(towns => {
+                    towns.forEach(t => $town.append(new Option(t, t)));
+                    $('#township-loading').hide();
+                });
+        }
+
+        $town.on('change', function () {
+            var town = this.value;
+            $scheme.html('<option value="">— Loading… —</option>');
+            $('#scheme-loading').show();
+            if (!town) {
+                $scheme.html('<option value="">— All Schemes —</option>');
+                $('#scheme-loading').hide();
+                return;
+            }
+            fetch('@Url.Action("GetSchemes","NoticeSearch")?town=' + encodeURIComponent(town))
+                .then(r => r.json())
+                .then(schemes => {
+                    $scheme.html('<option value="">— All Schemes —</option>');
+                    schemes.forEach(s => $scheme.append(new Option(s, s)));
+                    $('#scheme-loading').hide();
+                });
+        });
+    }
+
+    // ── Form validation ───────────────────────────────────────────────────
+    $('#searchForm').on('submit', function (e) {
+        var mode = $('#hiddenMode').val();
+        if (mode === 'PropertyDesc' && !$town.val()) {
+            e.preventDefault();
+            alert('Please select a Township before searching.');
+            $town.focus();
+            return;
+        }
+        if (mode === 'ObjectionNo' && !$('[name="objectionNo"]').val().trim()) {
+            e.preventDefault(); alert('Please enter an Objection No.'); return;
+        }
+        if (mode === 'AppealNo' && !$('[name="appealNo"]').val().trim()) {
+            e.preventDefault(); alert('Please enter an Appeal No.'); return;
+        }
+    });
+});
+
+// ── Selection ─────────────────────────────────────────────────────────────
+function handleSelectAll(checked) {
+    document.querySelectorAll('.ns-row-chk').forEach(c => c.checked = checked);
+    updateSelection();
+}
+
+function updateSelection() {
+    var checked = document.querySelectorAll('.ns-row-chk:checked');
+    var all     = document.querySelectorAll('.ns-row-chk');
+    var n       = checked.length;
+
+    document.getElementById('selCount').textContent = n;
+    var badge = document.getElementById('zipCount');
+    if (badge) badge.textContent = n;
+
+    var btn = document.getElementById('btnZip');
+    if (btn) btn.disabled = n === 0;
+
+    var chkAll = document.getElementById('chkSelectAll');
+    if (chkAll) {
+        chkAll.checked       = n > 0 && n === all.length;
+        chkAll.indeterminate = n > 0 && n < all.length;
+    }
+}
+
+// ── ZIP download — collect pdf+eml paths from selected rows ───────────────
+function downloadZip() {
+    var paths = [];
+    document.querySelectorAll('tr:has(.ns-row-chk:checked)').forEach(function (row) {
+        var pdf = row.getAttribute('data-pdf');
+        var eml = row.getAttribute('data-eml');
+        if (pdf) paths.push(pdf);
+        if (eml) paths.push(eml);
+    });
+    if (!paths.length) return;
+
+    document.getElementById('zipFilePaths').value = paths.join('\n');
+    document.getElementById('zipForm').submit();
+}
+
+// ── Single notice download ─────────────────────────────────────────────────
+function downloadSingle(btn) {
+    var row   = btn.closest('tr');
+    var paths = [];
+    var pdf   = row.getAttribute('data-pdf');
+    var eml   = row.getAttribute('data-eml');
+    if (pdf) paths.push(pdf);
+    if (eml) paths.push(eml);
+    if (!paths.length) return;
+
+    document.getElementById('zipFilePaths').value = paths.join('\n');
+    document.getElementById('zipMode').value = 'Single';
+    document.getElementById('zipTerm').value = row.querySelector('.ns-mono')?.textContent?.trim() ?? 'Notice';
+    document.getElementById('zipForm').submit();
+}
+</script>
+}

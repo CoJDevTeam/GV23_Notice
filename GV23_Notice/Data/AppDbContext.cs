@@ -38,6 +38,8 @@ namespace GV23_Notice.Data
         public DbSet<S51BatchPickRow> S51BatchPickRows => Set<S51BatchPickRow>();
         public DbSet<S53BatchPickRow> S53BatchPickRows => Set<S53BatchPickRow>();
 
+        public DbSet<NoticeDownloadLog> NoticeDownloadLogs => Set<NoticeDownloadLog>();
+
 
         public DbSet<Domain.Workflow.Entities.NoticePreviewSnapshot> NoticePreviewSnapshots => Set<Domain.Workflow.Entities.NoticePreviewSnapshot>();
 

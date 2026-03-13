@@ -10,7 +10,7 @@ namespace GV23_Notice.Services.Step3
     public sealed class Step3BatchService : IStep3BatchService
     {
         private readonly AppDbContext _db;
-
+         
         public Step3BatchService(AppDbContext db)
         {
             _db = db;

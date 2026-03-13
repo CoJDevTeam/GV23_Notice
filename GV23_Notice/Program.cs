@@ -15,6 +15,7 @@ using GV23_Notice.Services.Notices.Section78;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
+using GV23_Notice.Services.Search;
 using GV23_Notice.Services.SnapShotStep2;
 using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.Storage;
@@ -79,7 +80,7 @@ builder.Services.AddScoped<IInvalidNoticePdfService, InvalidNoticePdfService>();
 builder.Services.AddScoped<ISection78PdfBuilder, Section78PdfBuilder>();
 builder.Services.AddScoped<IStep3BatchService, Step3BatchService>();
 builder.Services.AddScoped<IStep3BatchQueryService, Step3BatchQueryService>();
-
+builder.Services.AddScoped<INoticeSearchService, NoticeSearchService>();
 // Options (if you use them)
 builder.Services.Configure<Section53PdfOptions>(builder.Configuration.GetSection("Section53Pdf"));
 
