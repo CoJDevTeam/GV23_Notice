@@ -200,6 +200,57 @@ namespace GV23_Notice.Services.Email
                     }
                     // ── END S53 ──────────────────────────────────────────────────────
 
+                    if (settings.Notice == NoticeKind.DJ)
+                    {
+                        var pdfPath = log.PdfPath
+                            ?? throw new FileNotFoundException(
+                                $"DJ RunLog {log.Id} has no PdfPath — was it printed?");
+
+                        var djEmlPath = log.EmlPath
+                            ?? _paths.BuildDjEmlPath(roll,
+                                log.ObjectionNo ?? log.Id.ToString(),
+                                log.PropertyDesc ?? "");
+
+                        await SaveEmlAsync(djEmlPath, log.RecipientEmail!, subject, bodyHtml, pdfPath, ct);
+                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
+
+                        log.EmlPath = djEmlPath;
+                        log.Status = RunStatus.Sent;
+                        log.SentAtUtc = DateTime.UtcNow;
+                        result.Sent++;
+                        await _db.SaveChangesAsync(ct);
+                        if (delay > 0) await Task.Delay(delay, ct);
+                        continue;
+                    }
+
+                    // ── IN: email with attached PDF ───────────────────────────────────
+                    if (settings.Notice == NoticeKind.IN)
+                    {
+                        var isOmission = (log.RecipientName ?? "")
+                            .Equals("InvalidOmission", StringComparison.OrdinalIgnoreCase);
+
+                        var pdfPath = log.PdfPath
+                            ?? throw new FileNotFoundException(
+                                $"IN RunLog {log.Id} has no PdfPath — was it printed?");
+
+                        var inEmlPath = log.EmlPath
+                            ?? _paths.BuildInEmlPath(roll,
+                                log.ObjectionNo ?? log.Id.ToString(),
+                                log.PropertyDesc ?? "",
+                                isOmission);
+
+                        await SaveEmlAsync(inEmlPath, log.RecipientEmail!, subject, bodyHtml, pdfPath, ct);
+                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
+
+                        log.EmlPath = inEmlPath;
+                        log.Status = RunStatus.Sent;
+                        log.SentAtUtc = DateTime.UtcNow;
+                        result.Sent++;
+                        await _db.SaveChangesAsync(ct);
+                        if (delay > 0) await Task.Delay(delay, ct);
+                        continue;
+                    }
+
                     string emlPath;
                     if (settings.Notice == NoticeKind.S51)
                     {

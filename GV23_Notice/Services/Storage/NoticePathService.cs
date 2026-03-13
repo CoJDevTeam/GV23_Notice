@@ -288,6 +288,59 @@ namespace GV23_Notice.Services.Storage
             return Path.Combine(root, objFolder, inner, fileName);
         }
 
+        // ── Dear Johnny ──────────────────────────────────────────────────────
+        // {root}\{ObjectionNo}\Dear Johnny Notice\{ObjectionNo}_{PropertyDesc}_DJ.pdf/.eml
+
+        public string BuildDjPdfPath(RollRegistry roll, string objectionNo, string propertyDesc)
+        {
+            var root = GetRootPath(roll, NoticeKind.DJ);
+            var safeKey = SafeName(objectionNo);
+            var safeProp = SafeName(propertyDesc);
+            var objFolder = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
+            const string inner = "Dear Johnny Notice";
+            var fileName = $"{objFolder}_{(safeProp.Length > 0 ? safeProp : "Property")}_DJ.pdf";
+            return Path.Combine(root, objFolder, inner, fileName);
+        }
+
+        public string BuildDjEmlPath(RollRegistry roll, string objectionNo, string propertyDesc)
+        {
+            var root = GetRootPath(roll, NoticeKind.DJ);
+            var safeKey = SafeName(objectionNo);
+            var safeProp = SafeName(propertyDesc);
+            var objFolder = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
+            const string inner = "Dear Johnny Notice";
+            var fileName = $"{objFolder}_{(safeProp.Length > 0 ? safeProp : "Property")}_DJ.eml";
+            return Path.Combine(root, objFolder, inner, fileName);
+        }
+
+        // ── Invalid Notice ───────────────────────────────────────────────────
+        // {root}\{ObjectionNo}\Invalid Notice\{ObjectionNo}_{PropertyDesc}_IO.pdf  (objection)
+        // {root}\{ObjectionNo}\Invalid Notice\{ObjectionNo}_{PropertyDesc}_IOM.pdf (omission)
+
+        public string BuildInPdfPath(RollRegistry roll, string objectionNo, string propertyDesc, bool isOmission)
+        {
+            var root = GetRootPath(roll, NoticeKind.IN);
+            var safeKey = SafeName(objectionNo);
+            var safeProp = SafeName(propertyDesc);
+            var objFolder = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
+            const string inner = "Invalid Notice";
+            var suffix = isOmission ? "IOM" : "IO";
+            var fileName = $"{objFolder}_{(safeProp.Length > 0 ? safeProp : "Property")}_{suffix}.pdf";
+            return Path.Combine(root, objFolder, inner, fileName);
+        }
+
+        public string BuildInEmlPath(RollRegistry roll, string objectionNo, string propertyDesc, bool isOmission)
+        {
+            var root = GetRootPath(roll, NoticeKind.IN);
+            var safeKey = SafeName(objectionNo);
+            var safeProp = SafeName(propertyDesc);
+            var objFolder = safeKey.Length > 0 ? safeKey : "Unknown_Objection";
+            const string inner = "Invalid Notice";
+            var suffix = isOmission ? "IOM" : "IO";
+            var fileName = $"{objFolder}_{(safeProp.Length > 0 ? safeProp : "Property")}_{suffix}.eml";
+            return Path.Combine(root, objFolder, inner, fileName);
+        }
+
         private static string SafeName(string? name)
         {
             name ??= "";

@@ -1,18 +1,22 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Workflow;
+using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Models.DTOs;
+using GV23_Notice.Services.Notices.DearJohnny;
+using GV23_Notice.Services.Notices.Invalidity;
+using GV23_Notice.Services.Notices.Section49;
 using GV23_Notice.Services.Notices.Section51;
 using GV23_Notice.Services.Notices.Section52;
 using GV23_Notice.Services.Notices.Section53;
 using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
-using System.Data;
-using GV23_Notice.Domain.Workflow;
-using GV23_Notice.Domain.Workflow.Entities;
-using GV23_Notice.Services.Notices.Section49;
 using GV23_Notice.Services.Rolls;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
+using System.Data;
 using System.Globalization;
 
 namespace GV23_Notice.Services.Storage
@@ -29,6 +33,8 @@ namespace GV23_Notice.Services.Storage
         private readonly ILogger<NoticeBatchPrintService> _log;
         private readonly IConfiguration _config;
         private readonly ISection53PdfService _s53Builder;
+        private readonly IDearJonnyPdfService _djBuilder;
+        private readonly IInvalidNoticePdfService _inBuilder;
 
         public NoticeBatchPrintService(
             AppDbContext db,
@@ -40,7 +46,8 @@ namespace GV23_Notice.Services.Storage
             ISection53PdfService s53Builder,
             IWebHostEnvironment env,
             ILogger<NoticeBatchPrintService> log,
-            IConfiguration config)
+            IConfiguration config, IDearJonnyPdfService djBuilder,
+            IInvalidNoticePdfService inBuilder)
         {
             _db = db;
             _paths = paths;
@@ -52,6 +59,9 @@ namespace GV23_Notice.Services.Storage
             _env = env;
             _log = log;
             _config = config;
+            _djBuilder = djBuilder;
+            _inBuilder = inBuilder;
+
         }
 
         // ── Print a single batch ────────────────────────────────────────────
@@ -171,6 +181,14 @@ namespace GV23_Notice.Services.Storage
                 case NoticeKind.S53:
                     await PrintOneS53Async(settings, roll, batch, log, ct);
                     return;   // S53 handles its own path + save + status update
+
+                case NoticeKind.DJ:
+                    await PrintOneDjAsync(settings, roll, batch, log, ct);
+                    return;   // DJ handles its own path + save + status update
+
+                case NoticeKind.IN:
+                    await PrintOneInAsync(settings, roll, batch, log, ct);
+                    return;   // IN handles its own path + save + status update
 
                 // For other notice types: fall back to snapshot-based print
                 default:
@@ -776,6 +794,251 @@ namespace GV23_Notice.Services.Storage
             return (snap.PdfBytes, propertyDesc);
         }
 
+        private async Task PrintOneDjAsync(
+          NoticeSettings settings,
+          Domain.Rolls.RollRegistry roll,
+          NoticeBatch batch,
+          NoticeRunLog log,
+          CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(log.ObjectionNo))
+                throw new InvalidOperationException(
+                    $"RunLog {log.Id} has no ObjectionNo for DJ print.");
+
+            var cs = _config.GetConnectionString("DefaultConnection")
+                     ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+            var row = await FetchDjRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, ct)
+                      ?? throw new InvalidOperationException(
+                          $"DJ row not found for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
+
+            var propertyDesc = !string.IsNullOrWhiteSpace(row.PropertyDesc)
+                ? row.PropertyDesc
+                : log.PropertyDesc ?? log.ObjectionNo ?? "Property";
+
+            var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
+
+            var pdfData = new DearJonnyPdfData
+            {
+                RollName = roll.ShortCode ?? "",
+                ObjectionNo = log.ObjectionNo,
+                PropertyDescription = propertyDesc,
+                ValuationKey = row.ValuationKey ?? "",
+                Addr1 = row.Addr1 ?? "",
+                Addr2 = row.Addr2 ?? "",
+                Addr3 = row.Addr3 ?? "",
+                Addr4 = row.Addr4 ?? "",
+                Addr5 = row.Addr5 ?? ""
+            };
+
+            var pdfCtx = new DearJonnyPdfContext
+            {
+                HeaderImagePath = headerPath,
+                LetterDate = settings.LetterDate
+            };
+
+            var pdfBytes = _djBuilder.BuildNotice(pdfData, pdfCtx);
+
+            var pdfPath = _paths.BuildDjPdfPath(roll, log.ObjectionNo, propertyDesc);
+            var emlPath = _paths.BuildDjEmlPath(roll, log.ObjectionNo, propertyDesc);
+
+            SavePdf(pdfPath, pdfBytes);
+
+            log.PdfPath = pdfPath;
+            log.EmlPath = emlPath;      // will be written by email service later
+            log.PropertyDesc = propertyDesc;
+            log.Status = RunStatus.Printed;
+            await _db.SaveChangesAsync(ct);
+
+            _log.LogInformation("DJ printed: {ObjectionNo} → {Path}", log.ObjectionNo, pdfPath);
+        }
+
+        private async Task PrintOneInAsync(
+        NoticeSettings settings,
+        Domain.Rolls.RollRegistry roll,
+        NoticeBatch batch,
+        NoticeRunLog log,
+        CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(log.ObjectionNo))
+                throw new InvalidOperationException(
+                    $"RunLog {log.Id} has no ObjectionNo for IN print.");
+
+            var cs = _config.GetConnectionString("DefaultConnection")
+                     ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+            // Kind was stored in RecipientName during batch creation
+            var kindStr = log.RecipientName ?? "InvalidObjection";
+            var isOmission = kindStr.Equals("InvalidOmission", StringComparison.OrdinalIgnoreCase);
+
+            var row = await FetchInRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, ct)
+                      ?? throw new InvalidOperationException(
+                          $"IN row not found for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
+
+            var propertyDesc = !string.IsNullOrWhiteSpace(row.PropertyDesc)
+                ? row.PropertyDesc
+                : log.PropertyDesc ?? log.ObjectionNo ?? "Property";
+
+            var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
+
+            // Build address block for the PDF (multi-line string)
+            var addrBlock = string.Join("\n",
+                new[] { row.Addr1, row.Addr2, row.Addr3, row.Addr4, row.Addr5 }
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!.Trim()));
+
+            var pdfData = new InvalidNoticePdfData
+            {
+                Kind = isOmission
+                                        ? InvalidNoticeKind.InvalidOmission
+                                        : InvalidNoticeKind.InvalidObjection,
+                ObjectionNo = log.ObjectionNo,
+                PropertyDescription = propertyDesc,
+                RecipientName = row.Addr1 ?? "Sir/Madam",
+                RecipientAddress = addrBlock,
+                ValuationKey = row.ValuationKey ?? ""
+            };
+
+            var pdfCtx = new InvalidNoticePdfContext
+            {
+                HeaderImagePath = headerPath,
+                LetterDate = settings.LetterDate
+            };
+
+            var pdfBytes = _inBuilder.BuildNotice(pdfData, pdfCtx);
+
+            var pdfPath = _paths.BuildInPdfPath(roll, log.ObjectionNo, propertyDesc, isOmission);
+            var emlPath = _paths.BuildInEmlPath(roll, log.ObjectionNo, propertyDesc, isOmission);
+
+            SavePdf(pdfPath, pdfBytes);
+
+            log.PdfPath = pdfPath;
+            log.EmlPath = emlPath;
+            log.PropertyDesc = propertyDesc;
+            log.Status = RunStatus.Printed;
+            await _db.SaveChangesAsync(ct);
+
+            _log.LogInformation("IN printed: {ObjectionNo} ({Kind}) → {Path}",
+                log.ObjectionNo, kindStr, pdfPath);
+        }
+
+        private static async Task<InRow?> FetchInRowAsync(
+        string cs, int rollId, string objectionNo, string batchName, CancellationToken ct)
+        {
+            string? sourceDb = null;
+            await using (var conn0 = new SqlConnection(cs))
+            {
+                await using var cmd0 = new SqlCommand(
+                    "SELECT SourceDb FROM dbo.RollRegistry WHERE RollId = @RollId", conn0);
+                cmd0.Parameters.AddWithValue("@RollId", rollId);
+                await conn0.OpenAsync(ct);
+                var r = await cmd0.ExecuteScalarAsync(ct);
+                sourceDb = r as string;
+            }
+            if (string.IsNullOrWhiteSpace(sourceDb)) return null;
+
+            await using var conn = new SqlConnection(cs);
+            await conn.OpenAsync(ct);
+
+            // InvalidNoticeTable has no Addr columns — address is in Obj_Section1
+            // We join to get it the same way as the batch SP
+            var sql = $@"
+                SELECT TOP 1
+                    inv.Property_Desc,
+                    inv.Kind,
+                    inv.Objector_Email,
+                    CAST(NULL AS NVARCHAR(50)) AS ValuationKey,
+                    COALESCE(s1.Objector_Postal_1, s1.Owner_Address_1) AS Addr1,
+                    COALESCE(s1.Objector_Postal_2, s1.Owner_Address_2) AS Addr2,
+                    COALESCE(s1.Objector_Postal_3, s1.Owner_Address_3) AS Addr3,
+                    COALESCE(s1.Objector_Postal_4, s1.Owner_Address_4) AS Addr4,
+                    NULL AS Addr5
+                FROM  [{sourceDb}].[dbo].[InvalidNoticeTable] inv
+                LEFT JOIN [{sourceDb}].[dbo].[Obj_Section1] s1
+                       ON s1.Objection_Ref_S1 = inv.Objection_No
+                WHERE inv.Objection_No = @ObjNo
+                  AND inv.Batch_Name   = @Batch";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ObjNo", objectionNo);
+            cmd.Parameters.AddWithValue("@Batch", batchName);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return null;
+
+            static string? S(SqlDataReader r, int i) =>
+                r.IsDBNull(i) ? null : r.GetString(i).Trim();
+
+            return new InRow
+            {
+                PropertyDesc = S(reader, 0),
+                ValuationKey = S(reader, 3),
+                Addr1 = S(reader, 4),
+                Addr2 = S(reader, 5),
+                Addr3 = S(reader, 6),
+                Addr4 = S(reader, 7),
+                Addr5 = S(reader, 8),
+                Email = S(reader, 2),
+                Kind = S(reader, 1)
+            };
+        }
+
+        private static async Task<DjRow?> FetchDjRowAsync(
+            string cs, int rollId, string objectionNo, string batchName, CancellationToken ct)
+        {
+            // Resolve SourceDb
+            string? sourceDb = null;
+            await using (var conn0 = new SqlConnection(cs))
+            {
+                await using var cmd0 = new SqlCommand(
+                    "SELECT SourceDb FROM dbo.RollRegistry WHERE RollId = @RollId", conn0);
+                cmd0.Parameters.AddWithValue("@RollId", rollId);
+                await conn0.OpenAsync(ct);
+                var r = await cmd0.ExecuteScalarAsync(ct);
+                sourceDb = r as string;
+            }
+            if (string.IsNullOrWhiteSpace(sourceDb)) return null;
+
+            await using var conn = new SqlConnection(cs);
+            await conn.OpenAsync(ct);
+
+            var sql = $@"
+                SELECT TOP 1
+                    dj.Property_Desc,
+                    dj.Objector_Address,
+                    dj.Objector_Email,
+                    CAST(NULL AS NVARCHAR(50)) AS ValuationKey
+                FROM [{sourceDb}].[dbo].[DearJohnnyTable] dj
+                WHERE dj.Objection_No = @ObjNo
+                  AND dj.Batch_Name   = @Batch";
+
+            await using var cmd = new SqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@ObjNo", objectionNo);
+            cmd.Parameters.AddWithValue("@Batch", batchName);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) return null;
+
+            static string? S(SqlDataReader r, int i) =>
+                r.IsDBNull(i) ? null : r.GetString(i).Trim();
+
+            // Addr is stored as a single comma-joined string; split into up to 5 lines
+            var addrRaw = S(reader, 1) ?? "";
+            var addrParts = addrRaw.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                   .Select(x => x.Trim()).ToArray();
+
+            return new DjRow
+            {
+                PropertyDesc = S(reader, 0),
+                ValuationKey = S(reader, 3),
+                Addr1 = addrParts.Length > 0 ? addrParts[0] : null,
+                Addr2 = addrParts.Length > 1 ? addrParts[1] : null,
+                Addr3 = addrParts.Length > 2 ? addrParts[2] : null,
+                Addr4 = addrParts.Length > 3 ? addrParts[3] : null,
+                Addr5 = addrParts.Length > 4 ? addrParts[4] : null,
+                Email = S(reader, 2)
+            };
+        }
         // ── Save bytes to disk ───────────────────────────────────────────────
         private static void SavePdf(string path, byte[] bytes)
         {

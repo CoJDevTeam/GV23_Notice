@@ -10,7 +10,7 @@ namespace GV23_Notice.Services.Step3
     public sealed class Step3BatchService : IStep3BatchService
     {
         private readonly AppDbContext _db;
-         
+
         public Step3BatchService(AppDbContext db)
         {
             _db = db;
@@ -177,62 +177,104 @@ namespace GV23_Notice.Services.Step3
 
                 case NoticeKind.DJ:
                     {
-                        // SP:
-                        // EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @RollId, @BatchName, @BatchDate
+                        var connStr = _db.Database.GetConnectionString()
+                                      ?? throw new InvalidOperationException("Connection string not found.");
 
-                        var picked = await _db.Set<DjBatchPickRow>()
-                            .FromSqlRaw(
-                                "EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @p0, @p1, @p2",
-                                s.RollId,
-                                batchName,
-                                batchDateUtc)
-                            .AsNoTracking()
-                            .ToListAsync(ct);
+                        var djRows = new List<DjBatchPickRow>();
 
-                        var validPicked = picked
-                            .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
-                            .Select(x => new
+                        using (var spConn = new Microsoft.Data.SqlClient.SqlConnection(connStr))
+                        {
+                            await spConn.OpenAsync(ct);
+
+                            using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
+                                "EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @RollId, @BatchName, @BatchDate",
+                                spConn)
+                            { CommandTimeout = 300 };
+
+                            cmd.Parameters.AddWithValue("@RollId", s.RollId);
+                            cmd.Parameters.AddWithValue("@BatchName", batchName);
+                            cmd.Parameters.AddWithValue("@BatchDate", batchDateUtc);
+
+                            using var reader = await cmd.ExecuteReaderAsync(ct);
+                            while (await reader.ReadAsync(ct))
                             {
-                                ObjectionNo = x.ObjectionNo!.Trim(),
-                                PremiseId = string.IsNullOrWhiteSpace(x.PremiseId) ? "" : x.PremiseId.Trim(),
-                                RecipientEmail = string.IsNullOrWhiteSpace(x.RecipientEmail) ? "" : x.RecipientEmail.Trim()
-                            })
-                            .ToList();
+                                static string? S(Microsoft.Data.SqlClient.SqlDataReader r, string col)
+                                {
+                                    var v = r[col];
+                                    return v == DBNull.Value ? null : v?.ToString()?.Trim();
+                                }
+                                djRows.Add(new DjBatchPickRow
+                                {
+                                    ObjectionNo = S(reader, "ObjectionNo"),
+                                    PremiseId = S(reader, "PremiseId"),
+                                    RecipientEmail = S(reader, "RecipientEmail"),
+                                    PropertyDesc = S(reader, "PropertyDesc")
+                                });
+                            }
+                        }
 
-                        var runLogs = validPicked
+                        var runLogs = djRows
+                            .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
                             .Select(x => new NoticeRunLog
                             {
                                 NoticeBatchId = batch.Id,
                                 ObjectionNo = x.ObjectionNo,
                                 PremiseId = x.PremiseId,
                                 RecipientEmail = x.RecipientEmail,
+                                PropertyDesc = x.PropertyDesc,
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
-                            })
-                            .ToList();
+                            }).ToList();
 
-                        if (runLogs.Count > 0)
-                            _db.NoticeRunLogs.AddRange(runLogs);
-
+                        _db.NoticeRunLogs.AddRange(runLogs);
                         batch.NumberOfRecords = runLogs.Count;
-                        
-
-                        batch.ApprovedAtUtc = nowUtc;
-
                         await _db.SaveChangesAsync(ct);
                         return batch.Id;
                     }
+
                 case NoticeKind.IN:
                     {
                         var isOmission = s.IsInvalidOmission ?? false;
 
-                        // SP: EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @RollId, @IsOmission, @BatchName, @BatchDate
-                        var picked = await _db.Set<InBatchPickRow>()
-                            .FromSqlRaw("EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @p0, @p1, @p2, @p3",
-                                s.RollId, isOmission, batchName, batchDateUtc)
-                            .ToListAsync(ct);
+                        var connStr = _db.Database.GetConnectionString()
+                                      ?? throw new InvalidOperationException("Connection string not found.");
 
-                        var runLogs = picked
+                        var inRows = new List<InBatchPickRow>();
+
+                        using (var spConn = new Microsoft.Data.SqlClient.SqlConnection(connStr))
+                        {
+                            await spConn.OpenAsync(ct);
+
+                            using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
+                                "EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @RollId, @IsOmission, @BatchName, @BatchDate",
+                                spConn)
+                            { CommandTimeout = 300 };
+
+                            cmd.Parameters.AddWithValue("@RollId", s.RollId);
+                            cmd.Parameters.AddWithValue("@IsOmission", isOmission);
+                            cmd.Parameters.AddWithValue("@BatchName", batchName);
+                            cmd.Parameters.AddWithValue("@BatchDate", batchDateUtc);
+
+                            using var reader = await cmd.ExecuteReaderAsync(ct);
+                            while (await reader.ReadAsync(ct))
+                            {
+                                static string? S(Microsoft.Data.SqlClient.SqlDataReader r, string col)
+                                {
+                                    var v = r[col];
+                                    return v == DBNull.Value ? null : v?.ToString()?.Trim();
+                                }
+                                inRows.Add(new InBatchPickRow
+                                {
+                                    ObjectionNo = S(reader, "ObjectionNo"),
+                                    PremiseId = S(reader, "PremiseId"),
+                                    RecipientEmail = S(reader, "RecipientEmail"),
+                                    PropertyDesc = S(reader, "PropertyDesc"),
+                                    Kind = S(reader, "Kind")
+                                });
+                            }
+                        }
+
+                        var runLogs = inRows
                             .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
                             .Select(x => new NoticeRunLog
                             {
@@ -240,6 +282,8 @@ namespace GV23_Notice.Services.Step3
                                 ObjectionNo = x.ObjectionNo,
                                 PremiseId = x.PremiseId,
                                 RecipientEmail = x.RecipientEmail,
+                                PropertyDesc = x.PropertyDesc,
+                                RecipientName = x.Kind,          // reuse RecipientName to carry Kind
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
                             }).ToList();

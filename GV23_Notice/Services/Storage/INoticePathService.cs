@@ -89,5 +89,28 @@ namespace GV23_Notice.Services.Storage
             string objectionNo,
             string propertyDesc,
             string? objectorType);
+
+        /// <summary>
+        /// Dear Johnny PDF path:
+        /// {root}\{ObjectionNo}\Dear Johnny Notice\{ObjectionNo}_{PropertyDesc}_DJ.pdf
+        /// </summary>
+        string BuildDjPdfPath(RollRegistry roll, string objectionNo, string propertyDesc);
+
+        /// <summary>
+        /// Dear Johnny .eml path — same folder as PDF, .eml extension.
+        /// </summary>
+        string BuildDjEmlPath(RollRegistry roll, string objectionNo, string propertyDesc);
+
+        /// <summary>
+        /// Invalid Notice PDF path:
+        /// isOmission=false → {root}\{ObjectionNo}\Invalid Notice\{ObjectionNo}_{PropertyDesc}_IO.pdf
+        /// isOmission=true  → {root}\{ObjectionNo}\Invalid Notice\{ObjectionNo}_{PropertyDesc}_IOM.pdf
+        /// </summary>
+        string BuildInPdfPath(RollRegistry roll, string objectionNo, string propertyDesc, bool isOmission);
+
+        /// <summary>
+        /// Invalid Notice .eml path — same folder as PDF, .eml extension.
+        /// </summary>
+        string BuildInEmlPath(RollRegistry roll, string objectionNo, string propertyDesc, bool isOmission);
     }
 }
