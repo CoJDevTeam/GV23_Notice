@@ -90,6 +90,7 @@ namespace GV23_Notice.Services.Preview
 
             // 4) pick a header row (newest)
             var header = rollRows[0];
+            var s49Addr = BuildPreviewAddress(contactRow);
 
             return new S49PreviewDbData
             {
@@ -107,11 +108,13 @@ namespace GV23_Notice.Services.Preview
                 ValuationSplitIndicator = header.Str("ValuationSplitIndicator"),
 
                 Email = SafeEmail(contactRow?.Str("EMAIL_ADDR") ?? contactRow?.Str("Email")),
-                Addr1 = SafeAddr(contactRow?.Str("ADDR1")),
-                Addr2 = SafeAddr(contactRow?.Str("ADDR2")),
-                Addr3 = SafeAddr(contactRow?.Str("ADDR3")),
-                Addr4 = SafeAddr(contactRow?.Str("ADDR4")),
-                Addr5 = SafeAddr(contactRow?.Str("ADDR5")),
+                
+              
+                Addr1 = s49Addr.Addr1,
+                Addr2 = s49Addr.Addr2,
+                Addr3 = s49Addr.Addr3,
+                Addr4 = s49Addr.Addr4,
+                Addr5 = s49Addr.Addr5,
                 PremiseAddress = contactRow?.Str("PREMISE_ADDRESS"),
                 AccountNo = contactRow?.Str("ACCOUNT_NO"),
 
@@ -135,7 +138,7 @@ namespace GV23_Notice.Services.Preview
 
             if (row is null)
                 throw new InvalidOperationException($"S51 preview: no data found for {(preferMulti ? "multi" : "single")} mode.");
-
+            var s51Addr = BuildPreviewAddress(row);
             return new S51PreviewDbData
             {
                 RollId = rollId,
@@ -146,11 +149,14 @@ namespace GV23_Notice.Services.Preview
                 PropertyDesc = row.Str("Property_desc") ?? row.Str("PropertyDesc"),
                 Email = SafeEmail(row.Str("Email") ?? row.Str("EMAIL_ADDR")),
                 valuationKey = row.Str("Valuation_Key"),
-                Addr1 = SafeAddr(row.Str("ADDR1")),
-                Addr2 = SafeAddr(row.Str("ADDR2")),
-                Addr3 = SafeAddr(row.Str("ADDR3")),
-                Addr4 = SafeAddr(row.Str("ADDR4")),
-                Addr5 = SafeAddr(row.Str("ADDR5")),
+              
+
+             
+                Addr1 = s51Addr.Addr1,
+                Addr2 = s51Addr.Addr2,
+                Addr3 = s51Addr.Addr3,
+                Addr4 = s51Addr.Addr4,
+                Addr5 = s51Addr.Addr5,
 
                 RandomPin = row.Str("RandomPin"),
                 Section51Pin = row.Str("Section51Pin") ?? row.Str("RandomPin"),
@@ -226,7 +232,7 @@ namespace GV23_Notice.Services.Preview
 
             if (row is null)
                 throw new InvalidOperationException("S52 preview: no data found.");
-
+            var s52Addr = BuildPreviewAddress(row);
             return new S52PreviewDbData
             {
                 RollId = rollId,
@@ -239,11 +245,15 @@ namespace GV23_Notice.Services.Preview
                 PropertyDesc = row.Str("Property_desc"),
                 Email = SafeEmail(row.Str("Email")),
 
-                Addr1 = SafeAddr(row.Str("ADDR1")),
-                Addr2 = SafeAddr(row.Str("ADDR2")),
-                Addr3 = SafeAddr(row.Str("ADDR3")),
-                Addr4 = SafeAddr(row.Str("ADDR4")),
-                Addr5 = SafeAddr(row.Str("ADDR5")),
+            
+
+                Addr1 = s52Addr.Addr1,
+                Addr2 = s52Addr.Addr2,
+                Addr3 = s52Addr.Addr3,
+                Addr4 = s52Addr.Addr4,
+                Addr5 = s52Addr.Addr5,
+
+               
 
                 Town = row.Str("Town"),
                 Erf = row.Str("ERF"),
@@ -277,7 +287,7 @@ namespace GV23_Notice.Services.Preview
 
             if (row is null)
                 throw new InvalidOperationException($"S53 preview: no data found for {(preferMulti ? "multi" : "single")} mode.");
-
+            var s53Addr = BuildPreviewAddress(row);
             return new S53PreviewDbData
             {
                 RollId = rollId,
@@ -287,11 +297,16 @@ namespace GV23_Notice.Services.Preview
                 PropertyDesc = row.Str("Property_desc"),
 
                 Email = SafeEmail(row.Str("Email")),
-                Addr1 = SafeAddr(row.Str("ADDR1")),
-                Addr2 = SafeAddr(row.Str("ADDR2")),
-                Addr3 = SafeAddr(row.Str("ADDR3")),
-                Addr4 = SafeAddr(row.Str("ADDR4")),
-                Addr5 = SafeAddr(row.Str("ADDR5")),
+
+                
+
+           
+                Addr1 = s53Addr.Addr1,
+                Addr2 = s53Addr.Addr2,
+                Addr3 = s53Addr.Addr3,
+                Addr4 = s53Addr.Addr4,
+                Addr5 = s53Addr.Addr5,
+              
 
                 GvMarketValue = row.Str("GV_Market_Value"),
                 GvMarketValue2 = row.Str("GV_Market_Value2"),
@@ -330,6 +345,8 @@ namespace GV23_Notice.Services.Preview
 
             if (row is null)
                 throw new InvalidOperationException("DJ preview: no pending Dear Johnny found.");
+
+            var djAddr = BuildPreviewAddress(row);
             return new DJPreviewDbData
             {
                 RollId = rollId,
@@ -339,11 +356,16 @@ namespace GV23_Notice.Services.Preview
                 Email = SafeEmail(row.Str("Email")),
                 ValuationKey = row.Str("valuation_Key") ?? row.Str("VALUATIONKEY"),
 
-                Addr1 = SafeAddr(row.Str("ADDR1")),
-                Addr2 = SafeAddr(row.Str("ADDR2")),
-                Addr3 = SafeAddr(row.Str("ADDR3")),
-                Addr4 = SafeAddr(row.Str("ADDR4")),
-                Addr5 = SafeAddr(row.Str("ADDR5")),
+
+            
+
+                Addr1 = djAddr.Addr1,
+                Addr2 = djAddr.Addr2,
+                Addr3 = djAddr.Addr3,
+                Addr4 = djAddr.Addr4,
+                Addr5 = djAddr.Addr5,
+
+               
             };
         }
 
@@ -577,9 +599,43 @@ namespace GV23_Notice.Services.Preview
 
             return snap;
         }
-        private static string SafeAddr(string? value)
-    => string.IsNullOrWhiteSpace(value) ? "XXXX" : value.Trim();
+        private static (string Addr1, string Addr2, string Addr3, string Addr4, string Addr5) BuildPreviewAddress(
+      string? addr1,
+      string? addr2,
+      string? addr3,
+      string? addr4,
+      string? addr5)
+        {
+            var a1 = addr1?.Trim() ?? "";
+            var a2 = addr2?.Trim() ?? "";
+            var a3 = addr3?.Trim() ?? "";
+            var a4 = addr4?.Trim() ?? "";
+            var a5 = addr5?.Trim() ?? "";
 
+            var hasAnyAddress =
+                !string.IsNullOrWhiteSpace(a1) ||
+                !string.IsNullOrWhiteSpace(a2) ||
+                !string.IsNullOrWhiteSpace(a3) ||
+                !string.IsNullOrWhiteSpace(a4) ||
+                !string.IsNullOrWhiteSpace(a5);
+
+            if (!hasAnyAddress)
+            {
+                return ("XXXX", "XXXX", "XXXX", "XXXX", "");
+            }
+
+            return (a1, a2, a3, a4, a5);
+        }
+
+        private static (string Addr1, string Addr2, string Addr3, string Addr4, string Addr5) BuildPreviewAddress(Row? row)
+        {
+            return BuildPreviewAddress(
+                row?.Str("ADDR1"),
+                row?.Str("ADDR2"),
+                row?.Str("ADDR3"),
+                row?.Str("ADDR4"),
+                row?.Str("ADDR5"));
+        }
         private static string SafeEmail(string? value)
     => string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
     }
