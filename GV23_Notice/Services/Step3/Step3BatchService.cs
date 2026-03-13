@@ -177,14 +177,29 @@ namespace GV23_Notice.Services.Step3
 
                 case NoticeKind.DJ:
                     {
-                        // SP: EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @RollId, @BatchName, @BatchDate
+                        // SP:
+                        // EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @RollId, @BatchName, @BatchDate
+
                         var picked = await _db.Set<DjBatchPickRow>()
-                            .FromSqlRaw("EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @p0, @p1, @p2",
-                                s.RollId, batchName, batchDateUtc)
+                            .FromSqlRaw(
+                                "EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @p0, @p1, @p2",
+                                s.RollId,
+                                batchName,
+                                batchDateUtc)
+                            .AsNoTracking()
                             .ToListAsync(ct);
 
-                        var runLogs = picked
+                        var validPicked = picked
                             .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                            .Select(x => new
+                            {
+                                ObjectionNo = x.ObjectionNo!.Trim(),
+                                PremiseId = string.IsNullOrWhiteSpace(x.PremiseId) ? "" : x.PremiseId.Trim(),
+                                RecipientEmail = string.IsNullOrWhiteSpace(x.RecipientEmail) ? "" : x.RecipientEmail.Trim()
+                            })
+                            .ToList();
+
+                        var runLogs = validPicked
                             .Select(x => new NoticeRunLog
                             {
                                 NoticeBatchId = batch.Id,
@@ -193,14 +208,20 @@ namespace GV23_Notice.Services.Step3
                                 RecipientEmail = x.RecipientEmail,
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
-                            }).ToList();
+                            })
+                            .ToList();
 
-                        _db.NoticeRunLogs.AddRange(runLogs);
+                        if (runLogs.Count > 0)
+                            _db.NoticeRunLogs.AddRange(runLogs);
+
                         batch.NumberOfRecords = runLogs.Count;
+                        
+
+                        batch.ApprovedAtUtc = nowUtc;
+
                         await _db.SaveChangesAsync(ct);
                         return batch.Id;
                     }
-
                 case NoticeKind.IN:
                     {
                         var isOmission = s.IsInvalidOmission ?? false;

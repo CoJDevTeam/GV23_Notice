@@ -5,6 +5,7 @@
         public string? ObjectionNo { get; set; }
         public string? PremiseId { get; set; }
         public string? RecipientEmail { get; set; }
+        public string? PropertyDesc { get; set; }
     }
 
     public sealed class InBatchPickRow
@@ -12,5 +13,7 @@
         public string? ObjectionNo { get; set; }
         public string? PremiseId { get; set; }
         public string? RecipientEmail { get; set; }
+        public string? PropertyDesc { get; set; }
+        public string? Kind { get; set; }   // 'InvalidObjection' | 'InvalidOmission'
     }
 }
