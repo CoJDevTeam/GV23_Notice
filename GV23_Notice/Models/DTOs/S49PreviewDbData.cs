@@ -190,6 +190,7 @@ namespace GV23_Notice.Models.DTOs
         public string? Addr3 { get; set; }
         public string? Addr4 { get; set; }
         public string? Addr5 { get; set; }
+        public string? ValuationKey { get; set; }
     }
 
     public sealed class InvalidPreviewDbData
@@ -207,6 +208,8 @@ namespace GV23_Notice.Models.DTOs
         public string? Addr5 { get; set; }
 
         public string? ObjectionStatus { get; set; } // Invalid-Objection / Invalid-Omission
+
+        public string? ValuationKey { get; set; }
     }
 
     public sealed class RowMap

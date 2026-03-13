@@ -106,12 +106,12 @@ namespace GV23_Notice.Services.Preview
                 Reason = header.Str("Reason"),
                 ValuationSplitIndicator = header.Str("ValuationSplitIndicator"),
 
-                Email = contactRow?.Str("EMAIL_ADDR") ?? contactRow?.Str("Email"),
-                Addr1 = contactRow?.Str("ADDR1"),
-                Addr2 = contactRow?.Str("ADDR2"),
-                Addr3 = contactRow?.Str("ADDR3"),
-                Addr4 = contactRow?.Str("ADDR4"),
-                Addr5 = contactRow?.Str("ADDR5"),
+                Email = SafeEmail(contactRow?.Str("EMAIL_ADDR") ?? contactRow?.Str("Email")),
+                Addr1 = SafeAddr(contactRow?.Str("ADDR1")),
+                Addr2 = SafeAddr(contactRow?.Str("ADDR2")),
+                Addr3 = SafeAddr(contactRow?.Str("ADDR3")),
+                Addr4 = SafeAddr(contactRow?.Str("ADDR4")),
+                Addr5 = SafeAddr(contactRow?.Str("ADDR5")),
                 PremiseAddress = contactRow?.Str("PREMISE_ADDRESS"),
                 AccountNo = contactRow?.Str("ACCOUNT_NO"),
 
@@ -144,13 +144,13 @@ namespace GV23_Notice.Services.Preview
 
                 PremiseId = row.Str("Premise_iD") ?? row.Str("PremiseId"),
                 PropertyDesc = row.Str("Property_desc") ?? row.Str("PropertyDesc"),
-                Email = row.Str("Email") ?? row.Str("EMAIL_ADDR"),
+                Email = SafeEmail(row.Str("Email") ?? row.Str("EMAIL_ADDR")),
                 valuationKey = row.Str("Valuation_Key"),
-                Addr1 = row.Str("ADDR1"),
-                Addr2 = row.Str("ADDR2"),
-                Addr3 = row.Str("ADDR3"),
-                Addr4 = row.Str("ADDR4"),
-                Addr5 = row.Str("ADDR5"),
+                Addr1 = SafeAddr(row.Str("ADDR1")),
+                Addr2 = SafeAddr(row.Str("ADDR2")),
+                Addr3 = SafeAddr(row.Str("ADDR3")),
+                Addr4 = SafeAddr(row.Str("ADDR4")),
+                Addr5 = SafeAddr(row.Str("ADDR5")),
 
                 RandomPin = row.Str("RandomPin"),
                 Section51Pin = row.Str("Section51Pin") ?? row.Str("RandomPin"),
@@ -237,13 +237,13 @@ namespace GV23_Notice.Services.Preview
                 PremiseId = row.Str("Premise_iD"),
                 ValuationKey = row.Str("valuation_Key") ?? row.Str("VALUATIONKEY"),
                 PropertyDesc = row.Str("Property_desc"),
-                Email = row.Str("Email"),
+                Email = SafeEmail(row.Str("Email")),
 
-                Addr1 = row.Str("ADDR1"),
-                Addr2 = row.Str("ADDR2"),
-                Addr3 = row.Str("ADDR3"),
-                Addr4 = row.Str("ADDR4"),
-                Addr5 = row.Str("ADDR5"),
+                Addr1 = SafeAddr(row.Str("ADDR1")),
+                Addr2 = SafeAddr(row.Str("ADDR2")),
+                Addr3 = SafeAddr(row.Str("ADDR3")),
+                Addr4 = SafeAddr(row.Str("ADDR4")),
+                Addr5 = SafeAddr(row.Str("ADDR5")),
 
                 Town = row.Str("Town"),
                 Erf = row.Str("ERF"),
@@ -286,12 +286,12 @@ namespace GV23_Notice.Services.Preview
                 ValuationKey = row.Str("valuation_Key"),
                 PropertyDesc = row.Str("Property_desc"),
 
-                Email = row.Str("Email"),
-                Addr1 = row.Str("ADDR1"),
-                Addr2 = row.Str("ADDR2"),
-                Addr3 = row.Str("ADDR3"),
-                Addr4 = row.Str("ADDR4"),
-                Addr5 = row.Str("ADDR5"),
+                Email = SafeEmail(row.Str("Email")),
+                Addr1 = SafeAddr(row.Str("ADDR1")),
+                Addr2 = SafeAddr(row.Str("ADDR2")),
+                Addr3 = SafeAddr(row.Str("ADDR3")),
+                Addr4 = SafeAddr(row.Str("ADDR4")),
+                Addr5 = SafeAddr(row.Str("ADDR5")),
 
                 GvMarketValue = row.Str("GV_Market_Value"),
                 GvMarketValue2 = row.Str("GV_Market_Value2"),
@@ -330,55 +330,96 @@ namespace GV23_Notice.Services.Preview
 
             if (row is null)
                 throw new InvalidOperationException("DJ preview: no pending Dear Johnny found.");
-
             return new DJPreviewDbData
             {
                 RollId = rollId,
                 ObjectionNo = row.Str("Objection_No") ?? "",
                 PremiseId = row.Str("Premise_iD"),
                 PropertyDesc = row.Str("Property_desc"),
-                Email = row.Str("Email"),
+                Email = SafeEmail(row.Str("Email")),
+                ValuationKey = row.Str("valuation_Key") ?? row.Str("VALUATIONKEY"),
 
-                Addr1 = row.Str("ADDR1"),
-                Addr2 = row.Str("ADDR2"),
-                Addr3 = row.Str("ADDR3"),
-                Addr4 = row.Str("ADDR4"),
-                Addr5 = row.Str("ADDR5"),
+                Addr1 = SafeAddr(row.Str("ADDR1")),
+                Addr2 = SafeAddr(row.Str("ADDR2")),
+                Addr3 = SafeAddr(row.Str("ADDR3")),
+                Addr4 = SafeAddr(row.Str("ADDR4")),
+                Addr5 = SafeAddr(row.Str("ADDR5")),
             };
         }
 
         public async Task<InvalidPreviewDbData> InvalidPreviewDbDataAsync(int rollId, bool isOmission, CancellationToken ct)
         {
-            var proc = isOmission
+            var primaryProc = isOmission
                 ? "dbo.IN_Preview_SelectInvalidOmissionTop1"
                 : "dbo.IN_Preview_SelectInvalidObjectionTop1";
 
-            var row = await ExecSingleAsync(proc, cmd =>
+            var fallbackProc = isOmission
+                ? "dbo.IN_Preview_SelectInvalidObjectionTop1"
+                : "dbo.IN_Preview_SelectInvalidOmissionTop1";
+
+            var row = await ExecSingleAsync(primaryProc, cmd =>
             {
                 cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
             }, ct);
 
             if (row is null)
-                throw new InvalidOperationException("Invalid preview: no invalid record found.");
+            {
+                row = await ExecSingleAsync(fallbackProc, cmd =>
+                {
+                    cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
+                }, ct);
+            }
+
+            if (row is null)
+            {
+                return new InvalidPreviewDbData
+                {
+                    RollId = rollId,
+                    ObjectionNo = "PREVIEW-INVALID-001",
+                    PremiseId = "",
+                    PropertyDesc = "INVALID PREVIEW PROPERTY",
+                    Email = "",
+                    ValuationKey = "VAL-KEY-PREVIEW",
+                    Addr1 = "XXXX",
+                    Addr2 = "XXXX",
+                    Addr3 = "XXXX",
+                    Addr4 = "XXXX",
+                    Addr5 = "",
+                    ObjectionStatus = isOmission ? "Pending-Invalid Omission" : "Pending-Invalid Objection"
+                };
+            }
+
+            var addr1 = row.Str("ADDR1");
+            var addr2 = row.Str("ADDR2");
+            var addr3 = row.Str("ADDR3");
+            var addr4 = row.Str("ADDR4");
+            var addr5 = row.Str("ADDR5");
+
+            var hasAnyAddress =
+                !string.IsNullOrWhiteSpace(addr1) ||
+                !string.IsNullOrWhiteSpace(addr2) ||
+                !string.IsNullOrWhiteSpace(addr3) ||
+                !string.IsNullOrWhiteSpace(addr4) ||
+                !string.IsNullOrWhiteSpace(addr5);
 
             return new InvalidPreviewDbData
             {
                 RollId = rollId,
-                ObjectionNo = row.Str("Objection_No") ?? "",
+                ObjectionNo = row.Str("Objection_No") ?? "PREVIEW-INVALID-001",
                 PremiseId = row.Str("Premise_iD"),
-                PropertyDesc = row.Str("Property_desc"),
-                Email = row.Str("Email"),
+                PropertyDesc = row.Str("Property_desc") ?? row.Str("Property_Desc") ?? "INVALID PREVIEW PROPERTY",
+                Email = SafeEmail(row.Str("Email")),
+                ValuationKey = row.Str("valuation_Key") ?? row.Str("Valuation_Key") ?? row.Str("VALUATIONKEY") ?? "VAL-KEY-PREVIEW",
 
-                Addr1 = row.Str("ADDR1"),
-                Addr2 = row.Str("ADDR2"),
-                Addr3 = row.Str("ADDR3"),
-                Addr4 = row.Str("ADDR4"),
-                Addr5 = row.Str("ADDR5"),
+                Addr1 = hasAnyAddress ? (addr1 ?? "") : "XXXX",
+                Addr2 = hasAnyAddress ? (addr2 ?? "") : "XXXX",
+                Addr3 = hasAnyAddress ? (addr3 ?? "") : "XXXX",
+                Addr4 = hasAnyAddress ? (addr4 ?? "") : "XXXX",
+                Addr5 = hasAnyAddress ? (addr5 ?? "") : "",
 
-                ObjectionStatus = row.Str("Objection_Status")
+                ObjectionStatus = row.Str("Objection_Status") ?? ""
             };
         }
-
         // -----------------------
         // INTERNAL HELPERS
         // -----------------------
@@ -536,6 +577,10 @@ namespace GV23_Notice.Services.Preview
 
             return snap;
         }
+        private static string SafeAddr(string? value)
+    => string.IsNullOrWhiteSpace(value) ? "XXXX" : value.Trim();
 
+        private static string SafeEmail(string? value)
+    => string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
     }
 }

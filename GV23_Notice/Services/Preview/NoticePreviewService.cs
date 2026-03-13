@@ -241,14 +241,15 @@ namespace GV23_Notice.Services.Notices
 
                         var data = new DearJonnyPdfData
                         {
-                            RollName = roll.ShortCode ?? "",
+                            RollName = roll.Name ?? "",
                             ObjectionNo = db.ObjectionNo ?? "",
                             PropertyDescription = db.PropertyDesc ?? "",
                             Addr1 = db.Addr1 ?? "",
                             Addr2 = db.Addr2 ?? "",
                             Addr3 = db.Addr3 ?? "",
                             Addr4 = db.Addr4 ?? "",
-                            Addr5 = db.Addr5 ?? ""
+                            Addr5 = db.Addr5 ?? "",
+                            ValuationKey = db.ValuationKey ?? "",
                         };
 
                         pdfBytes = _dj.BuildNotice(data, ctx);
@@ -284,7 +285,8 @@ namespace GV23_Notice.Services.Notices
                             ObjectionNo = db.ObjectionNo ?? "",
                             PropertyDescription = db.PropertyDesc ?? "",
                             RecipientName = db.Addr1 ?? "",
-                            RecipientAddress = BuildAddrLine(db.Addr1, db.Addr2, db.Addr3, db.Addr4, db.Addr5)
+                            RecipientAddress = BuildAddrLine(db.Addr1, db.Addr2, db.Addr3, db.Addr4, db.Addr5),
+                            ValuationKey=db.ValuationKey ??"",
                         };
 
                         pdfBytes = _inv.BuildNotice(data, ctx);

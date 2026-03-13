@@ -50,7 +50,7 @@ namespace GV23_Notice.Services.Notices.DearJohnny
             var red7b = TextStyle.Default.FontFamily("Arial").FontSize(7).SemiBold().FontColor(Colors.Red.Medium);
 
             var recipient = Safe(model.Addr1);
-            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear {recipient}";
+            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
 
             return Document.Create(container =>
             {
@@ -134,24 +134,25 @@ namespace GV23_Notice.Services.Notices.DearJohnny
                         col.Item().PaddingTop(1).Text(greeting).FontFamily("Arial").FontSize(9).Bold();
                         col.Item().PaddingTop(10);
 
-                        col.Item().Text(t =>
+                   // 4) Property Description
+
+                                        col.Item()
+                   .PaddingTop(2)
+                   .Text($"Property Description: {model.PropertyDescription}")
+                   .SemiBold();
+                    col.Item().PaddingTop(10);
+                    col.Item().Text(t =>
                         {
                             t.Span("The objection number: ");
                             t.Span(model.ObjectionNo).SemiBold();
-                            t.Span(" for the property description ");
-                            t.Span(model.PropertyDescription?.Trim()).SemiBold();
+                           
                             t.Span(
                                 $" received to the above-mentioned property was not considered as the property was subject to a previous legislative process relating to the General Valuation Roll 2023 (GV2023) and was concluded prior to {model.RollName}. " +
                                 "It was considered as an objection, section 52 review or an appeal.");
                         });
 
                         col.Item().PaddingTop(1);
-                        // 4) Property Description
-   //                     col.Item()
-   //.PaddingTop(2)
-   //.Text($"Property Description: {model.PropertyDescription}")
-   //.SemiBold();
-                        //col.Item().PaddingTop(2).Text();
+                  
 
                         col.Item().PaddingTop(10);
 
@@ -175,13 +176,13 @@ namespace GV23_Notice.Services.Notices.DearJohnny
                             "Application may be submitted through email to valuationenquiries@joburg.org.za or hand delivered at Jorissen Place, 66 Jorissen Street, 1st floor Valuation Administration.");
 
                         col.Item().PaddingTop(10);
-                        col.Item().Text(model.EnquiriesLine).FontSize(9);
+                        col.Item().Text(model.EnquiriesLine).FontSize(9).SemiBold();
 
                         col.Item().PaddingTop(14);
 
                         // 7) Signature block
                         col.Item().Text("S. Faiaz").SemiBold();
-                        col.Item().Text("Municipal Valuer");
+                        col.Item().Text("Municipal Valuer").SemiBold();
                     });
                 });
             }).GeneratePdf();
@@ -189,11 +190,12 @@ namespace GV23_Notice.Services.Notices.DearJohnny
 
         private static void AddAddrLine(ColumnDescriptor col, string? line, bool bold = false)
         {
-            var value = string.IsNullOrWhiteSpace(line) ? "XXXX" : line.Trim();
-            var text = col.Item().Text(value).FontSize(10);
+            if (string.IsNullOrWhiteSpace(line))
+                return;
+
+            var text = col.Item().Text(line.Trim()).FontSize(10);
             if (bold) text.SemiBold();
         }
-
         private static void Bullet(ColumnDescriptor col, string text)
         {
             col.Item().Row(row =>

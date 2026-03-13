@@ -43,6 +43,10 @@ namespace GV23_Notice.Services.Notices.Invalidity
             var model = new Model(data, ctx);
 
             var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
+            var red7b = TextStyle.Default.FontFamily("Arial").FontSize(7).SemiBold().FontColor(Colors.Red.Medium);
+
+            var recipient = Safe(model.RecipientName);
+            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
 
             return Document.Create(container =>
             {
@@ -71,7 +75,7 @@ namespace GV23_Notice.Services.Notices.Invalidity
                              .Style(small7);
 
                             t.Line(Safe(data.ValuationKey))
-                             .Style(small7.SemiBold());
+                             .Style(red7b.SemiBold());
                         });
                     page.Content().Column(col =>
                     {
@@ -102,10 +106,19 @@ namespace GV23_Notice.Services.Notices.Invalidity
                         {
                             row.RelativeItem().Column(left =>
                             {
-                                foreach (var line in BuildAddressLines(model.RecipientAddress))
+                                AddAddrLine(left, model.RecipientName, bold: true);
+
+                                var addressLines = BuildAddressLines(model.RecipientAddress);
+
+                                foreach (var line in addressLines)
                                 {
-                                    if (!string.IsNullOrWhiteSpace(line))
-                                        left.Item().Text(line).FontSize(10);
+                                    if (string.Equals(
+                                        line?.Trim(),
+                                        model.RecipientName?.Trim(),
+                                        StringComparison.OrdinalIgnoreCase))
+                                        continue;
+
+                                    AddAddrLine(left, line);
                                 }
                             });
 
@@ -114,7 +127,6 @@ namespace GV23_Notice.Services.Notices.Invalidity
                                 right.Item().Text(model.LetterDate.ToString("dd MMMM yyyy")).FontSize(9);
                             });
                         });
-
                         col.Item().PaddingTop(10);
 
                         // 3) Title block
@@ -131,27 +143,36 @@ namespace GV23_Notice.Services.Notices.Invalidity
                         col.Item().PaddingTop(6).LineHorizontal(1.5f);
                         col.Item().PaddingTop(10);
 
-                        // 4) Property Description
-                        col.Item().Text("Property Description:").SemiBold();
-                        col.Item().PaddingTop(2).Text(model.PropertyDescription);
 
-                        col.Item().PaddingTop(10);
+                             col.Item().PaddingTop(1).Text(greeting).FontFamily("Arial").FontSize(9).Bold();
+                            col.Item().PaddingTop(10);
+
+
 
                         // 5) Body
                         col.Item().Text(t =>
                         {
-                            t.Span("Objection number: ");
-                            t.Span(model.ObjectionNo).SemiBold();
-                            t.Span("\n\n");
-
-                            t.Span("Dear ").SemiBold();
-                            t.Span(model.RecipientName).SemiBold();
-                            t.Span("\n\n");
-
-                            t.Span(model.Kind == InvalidNoticeKind.InvalidObjection
-                                ? "Please be advised that the objection submitted cannot be considered. The records indicate that the objection was lodged against a property description/property that does not exist on the official applicable property register."
-                                : "Please be advised that the objection submitted cannot be considered. The records indicate that the objection was lodged against the incorrect property description.");
+                            t.Span("Objection number: ").SemiBold();
+                            t.Span(model.ObjectionNo);
                         });
+
+                        col.Item().PaddingTop(10);
+
+                        // Property Description
+                        col.Item().Text(t =>
+                        {
+                            t.Span("Property Description: ").SemiBold();
+                            t.Span(model.PropertyDescription?.Trim());
+                        });
+
+                        col.Item().PaddingTop(10);
+
+                        // Notice paragraph
+                        col.Item().Text(
+                            model.Kind == InvalidNoticeKind.InvalidObjection
+                                ? "Please be advised that the objection submitted cannot be considered. The records indicate that the objection was lodged against a property description/property that does not exist on the official applicable property register."
+                                : "Please be advised that the objection submitted cannot be considered. The records indicate that the objection was lodged against the incorrect property description."
+                        );
 
                         col.Item().PaddingTop(10)
                             .Text("As a result, a section 53 notice will not be issued, as the objection is not valid for the reasons stated above.")
@@ -170,31 +191,35 @@ namespace GV23_Notice.Services.Notices.Invalidity
                         col.Item().PaddingTop(14);
 
                         // 7) Signature block
+                        col.Item().Text("Municipal Valuer").SemiBold();
                         col.Item().Text("S. Faiaz").SemiBold();
-                        col.Item().Text("Municipal Valuer");
+                       
                     });
                 });
             }).GeneratePdf();
         }
+        private static void AddAddrLine(ColumnDescriptor col, string? line, bool bold = false)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return;
 
+            var text = col.Item().Text(line.Trim()).FontSize(10);
+            if (bold) text.SemiBold();
+        }
         private static IReadOnlyList<string> BuildAddressLines(string? addressMultiline)
         {
-            var lines = (addressMultiline ?? "")
+            if (string.IsNullOrWhiteSpace(addressMultiline))
+                return new List<string>();
+
+            return addressMultiline
                 .Replace("\r\n", "\n")
+                .Replace(",", "\n")   // split comma-separated address into lines
                 .Split('\n')
                 .Select(x => (x ?? "").Trim())
                 .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Take(5)
                 .ToList();
-
-            if (lines.Count > 0)
-            {
-                while (lines.Count < 4) lines.Add("");
-                return lines.Take(5).ToList();
-            }
-
-            return new List<string> { "XXXX", "XXXX", "XXXX", "XXXX" };
         }
-
         private static void Bullet(ColumnDescriptor col, string text)
         {
             col.Item().Row(row =>
