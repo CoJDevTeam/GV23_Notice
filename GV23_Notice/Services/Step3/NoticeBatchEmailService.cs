@@ -46,17 +46,16 @@ namespace GV23_Notice.Services.Email
 
         // ── Count ready-to-send records ──────────────────────────────────────
         public async Task<int> CountSelectedRecordsAsync(
-            IEnumerable<int> batchIds, CancellationToken ct)
+     IEnumerable<int> batchIds, CancellationToken ct)
         {
             var ids = batchIds.Distinct().ToList();
+
             return await _db.NoticeRunLogs
                 .Where(r => ids.Contains(r.NoticeBatchId)
                          && r.Status == RunStatus.Printed
-                         && r.RecipientEmail != null
-                         && r.RecipientEmail != "")
+                         && r.PdfPath != null)
                 .CountAsync(ct);
         }
-
         // ── Send emails for selected batches ─────────────────────────────────
         public async Task<SendBatchEmailResult> SendBatchEmailsAsync(
             IEnumerable<int> batchIds,
@@ -102,6 +101,8 @@ namespace GV23_Notice.Services.Email
             }
 
             var delay = Math.Max(0, _emailOpt.Limits?.DelayMsBetweenSends ?? 0);
+            var connStr = _config.GetConnectionString("DefaultConnection")
+             ?? throw new InvalidOperationException("DefaultConnection not configured.");
 
             foreach (var log in runLogs)
             {
@@ -199,27 +200,77 @@ namespace GV23_Notice.Services.Email
                         continue;
                     }
                     // ── END S53 ──────────────────────────────────────────────────────
-
                     if (settings.Notice == NoticeKind.DJ)
                     {
                         var pdfPath = log.PdfPath
                             ?? throw new FileNotFoundException(
                                 $"DJ RunLog {log.Id} has no PdfPath — was it printed?");
 
-                        var djEmlPath = log.EmlPath
-                            ?? _paths.BuildDjEmlPath(roll,
-                                log.ObjectionNo ?? log.Id.ToString(),
-                                log.PropertyDesc ?? "");
+                        if (batch == null)
+                            throw new InvalidOperationException($"Batch not found for RunLog {log.Id}.");
 
-                        await SaveEmlAsync(djEmlPath, log.RecipientEmail!, subject, bodyHtml, pdfPath, ct);
+                        if (string.IsNullOrWhiteSpace(log.ObjectionNo))
+                            throw new InvalidOperationException($"DJ RunLog {log.Id} has no ObjectionNo.");
+
+                        var djRow = await FetchDjEmailRowAsync(
+                            connStr,
+                            batch.RollId,
+                            log.ObjectionNo,
+                            batch.BatchName,
+                            ct);
+
+                        if (djRow == null)
+                            throw new InvalidOperationException(
+                                $"No DearJohnnyTable row found for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
+
+                        var recipientEmail = djRow.RecipientEmail;
+                        if (string.IsNullOrWhiteSpace(recipientEmail))
+                            throw new InvalidOperationException(
+                                $"No DJ email found in DearJohnnyTable for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
+
+                        var propertyDesc = !string.IsNullOrWhiteSpace(djRow.PropertyDesc)
+                            ? djRow.PropertyDesc
+                            : (log.PropertyDesc ?? "");
+
+                        var djEmlPath = log.EmlPath
+                            ?? _paths.BuildDjEmlPath(
+                                roll,
+                                log.ObjectionNo,
+                                propertyDesc);
+
+                        // update NoticeRunLog from source-of-truth row
+                        log.RecipientEmail = recipientEmail;
+                        log.PropertyDesc = propertyDesc;
+
+                        // 1) Save .eml copy first
+                        await SaveEmlAsync(djEmlPath, recipientEmail, subject, bodyHtml, pdfPath, ct);
+
+                        // 2) Persist EmlPath + email immediately
+                        log.EmlPath = djEmlPath;
+                        await _db.SaveChangesAsync(ct);
+
+                        // 3) Send SMTP using updated log
                         await SendOneEmailAsync(subject, bodyHtml, log, ct);
 
-                        log.EmlPath = djEmlPath;
+                        // 4) Mark RunLog as sent
                         log.Status = RunStatus.Sent;
                         log.SentAtUtc = DateTime.UtcNow;
                         result.Sent++;
+
+                        // 5) Mark DearJohnnyTable + Obj_Property_Info as sent
+                        await SetDjNoticeSentAsync(
+                            connStr,
+                            batch.RollId,
+                            log.ObjectionNo,
+                            batch.BatchName,
+                            log.SentAtUtc.Value,
+                            ct);
+
                         await _db.SaveChangesAsync(ct);
-                        if (delay > 0) await Task.Delay(delay, ct);
+
+                        if (delay > 0)
+                            await Task.Delay(delay, ct);
+
                         continue;
                     }
 
@@ -497,6 +548,103 @@ namespace GV23_Notice.Services.Email
             };
 
             await Task.Run(() => smtp.Send(msg), ct);
+        }
+        private static async Task<DjEmailRow?> FetchDjEmailRowAsync(
+    string cs,
+    int rollId,
+    string objectionNo,
+    string batchName,
+    CancellationToken ct)
+        {
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.DJ_GetEmailRow", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 60
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int)
+            {
+                Value = rollId
+            });
+            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", SqlDbType.NVarChar, 100)
+            {
+                Value = objectionNo
+            });
+            cmd.Parameters.Add(new SqlParameter("@BatchName", SqlDbType.NVarChar, 100)
+            {
+                Value = batchName
+            });
+
+            await conn.OpenAsync(ct);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                return null;
+
+            static string? S(SqlDataReader r, string col)
+            {
+                var ordinal = r.GetOrdinal(col);
+                return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
+            }
+
+            return new DjEmailRow
+            {
+                ObjectionNo = S(reader, "ObjectionNo"),
+                PremiseId = S(reader, "PremiseId"),
+                PropertyDesc = S(reader, "PropertyDesc"),
+                OwnerEmail = S(reader, "OwnerEmail"),
+                ObjectorEmail = S(reader, "ObjectorEmail"),
+                RepEmail = S(reader, "RepEmail"),
+                RecipientEmail = S(reader, "RecipientEmail")
+            };
+        }
+
+
+        private static async Task SetDjNoticeSentAsync(
+    string cs,
+    int rollId,
+    string objectionNo,
+    string batchName,
+    DateTime sentDateUtc,
+    CancellationToken ct)
+        {
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.DJ_Step3_SetNoticeSent", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 60
+            };
+
+            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int)
+            {
+                Value = rollId
+            });
+            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", SqlDbType.NVarChar, 100)
+            {
+                Value = objectionNo
+            });
+            cmd.Parameters.Add(new SqlParameter("@BatchName", SqlDbType.NVarChar, 100)
+            {
+                Value = batchName
+            });
+            cmd.Parameters.Add(new SqlParameter("@SentDate", SqlDbType.DateTime2)
+            {
+                Value = sentDateUtc
+            });
+
+            await conn.OpenAsync(ct);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        private sealed class DjEmailRow
+        {
+            public string? ObjectionNo { get; set; }
+            public string? PremiseId { get; set; }
+            public string? PropertyDesc { get; set; }
+            public string? OwnerEmail { get; set; }
+            public string? ObjectorEmail { get; set; }
+            public string? RepEmail { get; set; }
+            public string? RecipientEmail { get; set; }
         }
     }
 }

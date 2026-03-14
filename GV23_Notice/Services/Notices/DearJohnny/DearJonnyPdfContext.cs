@@ -24,5 +24,7 @@
 
         // ✅ NEW
         public string ValuationKey { get; set; } = "";
+
+        public string? RecipientName { get; set; }
     }
 }

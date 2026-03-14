@@ -187,22 +187,38 @@ namespace GV23_Notice.Services.Step3
                             await spConn.OpenAsync(ct);
 
                             using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
-                                "EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @RollId, @BatchName, @BatchDate",
+                                "EXEC dbo.DJ_Step3_InsertTop500IntoDearJohnnyTable @RollId, @BatchName, @BatchDate, @LetterDate",
                                 spConn)
-                            { CommandTimeout = 300 };
+                            {
+                                CommandTimeout = 300
+                            };
 
-                            cmd.Parameters.AddWithValue("@RollId", s.RollId);
-                            cmd.Parameters.AddWithValue("@BatchName", batchName);
-                            cmd.Parameters.AddWithValue("@BatchDate", batchDateUtc);
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@RollId", System.Data.SqlDbType.Int)
+                            {
+                                Value = s.RollId
+                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@BatchName", System.Data.SqlDbType.NVarChar, 100)
+                            {
+                                Value = batchName
+                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@BatchDate", System.Data.SqlDbType.DateTime2)
+                            {
+                                Value = batchDateUtc
+                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@LetterDate", System.Data.SqlDbType.DateTime2)
+                            {
+                                Value = s.LetterDate.Date
+                            });
 
                             using var reader = await cmd.ExecuteReaderAsync(ct);
                             while (await reader.ReadAsync(ct))
                             {
                                 static string? S(Microsoft.Data.SqlClient.SqlDataReader r, string col)
                                 {
-                                    var v = r[col];
-                                    return v == DBNull.Value ? null : v?.ToString()?.Trim();
+                                    var ordinal = r.GetOrdinal(col);
+                                    return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
                                 }
+
                                 djRows.Add(new DjBatchPickRow
                                 {
                                     ObjectionNo = S(reader, "ObjectionNo"),
@@ -224,7 +240,8 @@ namespace GV23_Notice.Services.Step3
                                 PropertyDesc = x.PropertyDesc,
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
-                            }).ToList();
+                            })
+                            .ToList();
 
                         _db.NoticeRunLogs.AddRange(runLogs);
                         batch.NumberOfRecords = runLogs.Count;
@@ -246,30 +263,47 @@ namespace GV23_Notice.Services.Step3
                             await spConn.OpenAsync(ct);
 
                             using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
-                                "EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @RollId, @IsOmission, @BatchName, @BatchDate",
+                                "EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @RollId, @IsOmission, @BatchName, @BatchDate, @LetterDate",
                                 spConn)
                             { CommandTimeout = 300 };
 
-                            cmd.Parameters.AddWithValue("@RollId", s.RollId);
-                            cmd.Parameters.AddWithValue("@IsOmission", isOmission);
-                            cmd.Parameters.AddWithValue("@BatchName", batchName);
-                            cmd.Parameters.AddWithValue("@BatchDate", batchDateUtc);
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@RollId", System.Data.SqlDbType.Int)
+                            {
+                                Value = s.RollId
+                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@IsOmission", System.Data.SqlDbType.Bit)
+                            {
+                                Value = isOmission
+                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@BatchName", System.Data.SqlDbType.NVarChar, 100)
+                            {
+                                Value = batchName
+                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@BatchDate", System.Data.SqlDbType.DateTime2)
+                            {
+                                Value = batchDateUtc
+                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@LetterDate", System.Data.SqlDbType.DateTime2)
+                            {
+                                Value = s.LetterDate.Date
+                            });
 
                             using var reader = await cmd.ExecuteReaderAsync(ct);
                             while (await reader.ReadAsync(ct))
                             {
                                 static string? S(Microsoft.Data.SqlClient.SqlDataReader r, string col)
                                 {
-                                    var v = r[col];
-                                    return v == DBNull.Value ? null : v?.ToString()?.Trim();
+                                    var ordinal = r.GetOrdinal(col);
+                                    return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
                                 }
+
                                 inRows.Add(new InBatchPickRow
                                 {
                                     ObjectionNo = S(reader, "ObjectionNo"),
                                     PremiseId = S(reader, "PremiseId"),
                                     RecipientEmail = S(reader, "RecipientEmail"),
                                     PropertyDesc = S(reader, "PropertyDesc"),
-                                    Kind = S(reader, "Kind")
+                                    Kind = S(reader, "NoticeKind")
                                 });
                             }
                         }
@@ -283,10 +317,11 @@ namespace GV23_Notice.Services.Step3
                                 PremiseId = x.PremiseId,
                                 RecipientEmail = x.RecipientEmail,
                                 PropertyDesc = x.PropertyDesc,
-                                RecipientName = x.Kind,          // reuse RecipientName to carry Kind
+                                RecipientName = x.Kind,   // stores "Invalid Omission" / "Invalid Objection"
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
-                            }).ToList();
+                            })
+                            .ToList();
 
                         _db.NoticeRunLogs.AddRange(runLogs);
                         batch.NumberOfRecords = runLogs.Count;

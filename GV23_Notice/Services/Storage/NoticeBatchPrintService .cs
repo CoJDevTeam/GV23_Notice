@@ -795,11 +795,11 @@ namespace GV23_Notice.Services.Storage
         }
 
         private async Task PrintOneDjAsync(
-          NoticeSettings settings,
-          Domain.Rolls.RollRegistry roll,
-          NoticeBatch batch,
-          NoticeRunLog log,
-          CancellationToken ct)
+      NoticeSettings settings,
+      Domain.Rolls.RollRegistry roll,
+      NoticeBatch batch,
+      NoticeRunLog log,
+      CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.ObjectionNo))
                 throw new InvalidOperationException(
@@ -822,6 +822,7 @@ namespace GV23_Notice.Services.Storage
             {
                 RollName = roll.ShortCode ?? "",
                 ObjectionNo = log.ObjectionNo,
+                RecipientName = row.RecipientName ?? "",
                 PropertyDescription = propertyDesc,
                 ValuationKey = row.ValuationKey ?? "",
                 Addr1 = row.Addr1 ?? "",
@@ -845,20 +846,23 @@ namespace GV23_Notice.Services.Storage
             SavePdf(pdfPath, pdfBytes);
 
             log.PdfPath = pdfPath;
-            log.EmlPath = emlPath;      // will be written by email service later
+            log.EmlPath = emlPath;
             log.PropertyDesc = propertyDesc;
+            log.RecipientEmail = row.Email;
             log.Status = RunStatus.Printed;
+
             await _db.SaveChangesAsync(ct);
 
             _log.LogInformation("DJ printed: {ObjectionNo} → {Path}", log.ObjectionNo, pdfPath);
         }
 
+
         private async Task PrintOneInAsync(
-        NoticeSettings settings,
-        Domain.Rolls.RollRegistry roll,
-        NoticeBatch batch,
-        NoticeRunLog log,
-        CancellationToken ct)
+     NoticeSettings settings,
+     Domain.Rolls.RollRegistry roll,
+     NoticeBatch batch,
+     NoticeRunLog log,
+     CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.ObjectionNo))
                 throw new InvalidOperationException(
@@ -867,13 +871,15 @@ namespace GV23_Notice.Services.Storage
             var cs = _config.GetConnectionString("DefaultConnection")
                      ?? throw new InvalidOperationException("DefaultConnection not configured.");
 
-            // Kind was stored in RecipientName during batch creation
-            var kindStr = log.RecipientName ?? "InvalidObjection";
-            var isOmission = kindStr.Equals("InvalidOmission", StringComparison.OrdinalIgnoreCase);
-
             var row = await FetchInRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, ct)
                       ?? throw new InvalidOperationException(
                           $"IN row not found for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
+
+            var noticeKind = !string.IsNullOrWhiteSpace(row.NoticeKind)
+                ? row.NoticeKind
+                : (log.RecipientName ?? "Invalid Objection");
+
+            var isOmission = noticeKind.Equals("Invalid Omission", StringComparison.OrdinalIgnoreCase);
 
             var propertyDesc = !string.IsNullOrWhiteSpace(row.PropertyDesc)
                 ? row.PropertyDesc
@@ -881,7 +887,6 @@ namespace GV23_Notice.Services.Storage
 
             var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
 
-            // Build address block for the PDF (multi-line string)
             var addrBlock = string.Join("\n",
                 new[] { row.Addr1, row.Addr2, row.Addr3, row.Addr4, row.Addr5 }
                     .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -890,11 +895,11 @@ namespace GV23_Notice.Services.Storage
             var pdfData = new InvalidNoticePdfData
             {
                 Kind = isOmission
-                                        ? InvalidNoticeKind.InvalidOmission
-                                        : InvalidNoticeKind.InvalidObjection,
+                    ? InvalidNoticeKind.InvalidOmission
+                    : InvalidNoticeKind.InvalidObjection,
                 ObjectionNo = log.ObjectionNo,
                 PropertyDescription = propertyDesc,
-                RecipientName = row.Addr1 ?? "Sir/Madam",
+                RecipientName = row.RecipientName ?? "Sir/Madam",
                 RecipientAddress = addrBlock,
                 ValuationKey = row.ValuationKey ?? ""
             };
@@ -915,128 +920,125 @@ namespace GV23_Notice.Services.Storage
             log.PdfPath = pdfPath;
             log.EmlPath = emlPath;
             log.PropertyDesc = propertyDesc;
+            log.RecipientEmail = row.Email;
+            log.RecipientName = noticeKind; // keep exact value from table
             log.Status = RunStatus.Printed;
+
             await _db.SaveChangesAsync(ct);
 
-            _log.LogInformation("IN printed: {ObjectionNo} ({Kind}) → {Path}",
-                log.ObjectionNo, kindStr, pdfPath);
+            _log.LogInformation("IN printed: {ObjectionNo} ({NoticeKind}) → {Path}",
+                log.ObjectionNo, noticeKind, pdfPath);
         }
-
         private static async Task<InRow?> FetchInRowAsync(
-        string cs, int rollId, string objectionNo, string batchName, CancellationToken ct)
+        string cs,
+        int rollId,
+        string objectionNo,
+        string batchName,
+        CancellationToken ct)
         {
-            string? sourceDb = null;
-            await using (var conn0 = new SqlConnection(cs))
-            {
-                await using var cmd0 = new SqlCommand(
-                    "SELECT SourceDb FROM dbo.RollRegistry WHERE RollId = @RollId", conn0);
-                cmd0.Parameters.AddWithValue("@RollId", rollId);
-                await conn0.OpenAsync(ct);
-                var r = await cmd0.ExecuteScalarAsync(ct);
-                sourceDb = r as string;
-            }
-            if (string.IsNullOrWhiteSpace(sourceDb)) return null;
-
             await using var conn = new SqlConnection(cs);
             await conn.OpenAsync(ct);
 
-            // InvalidNoticeTable has no Addr columns — address is in Obj_Section1
-            // We join to get it the same way as the batch SP
-            var sql = $@"
-                SELECT TOP 1
-                    inv.Property_Desc,
-                    inv.Kind,
-                    inv.Objector_Email,
-                    CAST(NULL AS NVARCHAR(50)) AS ValuationKey,
-                    COALESCE(s1.Objector_Postal_1, s1.Owner_Address_1) AS Addr1,
-                    COALESCE(s1.Objector_Postal_2, s1.Owner_Address_2) AS Addr2,
-                    COALESCE(s1.Objector_Postal_3, s1.Owner_Address_3) AS Addr3,
-                    COALESCE(s1.Objector_Postal_4, s1.Owner_Address_4) AS Addr4,
-                    NULL AS Addr5
-                FROM  [{sourceDb}].[dbo].[InvalidNoticeTable] inv
-                LEFT JOIN [{sourceDb}].[dbo].[Obj_Section1] s1
-                       ON s1.Objection_Ref_S1 = inv.Objection_No
-                WHERE inv.Objection_No = @ObjNo
-                  AND inv.Batch_Name   = @Batch";
+            await using var cmd = new SqlCommand(
+                "EXEC dbo.IN_Print_GetRow @RollId, @ObjectionNo, @BatchName",
+                conn)
+            {
+                CommandTimeout = 300
+            };
 
-            await using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@ObjNo", objectionNo);
-            cmd.Parameters.AddWithValue("@Batch", batchName);
+            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int)
+            {
+                Value = rollId
+            });
+            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", SqlDbType.NVarChar, 100)
+            {
+                Value = objectionNo
+            });
+            cmd.Parameters.Add(new SqlParameter("@BatchName", SqlDbType.NVarChar, 100)
+            {
+                Value = batchName
+            });
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct)) return null;
+            if (!await reader.ReadAsync(ct))
+                return null;
 
-            static string? S(SqlDataReader r, int i) =>
-                r.IsDBNull(i) ? null : r.GetString(i).Trim();
+            static string? S(SqlDataReader r, string col)
+            {
+                var ordinal = r.GetOrdinal(col);
+                return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
+            }
 
             return new InRow
             {
-                PropertyDesc = S(reader, 0),
-                ValuationKey = S(reader, 3),
-                Addr1 = S(reader, 4),
-                Addr2 = S(reader, 5),
-                Addr3 = S(reader, 6),
-                Addr4 = S(reader, 7),
-                Addr5 = S(reader, 8),
-                Email = S(reader, 2),
-                Kind = S(reader, 1)
+                ObjectionNo = S(reader, "ObjectionNo"),
+                PremiseId = S(reader, "PremiseId"),
+                PropertyDesc = S(reader, "PropertyDesc"),
+                NoticeKind = S(reader, "NoticeKind"),
+                RecipientName = S(reader, "RecipientName"),
+                ValuationKey = S(reader, "ValuationKey"),
+                Addr1 = S(reader, "Addr1"),
+                Addr2 = S(reader, "Addr2"),
+                Addr3 = S(reader, "Addr3"),
+                Addr4 = S(reader, "Addr4"),
+                Addr5 = S(reader, "Addr5"),
+                Email = S(reader, "RecipientEmail")
             };
         }
 
         private static async Task<DjRow?> FetchDjRowAsync(
-            string cs, int rollId, string objectionNo, string batchName, CancellationToken ct)
+     string cs,
+     int rollId,
+     string objectionNo,
+     string batchName,
+     CancellationToken ct)
         {
-            // Resolve SourceDb
-            string? sourceDb = null;
-            await using (var conn0 = new SqlConnection(cs))
-            {
-                await using var cmd0 = new SqlCommand(
-                    "SELECT SourceDb FROM dbo.RollRegistry WHERE RollId = @RollId", conn0);
-                cmd0.Parameters.AddWithValue("@RollId", rollId);
-                await conn0.OpenAsync(ct);
-                var r = await cmd0.ExecuteScalarAsync(ct);
-                sourceDb = r as string;
-            }
-            if (string.IsNullOrWhiteSpace(sourceDb)) return null;
-
             await using var conn = new SqlConnection(cs);
             await conn.OpenAsync(ct);
 
-            var sql = $@"
-                SELECT TOP 1
-                    dj.Property_Desc,
-                    dj.Objector_Address,
-                    dj.Objector_Email,
-                    CAST(NULL AS NVARCHAR(50)) AS ValuationKey
-                FROM [{sourceDb}].[dbo].[DearJohnnyTable] dj
-                WHERE dj.Objection_No = @ObjNo
-                  AND dj.Batch_Name   = @Batch";
+            await using var cmd = new SqlCommand(
+                "EXEC dbo.DJ_Print_GetRow @RollId, @ObjectionNo, @BatchName",
+                conn)
+            {
+                CommandTimeout = 300
+            };
 
-            await using var cmd = new SqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@ObjNo", objectionNo);
-            cmd.Parameters.AddWithValue("@Batch", batchName);
+            cmd.Parameters.Add(new SqlParameter("@RollId", System.Data.SqlDbType.Int)
+            {
+                Value = rollId
+            });
+            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", System.Data.SqlDbType.NVarChar, 100)
+            {
+                Value = objectionNo
+            });
+            cmd.Parameters.Add(new SqlParameter("@BatchName", System.Data.SqlDbType.NVarChar, 100)
+            {
+                Value = batchName
+            });
 
             await using var reader = await cmd.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct)) return null;
+            if (!await reader.ReadAsync(ct))
+                return null;
 
-            static string? S(SqlDataReader r, int i) =>
-                r.IsDBNull(i) ? null : r.GetString(i).Trim();
-
-            // Addr is stored as a single comma-joined string; split into up to 5 lines
-            var addrRaw = S(reader, 1) ?? "";
-            var addrParts = addrRaw.Split(',', StringSplitOptions.RemoveEmptyEntries)
-                                   .Select(x => x.Trim()).ToArray();
+            static string? S(SqlDataReader r, string col)
+            {
+                var ordinal = r.GetOrdinal(col);
+                return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
+            }
 
             return new DjRow
             {
-                PropertyDesc = S(reader, 0),
-                ValuationKey = S(reader, 3),
-                Addr1 = addrParts.Length > 0 ? addrParts[0] : null,
-                Addr2 = addrParts.Length > 1 ? addrParts[1] : null,
-                Addr3 = addrParts.Length > 2 ? addrParts[2] : null,
-                Addr4 = addrParts.Length > 3 ? addrParts[3] : null,
-                Addr5 = addrParts.Length > 4 ? addrParts[4] : null,
-                Email = S(reader, 2)
+                ObjectionNo = S(reader, "ObjectionNo"),
+                PremiseId = S(reader, "PremiseId"),
+                ValuationKey = S(reader, "ValuationKey"),
+                PropertyDesc = S(reader, "PropertyDesc"),
+                RecipientName = S(reader, "RecipientName"),
+                Addr1 = S(reader, "Addr1"),
+                Addr2 = S(reader, "Addr2"),
+                Addr3 = S(reader, "Addr3"),
+                Addr4 = S(reader, "Addr4"),
+                Addr5 = S(reader, "Addr5"),
+                Email = S(reader, "RecipientEmail")
             };
         }
         // ── Save bytes to disk ───────────────────────────────────────────────
