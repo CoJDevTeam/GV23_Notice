@@ -21,11 +21,15 @@ namespace GV23_Notice.Services.Notices.Section49
             var body9 = TextStyle.Default.FontFamily("Arial").FontSize(9);
             var body9b = TextStyle.Default.FontFamily("Arial").FontSize(9).SemiBold();
             var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
-            var red9b = TextStyle.Default
-              .FontFamily("Arial")
-              .FontSize(9)
-              .SemiBold()
-              .FontColor(Colors.Red.Medium);
+           
+
+
+            var red7b = TextStyle.Default
+                .FontFamily("Arial")
+                .FontSize(7)
+                .SemiBold()
+                .FontColor(Colors.Red.Medium);
+
 
             var inspectionWindowText = ctx.ExtendedEndDate.HasValue
                 ? $"{ctx.InspectionStartDate:dd MMMM yyyy} – {ctx.ExtendedEndDate:dd MMMM yyyy} until 15:00"
@@ -34,7 +38,8 @@ namespace GV23_Notice.Services.Notices.Section49
             var closingDate = ctx.ExtendedEndDate ?? ctx.InspectionEndDate;
 
             static string Safe(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
-
+            var recipient = Safe(data.Addr1);
+            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
             // Ensure rows exist
             var rows = data.PropertyRows ?? new List<Section49PropertyRow>();
             if (rows.Count == 0)
@@ -75,7 +80,7 @@ namespace GV23_Notice.Services.Notices.Section49
                           .Style(small7);
 
                          t.Line(Safe(data.ValuationKey))
-                          .Style(red9b.SemiBold());
+                          .Style(red7b.SemiBold());
                      });
                                 page.Content().Column(col =>
                             {
@@ -105,16 +110,16 @@ namespace GV23_Notice.Services.Notices.Section49
                 // ===== TITLES =====
                 col.Item().AlignCenter().Text("CITY OF JOHANNESBURG").Style(title12);
 
-                col.Item().AlignCenter().Text(
-                    "PUBLIC NOTICE CALLING FOR INSPECTION OF THE SUPPLEMENTARY VALUATION\n" +
-                    "ROLL AND LODGING OF OBJECTIONS"
+                col.Item().AlignCenter().Text($"PUBLIC NOTICE CALLING FOR INSPECTION OF THE {ctx.RollHeaderText} AND LODGING OF OBJECTIONS"
                 ).Style(sub10b);
 
                 col.Item().LineHorizontal(1.5f).LineColor(Colors.Grey.Darken2);
                 col.Item().PaddingBottom(6);
 
-                // ===== MAIN NOTICE PARAGRAPH (mixed bold) =====
-                col.Item().Text(t =>
+                                col.Item().PaddingTop(3).Text(greeting).FontFamily("Arial").FontSize(9).Bold();
+
+                                // ===== MAIN NOTICE PARAGRAPH (mixed bold) =====
+                                col.Item().Text(t =>
                 {
                     t.Span("Notice is hereby given in terms of Section 49(1)(a)(i) read together with section 78(2) of the ").Style(body9);
                     t.Span("Local Government: Municipal Property Rates Act No. 6 of 2004").Style(body9b);

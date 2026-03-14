@@ -91,7 +91,7 @@ namespace GV23_Notice.Services.Notices.Section52
                 .ToString("dd MMMM yyyy", CultureInfo.GetCultureInfo("en-ZA"));
 
             var recipient = Safe(model.ADDR1);
-            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear {recipient}";
+            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
 
             var sigName = "VALUATION APPEAL BOARD";
             var sigOrg = "City of Johannesburg";

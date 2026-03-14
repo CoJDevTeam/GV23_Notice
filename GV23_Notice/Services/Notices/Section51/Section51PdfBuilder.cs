@@ -313,7 +313,7 @@ namespace GV23_Notice.Services.Notices.Section51
 
                     h.Cell().Element(HeaderCell).Text("");
 
-                    h.Cell().Element(HeaderCell).Text(rollTitle)
+                    h.Cell().Element(HeaderCell).Text($"{rollTitle} Entry")
                         .FontFamily("Arial")
                         .FontSize(9)
                         .SemiBold()
