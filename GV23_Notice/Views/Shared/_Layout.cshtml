@@ -1,10 +1,43 @@
-﻿<!DOCTYPE html>
+﻿@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@inject IAuthorizationService AuthorizationService
+
+@{
+    var controller = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+    var action = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+
+    var canWorkflowAdmin = (await AuthorizationService.AuthorizeAsync(User, "ValuationAdminCreateApprove")).Succeeded;
+    var canSearchLibrary = (await AuthorizationService.AuthorizeAsync(User, "ValuationAdminSearchDownload")).Succeeded;
+    var canStep3 = (await AuthorizationService.AuthorizeAsync(User, "DataTeamCreateBatchPrint")).Succeeded;
+
+    var fullName = User.FindFirst("FullName")?.Value
+        ?? User.Identity?.Name
+        ?? "User";
+
+    var shortName = fullName.Contains("\\")
+        ? fullName.Split('\\').Last()
+        : fullName;
+
+    var roleName = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+
+    string IsActive(string targetController, string? targetAction = null)
+    {
+        var controllerMatch = string.Equals(controller, targetController, StringComparison.OrdinalIgnoreCase);
+        var actionMatch = string.IsNullOrWhiteSpace(targetAction)
+            || string.Equals(action, targetAction, StringComparison.OrdinalIgnoreCase);
+
+        return controllerMatch && actionMatch ? "active" : "";
+    }
+}
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - GV23 Notice</title>
     <script type="importmap"></script>
+
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
@@ -15,54 +48,97 @@
 
     <!-- ═══════════════ NAV ═══════════════ -->
     <nav class="gv-navbar">
-
         <a class="gv-brand" asp-controller="Home" asp-action="Index">
             <span class="gv-brand-badge">GV23</span>
             <span class="gv-brand-title">Notice Management</span>
         </a>
 
-        <button class="gv-toggler" onclick="this.nextElementSibling.classList.toggle('open')" aria-label="Toggle menu">
+        <button class="gv-toggler"
+                type="button"
+                onclick="this.nextElementSibling.classList.toggle('open')"
+                aria-label="Toggle menu">
             <span></span><span></span><span></span>
         </button>
 
         <div class="gv-nav-wrap">
             <ul class="gv-nav">
                 <li>
-                    <a asp-controller="Home" asp-action="Index"
-                       class="@(ViewContext.RouteData.Values["controller"]?.ToString() == "Home" ? "active" : "")">
+                    <a asp-controller="Home"
+                       asp-action="Index"
+                       class="@IsActive("Home", "Index")">
                         ⌂ Home
                     </a>
                 </li>
-                <li>
-                    <a asp-controller="Workflow" asp-action="Step1"
-                       class="@(ViewContext.RouteData.Values["controller"]?.ToString() == "Workflow" ? "active" : "")">
-                        ⚙ Workflow
-                    </a>
-                </li>
-                <li>
-                    <a asp-controller="Step3" asp-action="Index"
-                       class="@(ViewContext.RouteData.Values["controller"]?.ToString() == "Step3" ? "active" : "")">
-                        ▶ Step 3
-                    </a>
-                </li>
+
+                @if (canWorkflowAdmin)
+                {
+                    <li>
+                        <a asp-controller="Workflow"
+                           asp-action="Step1"
+                           class="@IsActive("Workflow", "Step1")">
+                            ⚙ Workflow
+                        </a>
+                    </li>
+                }
+
+                @if (canSearchLibrary)
+                {
+                    <li>
+                        <a asp-controller="Workflow"
+                           asp-action="SettingsLibrary"
+                           class="@IsActive("Workflow", "SettingsLibrary")">
+                            📚 Settings Library
+                        </a>
+                    </li>
+
+                    <li>
+                        <a asp-controller="NoticeSearch"
+                           asp-action="Index"
+                           class="@IsActive("NoticeSearch", "Index")">
+                            🔎 Search
+                        </a>
+                    </li>
+                }
+
+                @if (canStep3)
+                {
+                    <li>
+                        <a asp-controller="Step3"
+                           asp-action="Index"
+                           class="@IsActive("Step3", "Index")">
+                            ▶ Step 3
+                        </a>
+                    </li>
+                }
+
                 <li class="nav-divider"></li>
+
                 <li>
-                    <a asp-controller="Home" asp-action="Privacy">Privacy</a>
+                    <a asp-controller="Home"
+                       asp-action="Privacy"
+                       class="@IsActive("Home", "Privacy")">
+                        Privacy
+                    </a>
                 </li>
             </ul>
 
-            <div class="gv-user">
+            <div class="gv-user" title="@fullName">
                 <div class="gv-user-dot"></div>
-                <span>Hello, <strong>@User.Identity?.Name</strong></span>
+                <div class="gv-user-meta">
+                    <span>Hello, <strong>@shortName</strong></span>
+                    @if (!string.IsNullOrWhiteSpace(roleName))
+                    {
+                        <small class="gv-user-role">@roleName</small>
+                    }
+                </div>
             </div>
         </div>
-
     </nav>
 
     <!-- ═══════════════ BODY ═══════════════ -->
-    <div class="gv-content">
+    <main class="gv-content">
         @RenderBody()
-    </div>
+    </main>
 
     <!-- ═══════════════ FOOTER ═══════════════ -->
     <footer class="gv-footer">
@@ -78,7 +154,7 @@
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
-    @await RenderSectionAsync("Scripts", required: false)
 
+    @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

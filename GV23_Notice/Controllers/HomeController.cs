@@ -1,10 +1,11 @@
-using System.Diagnostics;
 using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Models;
 using GV23_Notice.Models.Workflow.ViewModels;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Diagnostics;
+using System.Security.Claims;
 
 namespace GV23_Notice.Controllers
 {
@@ -19,6 +20,9 @@ namespace GV23_Notice.Controllers
 
         public async Task<IActionResult> Index(CancellationToken ct)
         {
+            ViewBag.Username = User.Identity?.Name ?? "";
+            ViewBag.FullName = User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "";
+            ViewBag.Role = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
             // ── Live stats ──────────────────────────────────────────────────
             var settings = await _db.NoticeSettings.AsNoTracking().ToListAsync(ct);
 

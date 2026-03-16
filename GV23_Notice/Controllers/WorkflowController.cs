@@ -79,7 +79,8 @@ namespace GV23_Notice.Controllers
             _tempFiles = tempFiles;     // ✅ assign
         }
 
-        // GET: /Workflow/Step1
+        // GET: /Workflow/Step1\
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpGet("Step1")]
         public async Task<IActionResult> Step1(int? rollId, NoticeKind? notice, BatchMode? mode, int? settingsId, CancellationToken ct)
         {
@@ -130,6 +131,7 @@ namespace GV23_Notice.Controllers
             });
         }
 
+      
         private static void ApplyValuationAndFinancialYear(WorkflowStep1Vm vm, NoticeSettings e)
         {
             e.ValuationPeriodCode = vm.ValuationPeriodCode;
@@ -153,6 +155,7 @@ namespace GV23_Notice.Controllers
                     : null;
         }
 
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpGet("FinancialYears")]
         public IActionResult FinancialYears(string valuationPeriodCode)
         {
@@ -172,6 +175,7 @@ namespace GV23_Notice.Controllers
         }
 
         // POST: /Workflow/Step1 (Save Draft)  ✅ UPDATED: Save + Auto-Confirm + Redirect to Summary
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step1")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1Save(
@@ -373,6 +377,7 @@ namespace GV23_Notice.Controllers
 
 
         // GET: /Workflow/SettingsLibrary?rollId=1&notice=S53&mode=Bulk
+        [Authorize(Policy = "ValuationAdminSearchDownload")]
         [HttpGet("SettingsLibrary")]
         public async Task<IActionResult> SettingsLibrary(int? rollId, NoticeKind? notice, BatchMode? mode, CancellationToken ct)
         {
@@ -417,7 +422,9 @@ namespace GV23_Notice.Controllers
         }
 
         // POST: /Workflow/Step1SummaryApprove
+        [Authorize(Policy = "ValuationAdminSearchDownload")]
         [HttpPost("Step1SummaryApprove")]
+
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1SummaryApprove(int settingsId, CancellationToken ct)
         {
@@ -457,6 +464,7 @@ namespace GV23_Notice.Controllers
 
 
         // POST: /Workflow/Step1Confirm
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step1Confirm")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1Confirm(WorkflowStep1Vm vm, CancellationToken ct)
@@ -509,7 +517,10 @@ namespace GV23_Notice.Controllers
 
 
         // ✅ Step1Approve now ONLY validates + redirects to Step2 (NO approval/email here)
+
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step1Approve")]
+
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1Approve(WorkflowStep1Vm vm, CancellationToken ct)
         {
@@ -1014,7 +1025,10 @@ namespace GV23_Notice.Controllers
             // SmtpClient doesn't accept CancellationToken directly
             await Task.Run(() => smtp.Send(msg), ct);
         }
+
+
         // POST: /Workflow/Step2Approve
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step2Approve")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step2Approve(Step2ApproveDto dto, CancellationToken ct)
@@ -1133,6 +1147,7 @@ namespace GV23_Notice.Controllers
             });
         }
 
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step2RequestCorrection")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step2RequestCorrection(Step2CorrectionDto dto, CancellationToken ct)
@@ -1242,7 +1257,7 @@ namespace GV23_Notice.Controllers
             });
         }
 
-
+        [Authorize(Policy = "DataTeamCreateBatchPrint")]
         [HttpGet("Step3Kickoff")]
         public async Task<IActionResult> Step3Kickoff(
        int settingsId,
@@ -1417,6 +1432,8 @@ namespace GV23_Notice.Controllers
                 _ => $"{s.Notice}_{code}_"
             };
         }
+
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpGet("Step3PreviewPdf")]
         public async Task<IActionResult> Step3PreviewPdf(int settingsId, Guid key, CancellationToken ct)
         {
@@ -1596,6 +1613,8 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
                 return result;
             }
         }
+
+        [Authorize(Policy = "DataTeamCreateBatchPrint")]
         [HttpPost("Step3StartS49Batch")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step3StartS49Batch(int settingsId, Guid key, CancellationToken ct)
@@ -1660,7 +1679,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
             return RedirectToAction(nameof(Step3Kickoff), new { settingsId, key });
         }
 
-
+        [Authorize(Policy = "DataTeamCreateBatchPrint")]
         private async Task SendWorkflowEmailAsync(
     string subject,
     string bodyHtml,

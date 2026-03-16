@@ -1,14 +1,25 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.HomeIndexVm
-
 @using GV23_Notice.Domain.Workflow
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService AuthorizationService
 
 @{
     ViewData["Title"] = "Dashboard — GV23 Notice Management";
     var now = DateTime.Now;
+
+    var canWorkflowAdmin = (await AuthorizationService.AuthorizeAsync(User, "ValuationAdminCreateApprove")).Succeeded;
+    var canSearchLibrary = (await AuthorizationService.AuthorizeAsync(User, "ValuationAdminSearchDownload")).Succeeded;
+    var canStep3 = (await AuthorizationService.AuthorizeAsync(User, "DataTeamCreateBatchPrint")).Succeeded;
+
+    var displayName = User.FindFirst("FullName")?.Value
+        ?? User.Identity?.Name?.Split('\\').Last()
+        ?? "User";
+
+    var roleName = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
 }
 
-
 <link href="~/css/homeindexcss.css" rel="stylesheet" />
+
 <div class="hd-page">
 
     <!-- TITLE BAR -->
@@ -16,6 +27,13 @@
         <div>
             <div class="hd-title">Notice Management <span>Dashboard</span></div>
             <div class="hd-subtitle">City of Johannesburg — Valuation Services Department</div>
+            <div style="margin-top:6px;font-size:12px;color:#5f6b7a;">
+                <strong>@displayName</strong>
+                @if (!string.IsNullOrWhiteSpace(roleName))
+                {
+                    <span>&nbsp;·&nbsp;@roleName</span>
+                }
+            </div>
         </div>
         <div class="hd-date-pill">
             <span>@now.ToString("dd MMM yyyy")</span> &nbsp;·&nbsp; @now.ToString("HH:mm")
@@ -26,23 +44,42 @@
     <div class="hd-hero">
         <div class="hd-hero-text">
             <h2>GV23 Notice Management System</h2>
-            <p>Valuation cycle processing — bulk generation, print, and dispatch of statutory notices for Section 49, 51, 52, 53, Dear Johnny, Invalid notice,  workflows.</p>
+            <p>
+                Valuation cycle processing — bulk generation, print, and dispatch of statutory notices for
+                Section 49, 51, 52, 53, Dear Johnny, Invalid notice workflows.
+            </p>
             <div class="hd-hero-badges">
                 <span class="hd-badge hd-badge-live"><span class="hd-hero-pulse"></span> System Active</span>
                 <span class="hd-badge hd-badge-cycle">2026 Valuation Period</span>
-                <span class="hd-badge hd-badge-user">👤 @User.Identity?.Name?.Split('\\').Last()</span>
+                <span class="hd-badge hd-badge-user">👤 @displayName</span>
+                @if (!string.IsNullOrWhiteSpace(roleName))
+                {
+                    <span class="hd-badge">@roleName</span>
+                }
             </div>
         </div>
+
         <div class="hd-hero-right">
-            <a class="hd-go-btn" asp-controller="Step3" asp-action="Index">
-                ▶ Go to Step 3 Processing
-            </a>
-            <a class="hd-go-btn" asp-controller="NoticeSearch" asp-action="Index">
-                ▶ Go to Search Notice
-            </a>
-            <a class="hd-go-btn-sec" asp-controller="Workflow" asp-action="Step1">
-                ⚙ Workflow Admin
-            </a>
+            @if (canStep3)
+            {
+                <a class="hd-go-btn" asp-controller="Step3" asp-action="Index">
+                    ▶ Go to Step 3 Processing
+                </a>
+            }
+
+            @if (canSearchLibrary)
+            {
+                <a class="hd-go-btn" asp-controller="NoticeSearch" asp-action="Index">
+                    ▶ Go to Search Notice
+                </a>
+            }
+
+            @if (canWorkflowAdmin)
+            {
+                <a class="hd-go-btn-sec" asp-controller="Workflow" asp-action="Step1">
+                    ⚙ Workflow Admin
+                </a>
+            }
         </div>
     </div>
 
@@ -75,7 +112,7 @@
         </div>
     </div>
 
-    <!-- MAIN BODY — 2 columns -->
+    <!-- MAIN BODY -->
     <div class="hd-cols">
 
         <!-- LEFT: Recent Workflows Table -->
@@ -84,12 +121,17 @@
                 <h3>📋 Recent Workflows</h3>
                 <span class="hd-count-chip">@Model.RecentWorkflows.Count</span>
             </div>
+
             <div style="overflow-x:auto">
                 @if (Model.RecentWorkflows.Count == 0)
                 {
                     <div class="hd-empty">
                         <div class="hd-empty-icon">📭</div>
-                        No workflows yet. Go to Workflow Admin to create one.
+                        No workflows yet.
+                        @if (canWorkflowAdmin)
+                        {
+                            <span> Go to Workflow Admin to create one.</span>
+                        }
                     </div>
                 }
                 else
@@ -113,11 +155,13 @@
                                         <div class="hd-wf-name">@w.RollName</div>
                                         <div class="hd-wf-meta">
                                             <span class="hd-roll-code">@w.RollShortCode</span>
-                                            &nbsp;@w.Version
+                                            &nbsp;v@w.Version
                                         </div>
                                     </td>
                                     <td><span class="hd-notice-chip">@w.Notice</span></td>
-                                    <td style="font-size:11.5px;color:#666;white-space:nowrap">@w.LetterDate.ToString("dd MMM yyyy")</td>
+                                    <td style="font-size:11.5px;color:#666;white-space:nowrap">
+                                        @w.LetterDate.ToString("dd MMM yyyy")
+                                    </td>
                                     <td>
                                         @if (w.IsStep2Approved && w.HasWorkflowKey)
                                         {
@@ -146,14 +190,31 @@
                                         </span>
                                     </td>
                                     <td>
-                                        @if (w.IsStep2Approved && w.WorkflowKey.HasValue)
+                                        @if (w.IsStep2Approved && w.WorkflowKey.HasValue && canStep3)
                                         {
-                                            <a class="hd-wf-link" asp-controller="Step3" asp-action="Kickoff"
-                                               asp-route-key="@w.WorkflowKey">Open →</a>
+                                            <a class="hd-wf-link"
+                                               asp-controller="Step3"
+                                               asp-action="Kickoff"
+                                               asp-route-key="@w.WorkflowKey">
+                                                Open →
+                                            </a>
                                         }
-                                        else if (w.IsApproved)
+                                        else if (w.IsApproved && canWorkflowAdmin)
                                         {
-                                            <a class="hd-wf-link" asp-controller="Workflow" asp-action="Step2">Review</a>
+                                            <a class="hd-wf-link"
+                                               asp-controller="Workflow"
+                                               asp-action="Step2"
+                                               asp-route-settingsId="@w.Id">
+                                                Review
+                                            </a>
+                                        }
+                                        else if (canSearchLibrary)
+                                        {
+                                            <a class="hd-wf-link"
+                                               asp-controller="Workflow"
+                                               asp-action="SettingsLibrary">
+                                                View
+                                            </a>
                                         }
                                         else
                                         {
@@ -168,7 +229,7 @@
             </div>
         </div>
 
-        <!-- RIGHT: Phases + Notice Types -->
+        <!-- RIGHT -->
         <div style="display:flex;flex-direction:column;gap:16px;">
 
             <!-- Workflow Phases -->
@@ -178,30 +239,47 @@
                 </div>
                 <div class="hd-card-body" style="padding:16px">
                     <div class="hd-phases">
-                        <a class="hd-phase done" asp-controller="Workflow" asp-action="Step1">
-                            <div class="hd-phase-num">✓</div>
-                            <div class="hd-phase-info">
-                                <div class="hd-phase-title">Phase 1 — Setup & Config</div>
-                                <div class="hd-phase-desc">Define roll, notice type, dates, signatures and approval chain.</div>
+
+                        @if (canWorkflowAdmin)
+                        {
+                            <a class="hd-phase done" asp-controller="Workflow" asp-action="Step1">
+                                <div class="hd-phase-num">1</div>
+                                <div class="hd-phase-info">
+                                    <div class="hd-phase-title">Phase 1 — Setup & Config</div>
+                                    <div class="hd-phase-desc">Define roll, notice type, dates, signatures and approval chain.</div>
+                                </div>
+                                <div class="hd-phase-tag tag-done">Access</div>
+                            </a>
+
+                            <a class="hd-phase done" asp-controller="Workflow" asp-action="Step2">
+                                <div class="hd-phase-num">2</div>
+                                <div class="hd-phase-info">
+                                    <div class="hd-phase-title">Phase 2 — Review & Approval</div>
+                                    <div class="hd-phase-desc">Data check, correction tickets, Step 2 sign-off.</div>
+                                </div>
+                                <div class="hd-phase-tag tag-done">Access</div>
+                            </a>
+                        }
+
+                        @if (canStep3)
+                        {
+                            <a class="hd-phase active" asp-controller="Step3" asp-action="Index">
+                                <div class="hd-phase-num">3</div>
+                                <div class="hd-phase-info">
+                                    <div class="hd-phase-title">Phase 3 — Processing</div>
+                                    <div class="hd-phase-desc">Batch creation, PDF print, and email dispatch to ratepayers.</div>
+                                </div>
+                                <div class="hd-phase-tag tag-current">Access</div>
+                            </a>
+                        }
+
+                        @if (!canWorkflowAdmin && !canStep3)
+                        {
+                            <div class="hd-empty" style="margin:0;">
+                                <div class="hd-empty-icon">🔒</div>
+                                No workflow phases are assigned to your role.
                             </div>
-                            <div class="hd-phase-tag tag-done">Done</div>
-                        </a>
-                        <a class="hd-phase done" asp-controller="Workflow" asp-action="Step2">
-                            <div class="hd-phase-num">✓</div>
-                            <div class="hd-phase-info">
-                                <div class="hd-phase-title">Phase 2 — Review & Approval</div>
-                                <div class="hd-phase-desc">Data check, correction tickets, Step 2 sign-off.</div>
-                            </div>
-                            <div class="hd-phase-tag tag-done">Done</div>
-                        </a>
-                        <a class="hd-phase active" asp-controller="Step3" asp-action="Index">
-                            <div class="hd-phase-num">3</div>
-                            <div class="hd-phase-info">
-                                <div class="hd-phase-title">Phase 3 — Processing</div>
-                                <div class="hd-phase-desc">Batch creation, PDF print, and email dispatch to ratepayers.</div>
-                            </div>
-                            <div class="hd-phase-tag tag-current">Current</div>
-                        </a>
+                        }
                     </div>
                 </div>
             </div>
@@ -213,9 +291,15 @@
                 </div>
                 <div class="hd-card-body" style="padding:14px">
                     <div class="hd-types-grid">
-                        @foreach (var nt in new[] {
-                                                ("S49","Section 49"),("S51","Section 51"),("S52","Section 52"),("S53","Section 53"),
-                                                ("DJ","Dear Johnny"),("IN","Invalid"),("S78","Section 78")
+                        @foreach (var nt in new[]
+                                                {
+                                                ("S49","Section 49"),
+                                                ("S51","Section 51"),
+                                                ("S52","Section 52"),
+                                                ("S53","Section 53"),
+                                                ("DJ","Dear Johnny"),
+                                                ("IN","Invalid"),
+                                                ("S78","Section 78")
                                                 })
                         {
                             <div class="hd-ntype">
@@ -228,28 +312,42 @@
             </div>
 
         </div>
-    </div><!-- /hd-cols -->
+    </div>
+
     <!-- QUICK ACTIONS -->
     <div class="hd-section-hdr"><h3>Quick Access</h3></div>
     <div class="hd-actions">
-        <a class="hd-action primary" asp-controller="Step3" asp-action="Index">
-            <div class="hd-action-icon">▶</div>
-            <div class="hd-action-label">Step 3 Processing</div>
-            <div class="hd-action-sub">Select an approved workflow to create batches, print PDFs, and send notice emails to ratepayers.</div>
-            <div class="hd-action-cta">Go to Step 3 →</div>
-        </a>
-        <a class="hd-action" asp-controller="Workflow" asp-action="Step1">
-            <div class="hd-action-icon">⚙️</div>
-            <div class="hd-action-label">Workflow Administration</div>
-            <div class="hd-action-sub">Create or manage workflows — assign rolls, notice types, letter dates, and valuation period settings.</div>
-            <div class="hd-action-cta">Open Admin →</div>
-        </a>
-        <a class="hd-action green-action" asp-controller="Workflow" asp-action="SettingsLibrary">
-            <div class="hd-action-icon">📚</div>
-            <div class="hd-action-label">Settings Library</div>
-            <div class="hd-action-sub">View all notice configurations, valuation periods, and roll registry definitions in one place.</div>
-            <div class="hd-action-cta">Open Library →</div>
-        </a>
+
+        @if (canStep3)
+        {
+            <a class="hd-action primary" asp-controller="Step3" asp-action="Index">
+                <div class="hd-action-icon">▶</div>
+                <div class="hd-action-label">Step 3 Processing</div>
+                <div class="hd-action-sub">Select an approved workflow to create batches, print PDFs, and send notice emails to ratepayers.</div>
+                <div class="hd-action-cta">Go to Step 3 →</div>
+            </a>
+        }
+
+        @if (canWorkflowAdmin)
+        {
+            <a class="hd-action" asp-controller="Workflow" asp-action="Step1">
+                <div class="hd-action-icon">⚙️</div>
+                <div class="hd-action-label">Workflow Administration</div>
+                <div class="hd-action-sub">Create or manage workflows — assign rolls, notice types, letter dates, and valuation period settings.</div>
+                <div class="hd-action-cta">Open Admin →</div>
+            </a>
+        }
+
+        @if (canSearchLibrary)
+        {
+            <a class="hd-action green-action" asp-controller="Workflow" asp-action="SettingsLibrary">
+                <div class="hd-action-icon">📚</div>
+                <div class="hd-action-label">Settings Library</div>
+                <div class="hd-action-sub">View all notice configurations, valuation periods, and roll registry definitions in one place.</div>
+                <div class="hd-action-cta">Open Library →</div>
+            </a>
+        }
+
     </div>
 
-</div><!-- /hd-page -->
+</div>
