@@ -6,10 +6,14 @@ namespace GV23_Notice.Services.Security
     public sealed class UserClaimsTransformation : IClaimsTransformation
     {
         private readonly IUserAccessService _userAccessService;
+        private readonly ILogger<UserClaimsTransformation> _logger;
 
-        public UserClaimsTransformation(IUserAccessService userAccessService)
+        public UserClaimsTransformation(
+            IUserAccessService userAccessService,
+            ILogger<UserClaimsTransformation> logger)
         {
             _userAccessService = userAccessService;
+            _logger = logger;
         }
 
         public async Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
@@ -17,31 +21,57 @@ namespace GV23_Notice.Services.Security
             if (principal.Identity?.IsAuthenticated != true)
                 return principal;
 
-            if (principal.Identity is not ClaimsIdentity identity)
-                return principal;
-
-            if (identity.HasClaim("AppClaimsLoaded", "true"))
+            // Prevent duplicate app identity
+            if (principal.Identities.Any(i => i.AuthenticationType == "AppUserManagement"))
                 return principal;
 
             var username = principal.Identity?.Name;
             if (string.IsNullOrWhiteSpace(username))
                 return principal;
 
-            var user = await _userAccessService.GetUserProfileAsync(username);
+            var profile = await _userAccessService.GetUserProfileAsync(username);
 
-            identity.AddClaim(new Claim("AppClaimsLoaded", "true"));
-
-            if (user == null || !user.HasAccess)
+            if (profile == null || !profile.HasAccess)
+            {
+                _logger.LogWarning("No UserManagement access found for {Username}", username);
                 return principal;
+            }
 
-            if (!string.IsNullOrWhiteSpace(user.FullName))
-                identity.AddClaim(new Claim("FullName", user.FullName));
+            var claims = new List<Claim>
+            {
+                new Claim("AppClaimsLoaded", "true")
+            };
 
-            if (!string.IsNullOrWhiteSpace(user.Role))
-                identity.AddClaim(new Claim(ClaimTypes.Role, user.Role));
+            if (!string.IsNullOrWhiteSpace(profile.FullName))
+                claims.Add(new Claim("FullName", profile.FullName.Trim()));
 
-            if (user.UserId.HasValue)
-                identity.AddClaim(new Claim("UserId", user.UserId.Value.ToString()));
+            if (!string.IsNullOrWhiteSpace(profile.Role))
+            {
+                var role = profile.Role.Trim();
+                claims.Add(new Claim(ClaimTypes.Role, role));
+                claims.Add(new Claim("Role", role));
+            }
+
+            if (profile.UserId.HasValue)
+                claims.Add(new Claim("UserId", profile.UserId.Value.ToString()));
+
+            if (!string.IsNullOrWhiteSpace(profile.Username))
+                claims.Add(new Claim(ClaimTypes.Name, profile.Username.Trim()));
+
+            // IMPORTANT: create separate identity with explicit role claim type
+            var appIdentity = new ClaimsIdentity(
+                claims,
+                authenticationType: "AppUserManagement",
+                nameType: ClaimTypes.Name,
+                roleType: ClaimTypes.Role);
+
+            principal.AddIdentity(appIdentity);
+
+            _logger.LogInformation(
+                "App identity added for {Username}. FullName={FullName}, Role={Role}",
+                profile.Username,
+                profile.FullName,
+                profile.Role);
 
             return principal;
         }

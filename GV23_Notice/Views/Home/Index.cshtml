@@ -25,16 +25,13 @@
     <!-- TITLE BAR -->
     <div class="hd-title-bar">
         <div>
-            <div class="hd-title">Notice Management <span>Dashboard</span></div>
+            <div class="hd-title">VNS-Valuation Notice System <span>Dashboard</span></div>
             <div class="hd-subtitle">City of Johannesburg — Valuation Services Department</div>
             <div style="margin-top:6px;font-size:12px;color:#5f6b7a;">
-                <strong>@displayName</strong>
-                @if (!string.IsNullOrWhiteSpace(roleName))
-                {
-                    <span>&nbsp;·&nbsp;@roleName</span>
-                }
+             
             </div>
         </div>
+
         <div class="hd-date-pill">
             <span>@now.ToString("dd MMM yyyy")</span> &nbsp;·&nbsp; @now.ToString("HH:mm")
         </div>
@@ -43,10 +40,10 @@
     <!-- HERO -->
     <div class="hd-hero">
         <div class="hd-hero-text">
-            <h2>GV23 Notice Management System</h2>
+            <h2>Valuation Notice System</h2>
             <p>
                 Valuation cycle processing — bulk generation, print, and dispatch of statutory notices for
-                Section 49, 51, 52, 53, Dear Johnny, Invalid notice workflows.
+                Section 49, 51, 52, 53, Dear Johnny, Invalid, Appeal Decision notice workflows.
             </p>
             <div class="hd-hero-badges">
                 <span class="hd-badge hd-badge-live"><span class="hd-hero-pulse"></span> System Active</span>
@@ -70,7 +67,7 @@
             @if (canSearchLibrary)
             {
                 <a class="hd-go-btn" asp-controller="NoticeSearch" asp-action="Index">
-                    ▶ Go to Search Notice
+                     Search Notice
                 </a>
             }
 
@@ -299,7 +296,7 @@
                                                 ("S53","Section 53"),
                                                 ("DJ","Dear Johnny"),
                                                 ("IN","Invalid"),
-                                                ("S78","Section 78")
+                                                ("AD","Appeal Decision")
                                                 })
                         {
                             <div class="hd-ntype">

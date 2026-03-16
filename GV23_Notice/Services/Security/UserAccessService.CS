@@ -43,18 +43,23 @@ namespace GV23_Notice.Services.Security
 
             if (!await reader.ReadAsync(ct))
             {
-                _logger.LogWarning("User {Username} was authenticated by Windows but not found in UserManagement.", username);
+                _logger.LogWarning("Stored procedure returned no row for {Username}", username);
                 return null;
             }
 
-            return new AppUserProfile
+            var profile = new AppUserProfile
             {
                 UserId = GetNullableInt(reader, "UserID"),
-                Username = GetString(reader, "Username") ?? username,
-                FullName = BuildFullName(reader),
-                Role = GetString(reader, "Role") ?? "",
+                Username = (GetString(reader, "Username") ?? username).Trim(),
+                FullName = BuildFullName(reader).Trim(),
+                Role = (GetString(reader, "Role") ?? "").Trim(),
                 HasAccess = true
             };
+
+            _logger.LogInformation("User profile loaded: Username={Username}, FullName={FullName}, Role={Role}",
+                profile.Username, profile.FullName, profile.Role);
+
+            return profile;
         }
 
         private static string BuildFullName(SqlDataReader reader)
@@ -65,7 +70,7 @@ namespace GV23_Notice.Services.Security
                 GetString(reader, "Name");
 
             if (!string.IsNullOrWhiteSpace(fullName))
-                return fullName.Trim();
+                return fullName;
 
             var firstName =
                 GetString(reader, "FirstName") ??
