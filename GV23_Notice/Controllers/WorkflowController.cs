@@ -1445,7 +1445,8 @@ namespace GV23_Notice.Controllers
             // Build PDF using REAL data:
             // If split exists, we must produce 4 rows:
             // Multipurpose(total), Business&Commercial, Residential, (blank if needed)
-            var pdfBytes = BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", rows, contact);
+            var pdfBytes = // AFTER
+BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", rows, contact);
 
             var fileName = $"{roll.ShortCode}_S49_STEP3_PREVIEW_{premiseId}.pdf";
             Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
@@ -1456,6 +1457,7 @@ namespace GV23_Notice.Controllers
         private byte[] BuildS49RealPreviewPdf(
       NoticeSettings s,
       string rollShortCode,
+       string rollName,
       List<S49RollRowDto> rollRows,
       SapContactDto contact)
         {
@@ -1537,7 +1539,8 @@ namespace GV23_Notice.Controllers
                 ExtendedEndDate = s.ExtensionDate,
 
                 FinancialYearsText = s.FinancialYearsText ?? "1 July 2025 – 30 June 2026",
-                RollHeaderText = $"{rollShortCode} ROLL"
+               
+                RollHeaderText = rollName
             };
 
             var builder = HttpContext.RequestServices

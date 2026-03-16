@@ -40,6 +40,11 @@ namespace GV23_Notice.Services.Notices.Section49
             static string Safe(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
             var recipient = Safe(data.Addr1);
             var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
+
+            // rollDisplayName  – uppercased for headings  e.g. "SUPPLEMENTARY VALUATION ROLL 1"
+            // rollDisplayTitle – proper case for body text e.g. "Supplementary Valuation Roll 1"
+            var rollDisplayName = Safe(ctx.RollHeaderText).ToUpper();
+            var rollDisplayTitle = Safe(ctx.RollHeaderText);
             // Ensure rows exist
             var rows = data.PropertyRows ?? new List<Section49PropertyRow>();
             if (rows.Count == 0)
@@ -109,11 +114,11 @@ namespace GV23_Notice.Services.Notices.Section49
 
                 // ===== TITLES =====
                 col.Item().AlignCenter().Text("CITY OF JOHANNESBURG").Style(title12);
+                                col.Item().AlignCenter().Text(
+                                               $"PUBLIC NOTICE CALLING FOR INSPECTION OF THE {rollDisplayName} AND LODGING OF OBJECTIONS"
+                                           ).Style(sub10b);
 
-                col.Item().AlignCenter().Text($"PUBLIC NOTICE CALLING FOR INSPECTION OF THE {ctx.RollHeaderText} AND LODGING OF OBJECTIONS"
-                ).Style(sub10b);
-
-                col.Item().LineHorizontal(1.5f).LineColor(Colors.Grey.Darken2);
+                                col.Item().LineHorizontal(1.5f).LineColor(Colors.Grey.Darken2);
                 col.Item().PaddingBottom(6);
 
                                 col.Item().PaddingTop(3).Text(greeting).FontFamily("Arial").FontSize(9).Bold();
@@ -123,7 +128,7 @@ namespace GV23_Notice.Services.Notices.Section49
                 {
                     t.Span("Notice is hereby given in terms of Section 49(1)(a)(i) read together with section 78(2) of the ").Style(body9);
                     t.Span("Local Government: Municipal Property Rates Act No. 6 of 2004").Style(body9b);
-                    t.Span(" as amended hereinafter referred to as the \"Act\", that the supplementary valuation roll for the financial years ").Style(body9);
+                    t.Span($" as amended hereinafter referred to as the \"Act\", that the {Safe(ctx.RollHeaderText)} for the financial years ").Style(body9);
                     t.Span(Safe(ctx.FinancialYearsText)).Style(body9b);
                     t.Span(" is open for public inspection at the centre listed below, from ").Style(body9);
                     t.Span(inspectionWindowText).Style(body9b);
@@ -132,15 +137,14 @@ namespace GV23_Notice.Services.Notices.Section49
                     t.Span(", under the GVR Online tile on the home page.\n").Style(body9);
                 });
 
-                col.Item().Text(
-                    "An invitation is hereby made in terms of section 49(1)(a)(ii) read together with section 78(2) of the Act to any owner of property or other person who so desires that may wish to lodge an objection with the Municipal Manager in respect of any matter reflected in, or omitted from, the supplementary valuation roll. The objection must be submitted within the above mentioned inspection period."
+                col.Item().Text($"An invitation is hereby made in terms of section 49(1)(a)(ii) read together with section 78(2) of the Act to any owner of property or other person who so desires that may wish to lodge an objection with the Municipal Manager in respect of any matter reflected in, or omitted from, the {Safe(ctx.RollHeaderText)}. The objection must be submitted within the above mentioned inspection period."
                 ).Style(body9).Justify();
 
                 col.Item().Text(t =>
                 {
                     t.Span("Attention is specifically drawn to the fact that in terms of section 50(2) of the Act an objection must be in relation to a ").Style(body9);
                     t.Span("specific individual property").Style(body9b);
-                    t.Span(" and not against the supplementary roll as such. The lodging of objections in terms of Chapter 4(d) of the Regulations to the Act can be done at the centre listed below or preferably online at ").Style(body9);
+                    t.Span($" and not against the {Safe(ctx.RollHeaderText)} as such. The lodging of objections in terms of Chapter 4(d) of the Regulations to the Act can be done at the centre listed below or preferably online at ").Style(body9);
                     t.Span("www.joburg.org.za").Style(body9b);
                     t.Span(", under the GVR Online tile on the home page.").Style(body9);
                 });
@@ -168,18 +172,33 @@ namespace GV23_Notice.Services.Notices.Section49
                     col.Item().LineHorizontal(1.5f).LineColor(Colors.Grey.Darken2);
 
                     col.Item().AlignCenter().Text(
-                        $"PROPERTY DETAILS AS LISTED IN {Safe(ctx.RollHeaderText)}"
+                        $"PROPERTY DETAILS AS LISTED IN {Safe(ctx.RollHeaderText.ToUpper())}"
                     ).Style(sub10b);
 
-                    // Property box (light blue-ish)
-                    col.Item()
-                        .Background(Color.FromRGB(245, 250, 255))
-                        .Padding(8)
-                        .Text($"Property Description: {Safe(data.PropertyDesc)} | Physical Address: {Safe(data.PhysicalAddress)}")
-                        .Style(body9);
+                                // Property box (light blue-ish)
+                                col.Item()
+      .Background(Color.FromRGB(245, 250, 255))
+      .Padding(8)
+      .Text(t =>
+      {
+          t.Span("Property Description: ")
+              .SemiBold()
+              .Style(body9);
 
-                    // Property table
-                    col.Item().Table(table =>
+          t.Span(Safe(data.PropertyDesc))
+              .Style(body9);
+
+          t.EmptyLine();
+          t.EmptyLine();
+          t.Span("Physical Address: ")
+              .SemiBold()
+              .Style(body9);
+
+          t.Span(Safe(data.PhysicalAddress))
+              .Style(body9);
+      });
+                                // Property table
+                                col.Item().Table(table =>
                     {
                         table.ColumnsDefinition(c =>
                         {
@@ -233,7 +252,7 @@ namespace GV23_Notice.Services.Notices.Section49
                     // Signature (small + left aligned)
                     if (!string.IsNullOrWhiteSpace(ctx.SignaturePath) && File.Exists(ctx.SignaturePath))
                     {
-                        col.Item().PaddingTop(10).AlignLeft().Width(180).Height(55)
+                        col.Item().PaddingTop(10).AlignLeft().Width(180).Height(65)
                             .Image(ctx.SignaturePath, ImageScaling.FitArea);
                     }
                 });

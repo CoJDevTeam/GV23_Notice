@@ -93,7 +93,7 @@ namespace GV23_Notice.Services.Notices
             // Mode flags
             var isSplitPdf = mode == PreviewMode.SplitPdf;
             var isEmailMulti = mode == PreviewMode.EmailMulti;
-
+            var rollNames = settings.RollName ?? roll.Name ?? "Valuation Roll";
             // =========================
             // 1) Load DB data per notice
             // =========================
@@ -128,7 +128,8 @@ namespace GV23_Notice.Services.Notices
                             InspectionStartDate = settings.ObjectionStartDate ?? settings.LetterDate,
                             InspectionEndDate = settings.ObjectionEndDate ?? settings.LetterDate.AddDays(30),
                             ExtendedEndDate = settings.ExtensionDate,
-                            FinancialYearsText = settings.FinancialYearsText ?? ""
+                            FinancialYearsText = settings.FinancialYearsText ?? "",
+                            RollHeaderText = rollNames   // ← ADD THIS
                         };
 
                         var data = MapS49ToPdf(db, forceFourRows: isSplitPdf);
