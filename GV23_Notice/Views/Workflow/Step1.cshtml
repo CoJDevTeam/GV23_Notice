@@ -1,614 +1,802 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep1Vm
 @using GV23_Notice.Domain.Workflow
 @{
-    ViewData["Title"] = "Unified Workflow - Step 1 (Admin)";
+    ViewData["Title"] = "Step 1 — Notice Configuration";
     var rolls = ViewBag.Rolls as List<SelectListItem> ?? new List<SelectListItem>();
+    var isEdit = Model.SettingsId.HasValue;
 }
 
-<link href="~/css/admincss/step1css1.css" rel="stylesheet" />
-<!-- ════════════ LOADER ════════════ -->
-<div id="wf-loader" role="status" aria-label="Loading">
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link href="~/css/AdminCss/Step1Css11.css" rel="stylesheet" />
+
+<div id="wf-loader" role="status">
     <div class="wf-spinner"></div>
-    <div class="wf-loader-inner">
+    <div>
         <div class="wf-loader-text" id="wf-loader-text">Loading…</div>
-        <div class="wf-loader-sub" id="wf-loader-sub">Please wait a moment</div>
+        <div class="wf-loader-sub"  id="wf-loader-sub">Please wait</div>
     </div>
 </div>
 
-<!-- ════════════ TOAST CONTAINER ════════════ -->
-<div id="wf-toast-container" aria-live="polite" aria-atomic="false"></div>
+<div id="wf-toast-container" aria-live="polite"></div>
 
-<div class="wf-wrap">
+<div class="s1-root">
 
-    <div class="wf-titlebar">
-        <div class="logo-mark">GV</div>
-        <h2>Setting Notice — Step 1</h2>
-        <span class="admin-badge">Admin</span>
-    </div>
-
-    <div class="wf-steps">
-        <div class="wf-step active"><div class="sn">1</div><span>Configure</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">2</div><span>Review Summary</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">3</div><span>Approve</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">4</div><span>Generate</span></div>
-    </div>
-
-    <div class="wf-body">
-        <form id="wf-form" asp-action="Step1" asp-controller="Workflow" method="post" enctype="multipart/form-data">
-            @Html.AntiForgeryToken()
-            <input type="hidden" asp-for="SettingsId" />
-
-            <!-- Card 1: Period & Roll -->
-            <div class="wf-card">
-                <div class="wf-card-title">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-                    Period &amp; Roll
-                </div>
-                <div class="wf-row c2">
-                    <div class="wf-field">
-                        <label>Valuation Period(GV)<span style="color:red;">*</span></label>
-                        <select asp-for="ValuationPeriodCode" asp-items="ViewBag.ValuationPeriods" id="valuationPeriod">
-                            <option value="">— Select period —</option>
-                        </select>
-                    </div>
-                    <div class="wf-field">
-                        <label>Financial Year <span class="opt">(1 July – 30 June)</span><span style="color:red;">*</span></label>
-                        <select id="financialYearSelect">
-                            <option value="">— Select valuation period first —</option>
-                        </select>
-                        <input type="hidden" asp-for="FinancialYearStart" id="fyStart" />
-                        <input type="hidden" asp-for="FinancialYearEnd" id="fyEnd" />
-                        <input type="hidden" asp-for="FinancialYearsText" id="fyText" />
-                    </div>
-                </div>
-                <div class="wf-row c3" style="margin-top:18px;">
-                    <div class="wf-field">
-                        <label>Roll<span style="color:red;">*</span></label>
-                        <select asp-for="RollId" asp-items="rolls" id="rollSelect">
-                            <option value="0">— Select Roll —</option>
-                        </select>
-                        <span class="text-danger" asp-validation-for="RollId"></span>
-                    </div>
-                    <div class="wf-field">
-                        <label>Notice Type<span style="color:red">*</span></label>
-                        <select id="noticeSelect" name="Notice">
-                            <option value="S49" selected="@(Model.Notice == NoticeKind.S49)">Section 49 Notice</option>
-                            <option value="S51" selected="@(Model.Notice == NoticeKind.S51)">Section 51 Notice</option>
-                            <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Appeal Notices</option>
-                            <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 Notice</option>
-                            <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny Notice</option>
-                            <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity Notices</option>
-                          @*   <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option> *@
-                        </select>
-                        <input type="hidden" asp-for="Notice" id="noticeHidden" />
-                    </div>
-                    <div class="wf-field">
-                        <label>Batch Mode <span class="opt">(optional)</span></label>
-                        <select asp-for="Mode" id="modeSelect">
-                            <option value="@BatchMode.Single">Single</option>
-                            <option value="@BatchMode.Bulk">Bulk</option>
-                        </select>
-                    </div>
-                </div>
+    <!-- TOP BAR -->
+    <div class="s1-topbar">
+        <div class="s1-topbar-left">
+            <div class="s1-logo-mark">VNS</div>
+            <div class="s1-topbar-divider"></div>
+            <div>
+                <div class="s1-page-title">Notice Configuration</div>
+                <div class="s1-page-sub">Step 1 of 4 — Admin Setup</div>
             </div>
-
-            <!-- Card 2: Common Fields -->
-            <div class="wf-card">
-                <div class="wf-card-title">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                    Common Fields
-                </div>
-                <div class="wf-row c2">
-                    <div class="wf-field">
-                        <label>Letter Date</label>
-                        <input type="date" asp-for="LetterDate" id="letterDate" />
-                    </div>
-                    <div class="wf-field" id="letterOverrideBlock" style="display:none;">
-                        <label>Letter Date Override Reason <span class="opt">(required if changed)</span></label>
-                        <input type="text" asp-for="LetterDateOverrideReason" placeholder="State reason for the date change…" />
-                        <span class="text-danger" asp-validation-for="LetterDateOverrideReason"></span>
-                    </div>
-                </div>
-                <div class="wf-row c2" style="margin-top:18px;">
-                    <div class="wf-field">
-                        <label>Portal URL <span class="opt">(optional)</span></label>
-                        <input type="url" asp-for="PortalUrl" placeholder="https://portal.example.com" />
-                    </div>
-                    <div class="wf-field">
-                        <label>Enquiries Line <span class="opt">(optional)</span></label>
-                        <input type="text" asp-for="EnquiriesLine" placeholder="e.g. 0800 123 456" />
-                    </div>
-                </div>
-                <div class="wf-row c2" style="margin-top:18px;">
-                    <div class="wf-field">
-                        <label>City Manager Sign Date <span class="opt">(optional)</span></label>
-                        <input type="date" asp-for="CityManagerSignDate" />
-                    </div>
-                </div>
-            </div>
-
-            <!-- Card 3: Notice-Specific -->
-            <div class="wf-card">
-                <div class="wf-card-title">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-                    Notice-Specific Configuration
-                </div>
-
-                <!-- S49 -->
-                <div id="blockS49" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S49</span> Section 49 Notice — Objection Window</div>
-                    <div class="wf-row c3">
-                        <div class="wf-field"><label>Objection Start Date</label><input type="date" asp-for="ObjectionStartDate" /></div>
-                        <div class="wf-field"><label>Objection End Date</label><input type="date" asp-for="ObjectionEndDate" /></div>
-                        <div class="wf-field"><label>Extension Objection Date <span class="opt">(optional)</span></label><input type="date" asp-for="ExtensionDate" /></div>
-                    </div>
-                    <div class="wf-row c2" style="margin-top:18px;">
-                        <div class="wf-field">
-                            <label>Signature Upload <span class="opt">(required before Approve)</span></label>
-                            <input type="file" name="signatureFile" />
-                            @if (!string.IsNullOrWhiteSpace(Model.ExistingSignaturePath))
-                            {
-                                <span class="existing">📎 @Model.ExistingSignaturePath</span>
-                            }
-                        </div>
-                    </div>
-                </div>
-
-                <!-- S51 -->
-                <div id="blockS51" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S51</span> Section 51 Notice— Upload Evidence Period</div>
-                    <div class="wf-row c2">
-                        <div class="wf-field">
-                            <label>Evidence Closing Date <span class="opt">(auto = Letter Date + 30)</span></label>
-                            <input type="date" asp-for="EvidenceCloseDate" id="evidenceCloseDate" readonly />
-                            <span class="hint">Calculated automatically when you save the draft.</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- S52 — Appeal Notices -->
-                <div id="blockS52" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S52</span> Appeal Notices &mdash; Backlog Processing</div>
-
-                    <div class="wf-field" style="margin-bottom:14px;">
-                        <label style="font-weight:600;margin-bottom:8px;display:block;">Select which notice(s) to send to Data Team <span style="color:#c00;">*</span></label>
-                        <div class="s52-radio-group">
-                            <label class="s52-radio-opt">
-                                <input type="radio" name="S52SendMode" value="1"
-                                       @(Model.S52SendMode == S52SendMode.ReviewOnly ? "checked" : "")
-                                       onchange="onS52ModeChange(this)" />
-                                <span class="s52-radio-label">
-                                    <strong>Section 52 Review Notice</strong>
-                                    <small>Municipal Valuer review of objection outcome</small>
-                                </span>
-                            </label>
-                            <label class="s52-radio-opt">
-                                <input type="radio" name="S52SendMode" value="2"
-                                       @(Model.S52SendMode == S52SendMode.AppealDecisionOnly ? "checked" : "")
-                                       onchange="onS52ModeChange(this)" />
-                                <span class="s52-radio-label">
-                                    <strong>Appeal Decision Notice</strong>
-                                    <small>Valuation Appeal Board decision outcome</small>
-                                </span>
-                            </label>
-                            <label class="s52-radio-opt">
-                                <input type="radio" name="S52SendMode" value="3"
-                                       @((int)Model.S52SendMode == 3 || (int)Model.S52SendMode == 0 ? "checked" : "")
-                                       onchange="onS52ModeChange(this)" />
-                                <span class="s52-radio-label">
-                                    <strong>Both</strong>
-                                    <small>Send Section 52 Review AND Appeal Decision notices</small>
-                                </span>
-                            </label>
-                        </div>
-                        <input type="hidden" asp-for="S52SendMode" id="s52SendModeHidden" />
-                    </div>
-
-                    <div id="blockS52Review" style="display:none;">
-                        <div class="nb-header" style="font-size:12px;background:#f0f4ff;border-left:3px solid #4a6cf7;padding:6px 12px;margin-bottom:10px;">
-                            Appeal Notices(Section 51 Review Notice and Appeal Decision Notice) &mdash; Batch Date Range
-                        </div>
-                        <div class="wf-row c2">
-                            <div class="wf-field"><label>Batch Date From</label><input type="date" asp-for="BulkFromDate" /></div>
-                            <div class="wf-field"><label>Batch Date To</label><input type="date" asp-for="BulkToDate" /></div>
-                        </div>
-                        <span class="hint" style="margin-top:8px;display:block;">Reads Batch_Date from the Review table within this range. Returns top 1 record (top 3 for split properties).</span>
-                    </div>
-
-                    <div id="blockS52Appeal" style="display:none;">
-                        <div class="nb-header" style="font-size:12px;background:#fff4e0;border-left:3px solid #e6a800;padding:6px 12px;margin-bottom:10px;">
-                            Appeal Decision &mdash; Batch Date Range
-                        </div>
-                        <div class="wf-row c2">
-                            <div class="wf-field"><label>Batch Date From</label><input type="date" asp-for="BulkFromDate" /></div>
-                            <div class="wf-field"><label>Batch Date To</label><input type="date" asp-for="BulkToDate" /></div>
-                        </div>
-                        <span class="hint" style="margin-top:8px;display:block;">Reads Batch_Date from the Appeal Decision table within this range. Returns top 1 record (top 3 for split properties).</span>
-                    </div>
-                </div>
-
-                <!-- S53 -->
-                <div id="blockS53" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S53</span> Section 53 Notice — Appeal Period</div>
-                    <div class="wf-row c3">
-                        <div class="wf-field"><label>Batch Date <span class="opt">(default Today)</span></label><input type="date" asp-for="BatchDate" /></div>
-                        <div class="wf-field">
-                            <label>Appeal Close Date <span class="opt">(auto calculated)</span></label>
-                            <input type="date" asp-for="AppealCloseDate" id="appealCloseDate" />
-                            <span class="text-danger" asp-validation-for="AppealCloseDate"></span>
-                        </div>
-                        <div class="wf-field" style="justify-content:flex-end;">
-                            <label style="visibility:hidden;font-size:11.5px;">x</label>
-                            <label class="wf-check-row">
-                                <input type="checkbox" asp-for="AppealCloseOverridden" id="overrideS53" />
-                                Override Appeal Close Date
-                            </label>
-                        </div>
-                    </div>
-                    <div class="override-block" id="blockS53Override">
-                        <div class="wf-row c2">
-                            <div class="wf-field">
-                                <label>Override Reason <span class="opt">(required)</span></label>
-                                <input type="text" asp-for="AppealCloseOverrideReason" placeholder="State reason…" />
-                                <span class="text-danger" asp-validation-for="AppealCloseOverrideReason"></span>
-                            </div>
-                            <div class="wf-field">
-                                <label>Override Evidence Upload <span class="opt">(required)</span></label>
-                                <input type="file" name="overrideEvidenceFile" />
-                                @if (!string.IsNullOrWhiteSpace(Model.ExistingOverrideEvidencePath))
-                                {
-                                    <span class="existing">📎 @Model.ExistingOverrideEvidencePath</span>
-                                }
-                            </div>
-                        </div>
-                    </div>
-                    <span class="hint" style="margin-top:14px;display:block;">Appeal close = Letter Date + 45 calendar days, shifted past weekends &amp; public holidays.</span>
-                </div>
-
-                <!-- DJ / IN -->
-                <div id="blockDJIN" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">DJ / IN</span> Dear Jonny Notice / Invalidity Notice</div>
-                    <span class="hint">Only the Letter Date and optional common fields are required for this notice type.</span>
-                </div>
-
-                <!-- S78 -->
-                <div id="blockS78" class="notice-block">
-                    <div class="nb-header"><span class="nb-pill">S78</span> Section 78 — Review Period</div>
-                    <div class="wf-row c3">
-                        <div class="wf-field"><label>Extraction Date</label><input type="date" asp-for="ExtractionDate" /></div>
-                        <div class="wf-field">
-                            <label>Extract Period <span class="opt">(days)</span></label>
-                            <input type="number" asp-for="ExtractPeriodDays" min="1" max="365" placeholder="e.g. 30" />
-                            <span class="text-danger" asp-validation-for="ExtractPeriodDays"></span>
-                        </div>
-                        <div class="wf-field"><label>Review Open Date</label><input type="date" asp-for="ReviewOpenDate" /></div>
-                    </div>
-                    <div class="wf-row c2" style="margin-top:18px;">
-                        <div class="wf-field"><label>Review Close Date</label><input type="date" asp-for="ReviewCloseDate" /></div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Action Bar -->
-            <div class="wf-actions">
-                <button class="wf-btn wf-btn-primary" type="submit" id="wf-submit-btn">
-                    <span class="btn-spinner"></span>
-                    <span class="btn-label" style="display:inline-flex;align-items:center;gap:7px;">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                        Save &amp; Review Summary
-                    </span>
-                </button>
-
-                @if (Model.SettingsId.HasValue)
-                {
-                    <a class="wf-btn wf-btn-secondary"
-                       href="@Url.Action("Step1Summary", "Workflow", new { settingsId = Model.SettingsId })">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                        View Summary
-                    </a>
-                }
-
-                <a class="wf-btn wf-btn-outline" href="@Url.Action("SettingsLibrary", "Workflow")">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                   Notice Settings
+        </div>
+        <div class="s1-topbar-right">
+            <a class="s1-topbar-link" asp-controller="Workflow" asp-action="SettingsLibrary">
+                ← Settings Library
+            </a>
+            @if (isEdit)
+            {
+                <a class="s1-topbar-link s1-topbar-link-gold"
+                   asp-controller="Workflow" asp-action="Step1Summary"
+                   asp-route-settingsId="@Model.SettingsId">
+                    View Summary →
                 </a>
+            }
+        </div>
+    </div>
+
+    <!-- STEPPER -->
+    <div class="s1-stepper">
+        <div class="s1-step s1-step-active">
+            <div class="s1-step-num">1</div>
+            <div class="s1-step-label">Configure</div>
+        </div>
+        <div class="s1-step-line"></div>
+        <div class="s1-step">
+            <div class="s1-step-num">2</div>
+            <div class="s1-step-label">Summary</div>
+        </div>
+        <div class="s1-step-line"></div>
+        <div class="s1-step">
+            <div class="s1-step-num">3</div>
+            <div class="s1-step-label">Approve</div>
+        </div>
+        <div class="s1-step-line"></div>
+        <div class="s1-step">
+            <div class="s1-step-num">4</div>
+            <div class="s1-step-label">Generate</div>
+        </div>
+    </div>
+
+    <form id="wf-form" asp-action="Step1" asp-controller="Workflow"
+          method="post" enctype="multipart/form-data" novalidate>
+        @Html.AntiForgeryToken()
+        <input type="hidden" asp-for="SettingsId" />
+
+        <div class="s1-layout">
+
+            <!-- SIDEBAR NAV -->
+            <div class="s1-sidebar">
+                <div class="s1-sidebar-section">
+                    <div class="s1-sidebar-label">Sections</div>
+
+                    <div class="s1-sidebar-item active" id="nav-period" onclick="scrollTo('card-period')">
+                        <div class="s1-sidebar-num">01</div>
+                        Period &amp; Roll
+                        <span class="s1-sidebar-req" id="nav-req-period">✕ required</span>
+                    </div>
+                    <div class="s1-sidebar-item" id="nav-common" onclick="scrollTo('card-common')">
+                        <div class="s1-sidebar-num">02</div>
+                        Common Fields
+                    </div>
+                    <div class="s1-sidebar-item" id="nav-notice" onclick="scrollTo('card-notice')">
+                        <div class="s1-sidebar-num">03</div>
+                        Notice-Specific
+                    </div>
+                </div>
+                <div style="padding:0 20px">
+                    <div class="s1-sidebar-label">Notice</div>
+                    <div style="font-size:13px;color:var(--s1-text-m);padding:8px 12px;background:var(--s1-surface);border-radius:7px;">
+                        <span id="sb-notice-label" style="font-family:var(--fm);font-weight:600;color:var(--s1-text)">S49</span><br>
+                        <span id="sb-notice-desc" style="font-size:11.5px;">Section 49 Notice</span>
+                    </div>
+                </div>
             </div>
 
-        </form>
-    </div>
+            <!-- MAIN -->
+            <div class="s1-main">
+
+                <!-- Validation Banner -->
+                <div class="s1-val-banner" id="valBanner">
+                    <div class="s1-val-banner-icon">⚠</div>
+                    <div>
+                        <div class="s1-val-banner-title">Please fix the following before continuing</div>
+                        <ul class="s1-val-banner-list" id="valBannerList"></ul>
+                    </div>
+                </div>
+
+                <!-- ══ CARD 1 — Period & Roll ═══════════════════════════ -->
+                <div class="s1-card" id="card-period">
+                    <div class="s1-card-header">
+                        <div class="s1-card-header-left">
+                            <div class="s1-card-num">01</div>
+                            <div>
+                                <div class="s1-card-title">Period &amp; Roll</div>
+                                <div class="s1-card-sub">Select valuation period, financial year, roll and notice type</div>
+                            </div>
+                        </div>
+                        <div class="s1-required-note"><span class="s1-req-star">*</span> Required</div>
+                    </div>
+                    <div class="s1-fields">
+
+                        <div class="s1-row s1-row-2">
+                            <div class="s1-field" id="field-ValuationPeriodCode">
+                                <label class="s1-label">Valuation Period <span class="s1-req-star">*</span></label>
+                                <select asp-for="ValuationPeriodCode"
+                                        asp-items="ViewBag.ValuationPeriods"
+                                        id="valuationPeriod" class="s1-select"
+                                        onchange="onValuationPeriodChange()">
+                                    <option value="">— Select period —</option>
+                                </select>
+                                <div class="s1-val-msg" id="err-ValuationPeriodCode">
+                                    <span asp-validation-for="ValuationPeriodCode"></span>
+                                </div>
+                            </div>
+
+                            <div class="s1-field" id="field-FinancialYear">
+                                <label class="s1-label">
+                                    Financial Year <span class="s1-req-star">*</span>
+                                    <span class="s1-hint-inline">(1 July – 30 June)</span>
+                                </label>
+                                <select id="financialYearSelect" class="s1-select"
+                                        onchange="onFinancialYearChange()" disabled>
+                                    <option value="">— Select valuation period first —</option>
+                                </select>
+                                <input type="hidden" asp-for="FinancialYearStart" id="fyStart" />
+                                <input type="hidden" asp-for="FinancialYearEnd"   id="fyEnd"   />
+                                <input type="hidden" asp-for="FinancialYearsText" id="fyText"  />
+                                <div class="s1-val-msg" id="err-FinancialYear">
+                                    <span asp-validation-for="FinancialYearStart"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="s1-row s1-row-3">
+                            <div class="s1-field" id="field-RollId">
+                                <label class="s1-label">Roll <span class="s1-req-star">*</span></label>
+                                <select asp-for="RollId" asp-items="rolls"
+                                        id="rollSelect" class="s1-select">
+                                    <option value="0">— Select roll —</option>
+                                </select>
+                                <div class="s1-val-msg" id="err-RollId">
+                                    <span asp-validation-for="RollId"></span>
+                                </div>
+                            </div>
+
+                            <div class="s1-field" id="field-Notice">
+                                <label class="s1-label">Notice Type <span class="s1-req-star">*</span></label>
+
+                                <select id="noticeSelect" name="Notice"
+                                        class="s1-select" onchange="runAll()">
+                                    <option value="S49" selected="@(Model.Notice == NoticeKind.S49)">Section 49 Notice</option>
+                                    <option value="S51" selected="@(Model.Notice == NoticeKind.S51)">Section 51 Notice</option>
+                                    <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Appeal Notices</option>
+                                    <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 Notice</option>
+                                    <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny Notice</option>
+                                    <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity Notices</option>
+                                    @*   <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option> *@
+                                </select>
+                              
+                                <input type="hidden" asp-for="Notice" id="noticeHidden" />
+                                <div class="s1-val-msg" id="err-Notice">
+                                    <span asp-validation-for="Notice"></span>
+                                </div>
+                            </div>
+
+                            <div class="s1-field">
+                                <label class="s1-label">Batch Mode</label>
+                                <select asp-for="Mode" id="modeSelect" class="s1-select"
+                                        onchange="runAll()">
+                                    <option value="@BatchMode.Single">Single</option>
+                                    <option value="@BatchMode.Bulk">Bulk</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ CARD 2 — Common Fields ═══════════════════════════ -->
+                <div class="s1-card" id="card-common">
+                    <div class="s1-card-header">
+                        <div class="s1-card-header-left">
+                            <div class="s1-card-num">02</div>
+                            <div>
+                                <div class="s1-card-title">Common Fields</div>
+                                <div class="s1-card-sub">Letter date, portal URL and shared settings</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="s1-fields">
+                        <div class="s1-row s1-row-2">
+                            <div class="s1-field">
+                                <label class="s1-label">Letter Date</label>
+                                <input type="date" asp-for="LetterDate" id="letterDate"
+                                       class="s1-input" onchange="runAll()" />
+                            </div>
+                            <div class="s1-field" id="letterOverrideBlock" style="display:none">
+                                <label class="s1-label">
+                                    Override Reason <span class="s1-req-star">*</span>
+                                    <span class="s1-hint-inline">(required when date changed)</span>
+                                </label>
+                                <input type="text" asp-for="LetterDateOverrideReason"
+                                       class="s1-input" placeholder="State reason for the date change…" />
+                                <div class="s1-val-msg">
+                                    <span asp-validation-for="LetterDateOverrideReason"></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="s1-row s1-row-2">
+                            <div class="s1-field">
+                                <label class="s1-label">Portal URL <span class="s1-opt">(optional)</span></label>
+                                <input type="url" asp-for="PortalUrl" class="s1-input"
+                                       placeholder="https://objections.joburg.org.za/" />
+                            </div>
+                            <div class="s1-field">
+                                <label class="s1-label">Enquiries Line <span class="s1-opt">(optional)</span></label>
+                                <input type="text" asp-for="EnquiriesLine" class="s1-input"
+                                       placeholder="e.g. 0800 123 456" />
+                            </div>
+                        </div>
+                        <div class="s1-row s1-row-2">
+                            <div class="s1-field">
+                                <label class="s1-label">City Manager Sign Date <span class="s1-opt">(optional)</span></label>
+                                <input type="date" asp-for="CityManagerSignDate" class="s1-input" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══ CARD 3 — Notice-Specific ════════════════════════ -->
+                <div class="s1-card" id="card-notice">
+                    <div class="s1-card-header">
+                        <div class="s1-card-header-left">
+                            <div class="s1-card-num">03</div>
+                            <div>
+                                <div class="s1-card-title">Notice-Specific Configuration</div>
+                                <div class="s1-card-sub" id="noticeSpecificSub">Section 49 — objection window, inspection dates and signature</div>
+                            </div>
+                        </div>
+                        <div class="s1-notice-badge s1-badge-s49" id="noticeBadge">S49</div>
+                    </div>
+                    <div class="s1-fields">
+
+                        <!-- S49 -->
+                        <div id="blockS49" class="notice-block">
+                            <div class="s1-notice-header s1-notice-s49">Section 49 — Inspection &amp; Objection Window</div>
+                            <div class="s1-row s1-row-3">
+                                <div class="s1-field">
+                                    <label class="s1-label">Objection Start Date</label>
+                                    <input type="date" asp-for="ObjectionStartDate" class="s1-input" />
+                                </div>
+                                <div class="s1-field">
+                                    <label class="s1-label">Objection End Date</label>
+                                    <input type="date" asp-for="ObjectionEndDate" class="s1-input" />
+                                </div>
+                                <div class="s1-field">
+                                    <label class="s1-label">Extension Date <span class="s1-opt">(optional)</span></label>
+                                    <input type="date" asp-for="ExtensionDate" class="s1-input" />
+                                </div>
+                            </div>
+                            <div class="s1-row s1-row-2" style="margin-top:4px">
+                                <div class="s1-field">
+                                    <label class="s1-label">Signature Upload <span class="s1-hint-inline">(required before Approve)</span></label>
+                                    <input type="file" name="signatureFile" class="s1-file" accept="image/*,.pdf" />
+                                    @if (!string.IsNullOrWhiteSpace(Model.ExistingSignaturePath))
+                                    {
+                                        <div class="s1-existing-file">
+                                            📎 @System.IO.Path.GetFileName(Model.ExistingSignaturePath)
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- S51 -->
+                        <div id="blockS51" class="notice-block">
+                            <div class="s1-notice-header s1-notice-s51">Section 51 — Objection Decision</div>
+                            <div class="s1-row s1-row-2">
+                                <div class="s1-field">
+                                    <label class="s1-label">Evidence Closing Date <span class="s1-hint-inline">(auto = Letter Date + 30)</span></label>
+                                    <input type="date" asp-for="EvidenceCloseDate"
+                                           id="evidenceCloseDate" class="s1-input" readonly />
+                                    <div class="s1-info-note" style="margin-top:6px">Calculated automatically from the letter date.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- S52 -->
+                        <div id="blockS52" class="notice-block">
+                            <div class="s1-notice-header s1-notice-s52">Section 52 — Appeal Notices</div>
+                            <div class="s1-field" style="margin-bottom:16px">
+                                <label class="s1-label">Sub-type <span class="s1-req-star">*</span></label>
+                                <div class="s1-radio-group">
+                                    <label class="s1-radio-opt">
+                                        <input type="radio" name="S52SendMode" value="1"
+                                               @(Model.S52SendMode == S52SendMode.ReviewOnly ? "checked" : "")
+                                               onchange="onS52ModeChange(this)" />
+                                        <div class="s1-radio-body">
+                                            <div class="s1-radio-title">Section 52 Review</div>
+                                            <div class="s1-radio-desc">Municipal Valuer review of objection outcome</div>
+                                        </div>
+                                    </label>
+                                    <label class="s1-radio-opt">
+                                        <input type="radio" name="S52SendMode" value="2"
+                                               @(Model.S52SendMode == S52SendMode.AppealDecisionOnly ? "checked" : "")
+                                               onchange="onS52ModeChange(this)" />
+                                        <div class="s1-radio-body">
+                                            <div class="s1-radio-title">Appeal Decision</div>
+                                            <div class="s1-radio-desc">Valuation Appeal Board decision outcome</div>
+                                        </div>
+                                    </label>
+                                    <label class="s1-radio-opt">
+                                        <input type="radio" name="S52SendMode" value="3"
+                                               @((int)Model.S52SendMode == 3 || (int)Model.S52SendMode == 0 ? "checked" : "")
+                                               onchange="onS52ModeChange(this)" />
+                                        <div class="s1-radio-body">
+                                            <div class="s1-radio-title">Both</div>
+                                            <div class="s1-radio-desc">Send S52 Review AND Appeal Decision notices</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                <input type="hidden" asp-for="S52SendMode" id="s52SendModeHidden" />
+                            </div>
+                            <div id="blockS52Review" style="display:none">
+                                <div class="s1-subblock-header">Section 52 Review — Date Range</div>
+                                <div class="s1-row s1-row-2">
+                                    <div class="s1-field"><label class="s1-label">From Date</label><input type="date" asp-for="BulkFromDate" class="s1-input" /></div>
+                                    <div class="s1-field"><label class="s1-label">To Date</label><input type="date" asp-for="BulkToDate" class="s1-input" /></div>
+                                </div>
+                            </div>
+                            <div id="blockS52Appeal" style="display:none">
+                                <div class="s1-subblock-header">Appeal Decision — Date Range</div>
+                                <div class="s1-row s1-row-2">
+                                    <div class="s1-field"><label class="s1-label">From Date</label><input type="date" asp-for="BulkFromDate" class="s1-input" /></div>
+                                    <div class="s1-field"><label class="s1-label">To Date</label><input type="date" asp-for="BulkToDate" class="s1-input" /></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- S53 -->
+                        <div id="blockS53" class="notice-block">
+                            <div class="s1-notice-header s1-notice-s53">Section 53 — Appeal Period</div>
+                            <div class="s1-row s1-row-3">
+                                <div class="s1-field">
+                                    <label class="s1-label">Batch Date <span class="s1-opt">(default Today)</span></label>
+                                    <input type="date" asp-for="BatchDate" class="s1-input" />
+                                </div>
+                                <div class="s1-field">
+                                    <label class="s1-label">Appeal Close Date <span class="s1-hint-inline">(auto calculated)</span></label>
+                                    <input type="date" asp-for="AppealCloseDate" id="appealCloseDate" class="s1-input" />
+                                    <div class="s1-val-msg"><span asp-validation-for="AppealCloseDate"></span></div>
+                                </div>
+                                <div class="s1-field s1-field-center">
+                                    <label class="s1-label" style="visibility:hidden">x</label>
+                                    <label class="s1-checkbox-row">
+                                        <input type="checkbox" asp-for="AppealCloseOverridden"
+                                               id="overrideS53" onchange="runAll()" />
+                                        <span>Override Appeal Close Date</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="s1-override-block" id="blockS53Override">
+                                <div class="s1-row s1-row-2">
+                                    <div class="s1-field">
+                                        <label class="s1-label">Override Reason <span class="s1-req-star">*</span></label>
+                                        <input type="text" asp-for="AppealCloseOverrideReason"
+                                               class="s1-input" placeholder="State reason…" />
+                                        <div class="s1-val-msg"><span asp-validation-for="AppealCloseOverrideReason"></span></div>
+                                    </div>
+                                    <div class="s1-field">
+                                        <label class="s1-label">Evidence Upload <span class="s1-req-star">*</span></label>
+                                        <input type="file" name="overrideEvidenceFile" class="s1-file" />
+                                        @if (!string.IsNullOrWhiteSpace(Model.ExistingOverrideEvidencePath))
+                                        {
+                                            <div class="s1-existing-file">📎 @System.IO.Path.GetFileName(Model.ExistingOverrideEvidencePath)</div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="s1-info-note" style="margin-top:12px">
+                                Appeal close = Letter Date + 45 calendar days, adjusted past weekends &amp; public holidays.
+                            </div>
+                        </div>
+
+                        <!-- DJ / IN -->
+                        <div id="blockDJIN" class="notice-block">
+                            <div class="s1-notice-header s1-notice-dj" id="djinHeader">Dear Johnny Notice</div>
+                            <div id="blockINSubType" style="display:none; margin-top:4px">
+                                <div class="s1-field" style="margin-bottom:0">
+                                    <label class="s1-label">Sub-type <span class="s1-req-star">*</span></label>
+                                    <div class="s1-radio-group">
+                                        <label class="s1-radio-opt">
+                                            <input type="radio" name="INSendMode" value="InvalidObjectionOnly"
+                                                   id="inSubOBJ" @(Model.INSendMode == INSendMode.InvalidObjectionOnly ? "checked" : "") />
+                                            <div class="s1-radio-body">
+                                                <div class="s1-radio-title">Invalid Objection Only</div>
+                                                <div class="s1-radio-desc">Pending-Invalid Objection status</div>
+                                            </div>
+                                        </label>
+                                        <label class="s1-radio-opt">
+                                            <input type="radio" name="INSendMode" value="InvalidOmissionOnly"
+                                                   id="inSubOMI" @(Model.INSendMode == INSendMode.InvalidOmissionOnly ? "checked" : "") />
+                                            <div class="s1-radio-body">
+                                                <div class="s1-radio-title">Invalid Omission Only</div>
+                                                <div class="s1-radio-desc">Pending-Invalid Omission status</div>
+                                            </div>
+                                        </label>
+                                        <label class="s1-radio-opt">
+                                            <input type="radio" name="INSendMode" value="Both"
+                                                   id="inSubBOTH" @(Model.INSendMode == INSendMode.Both ? "checked" : "") />
+                                            <div class="s1-radio-body">
+                                                <div class="s1-radio-title">Both</div>
+                                                <div class="s1-radio-desc">Creates two batches — one per sub-type</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="s1-info-note" id="djinNote" style="margin-top:12px">
+                                Only the Letter Date and common fields are required for Dear Johnny.
+                            </div>
+                        </div>
+
+                        <!-- S78 -->
+                        <div id="blockS78" class="notice-block">
+                            <div class="s1-notice-header s1-notice-s78">Section 78 — Review Period</div>
+                            <div class="s1-row s1-row-3">
+                                <div class="s1-field"><label class="s1-label">Extraction Date</label><input type="date" asp-for="ExtractionDate" class="s1-input" /></div>
+                                <div class="s1-field">
+                                    <label class="s1-label">Extract Period <span class="s1-opt">(days)</span></label>
+                                    <input type="number" asp-for="ExtractPeriodDays" class="s1-input" min="1" max="365" placeholder="e.g. 30" />
+                                    <div class="s1-val-msg"><span asp-validation-for="ExtractPeriodDays"></span></div>
+                                </div>
+                                <div class="s1-field"><label class="s1-label">Review Open Date</label><input type="date" asp-for="ReviewOpenDate" class="s1-input" /></div>
+                            </div>
+                            <div class="s1-row s1-row-2" style="margin-top:4px">
+                                <div class="s1-field"><label class="s1-label">Review Close Date</label><input type="date" asp-for="ReviewCloseDate" class="s1-input" /></div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div><!-- /s1-main -->
+        </div><!-- /s1-layout -->
+
+        <!-- ACTION BAR -->
+        <div class="s1-action-bar">
+            <button type="submit" class="s1-btn s1-btn-primary" id="wf-submit-btn">
+                <span class="s1-btn-spinner"></span>
+                <span class="s1-btn-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Save &amp; Review Summary
+                </span>
+            </button>
+            @if (isEdit)
+            {
+                <a class="s1-btn s1-btn-secondary"
+                   asp-controller="Workflow" asp-action="Step1Summary"
+                   asp-route-settingsId="@Model.SettingsId">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                    View Summary
+                </a>
+            }
+            <a class="s1-btn s1-btn-outline"
+               asp-controller="Workflow" asp-action="SettingsLibrary">
+                ← Settings Library
+            </a>
+        </div>
+
+    </form>
 </div>
 
 @section Scripts {
-    <partial name="_ValidationScriptsPartial" />
+<partial name="_ValidationScriptsPartial" />
+<script>
+/* ── Toast ─────────────────────────────────────── */
+const WfToast = (() => {
+    const c = document.getElementById('wf-toast-container');
+    const ICONS  = {success:'✓',error:'✕',warning:'!',info:'i'};
+    const TITLES = {success:'Success',error:'Error',warning:'Warning',info:'Info'};
+    function show(type, msg, title) {
+        const t = document.createElement('div');
+        t.className = `wf-toast t-${type}`;
+        t.innerHTML = `<div class="wf-toast-main"><div class="wf-toast-stripe"></div>
+            <div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div>
+            <div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div>
+            <div class="wf-toast-msg">${msg}</div></div></div>
+            <button class="wf-toast-close" aria-label="Dismiss">×</button></div>
+            <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
+        c.appendChild(t);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            t.classList.add('show');
+            const bar = t.querySelector('.wf-toast-bar');
+            bar.style.transition = 'transform 5000ms linear';
+            bar.style.transform  = 'scaleX(0)';
+        }));
+        const timer = setTimeout(() => dismiss(t), 5000);
+        t.querySelector('.wf-toast-close').onclick = () => { clearTimeout(timer); dismiss(t); };
+    }
+    function dismiss(t) {
+        t.classList.replace('show','hide');
+        t.addEventListener('transitionend', () => t.remove(), {once:true});
+    }
+    return {success:(m,t)=>show('success',m,t), error:(m,t)=>show('error',m,t),
+            warning:(m,t)=>show('warning',m,t), info:(m,t)=>show('info',m,t)};
+})();
 
-    <script>
-        /* ════════════════════════════════════════
-           TOAST SYSTEM
-        ════════════════════════════════════════ */
-        const WfToast = (() => {
-            const container = document.getElementById("wf-toast-container");
-            const ICONS  = { success: "✓", error: "✕", warning: "!", info: "i" };
-            const TITLES = { success: "Success", error: "Error", warning: "Warning", info: "Info" };
-            const DURATION = 5000;
+/* ── Loader ─────────────────────────────────────── */
+const WfLoader = (() => {
+    const el=document.getElementById('wf-loader'),
+          tx=document.getElementById('wf-loader-text'),
+          sb=document.getElementById('wf-loader-sub');
+    return {
+        show:(m,h)=>{tx.textContent=m||'Loading…';sb.textContent=h||'Please wait';el.classList.add('active');},
+        hide:()=>el.classList.remove('active')
+    };
+})();
 
-            function show(type, message, titleOverride) {
-                const toast = document.createElement("div");
-                toast.className = `wf-toast t-${type}`;
-                toast.innerHTML = `
-                    <div class="wf-toast-main">
-                        <div class="wf-toast-stripe"></div>
-                        <div class="wf-toast-body">
-                            <div class="wf-toast-icon">${ICONS[type]}</div>
-                            <div class="wf-toast-content">
-                                <div class="wf-toast-title">${titleOverride || TITLES[type]}</div>
-                                <div class="wf-toast-msg">${message}</div>
-                            </div>
-                        </div>
-                        <button class="wf-toast-close" aria-label="Dismiss">×</button>
-                    </div>
-                    <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
+/* ── TempData toasts ────────────────────────────── */
+@if (TempData["Success"] != null)
+{
+    <text>document.addEventListener('DOMContentLoaded',()=>WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"","\\\""))"));</text>
+}
+@if (TempData["Error"] != null)
+{
+    <text>document.addEventListener('DOMContentLoaded',()=>WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"","\\\""))"));</text>
+}
 
-                container.appendChild(toast);
+/* ── Client validation ──────────────────────────── */
+const REQUIRED = [
+    { id:'field-ValuationPeriodCode', errId:'err-ValuationPeriodCode', label:'Valuation Period',
+      check:()=>{ const v=document.getElementById('valuationPeriod')?.value; return v&&v!==''; }},
+    { id:'field-FinancialYear', errId:'err-FinancialYear', label:'Financial Year',
+      check:()=>{ const v=document.getElementById('fyStart')?.value; return v&&v!==''; }},
+    { id:'field-RollId', errId:'err-RollId', label:'Roll',
+      check:()=>{ const v=document.getElementById('rollSelect')?.value; return v&&v!=='0'&&v!==''; }},
+    { id:'field-Notice', errId:'err-Notice', label:'Notice Type',
+      check:()=>{ const v=document.getElementById('noticeSelect')?.value; return v&&v!==''; }},
+];
 
-                // Slide in
-                requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add("show")));
+function setFieldErr(fieldId, errId, msg) {
+    document.getElementById(fieldId)?.classList.toggle('s1-field-invalid', !!msg);
+    const el = document.getElementById(errId);
+    if (el) el.innerHTML = msg
+        ? `<span class="s1-err-text"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${msg}</span>`
+        : '';
+}
 
-                // Countdown bar
-                const bar = toast.querySelector(".wf-toast-bar");
-                requestAnimationFrame(() => requestAnimationFrame(() => {
-                    bar.style.transition = `transform ${DURATION}ms linear`;
-                    bar.style.transform  = "scaleX(0)";
-                }));
+function validateAll() {
+    const errs = [];
+    let hasPeriodErr = false;
+    for (const f of REQUIRED) {
+        if (!f.check()) { setFieldErr(f.id,f.errId,`${f.label} is required.`); errs.push(f.label); if(f.id.includes('Period')||f.id.includes('Financial')) hasPeriodErr=true; }
+        else setFieldErr(f.id,f.errId,null);
+    }
+    // Sidebar error indicator
+    document.getElementById('nav-period')?.classList.toggle('has-error', hasPeriodErr);
+    return errs;
+}
 
-                const timer = setTimeout(() => dismiss(toast), DURATION);
-
-                toast.querySelector(".wf-toast-close").addEventListener("click", () => {
-                    clearTimeout(timer);
-                    dismiss(toast);
-                });
-            }
-
-            function dismiss(toast) {
-                toast.classList.remove("show");
-                toast.classList.add("hide");
-                toast.addEventListener("transitionend", () => toast.remove(), { once: true });
-            }
-
-            return {
-                success: (m, t) => show("success", m, t),
-                error:   (m, t) => show("error",   m, t),
-                warning: (m, t) => show("warning", m, t),
-                info:    (m, t) => show("info",    m, t),
-            };
-        })();
-
-        /* ════════════════════════════════════════
-           LOADER SYSTEM
-        ════════════════════════════════════════ */
-        const WfLoader = (() => {
-            const el   = document.getElementById("wf-loader");
-            const text = document.getElementById("wf-loader-text");
-            const sub  = document.getElementById("wf-loader-sub");
-            return {
-                show: (msg, hint) => {
-                    text.textContent = msg  || "Loading…";
-                    sub.textContent  = hint || "Please wait a moment";
-                    el.classList.add("active");
-                },
-                hide: () => el.classList.remove("active"),
-            };
-        })();
-
-        /* ════════════════════════════════════════
-           TEMPDATA → TOASTS on page load
-        ════════════════════════════════════════ */
-        @if (TempData["Success"] != null)
-        {
-                    <text>
-                    document.addEventListener("DOMContentLoaded", () =>
-                        WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
-                    </text>
-        }
-        @if (TempData["Error"] != null)
-        {
-                    <text>
-                    document.addEventListener("DOMContentLoaded", () =>
-                        WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
-                    </text>
-        }
-
-        /* ════════════════════════════════════════
-           FORM SUBMIT — loader + validation toast
-        ════════════════════════════════════════ */
-        document.addEventListener("DOMContentLoaded", () => {
-            const form      = document.getElementById("wf-form");
-            const submitBtn = document.getElementById("wf-submit-btn");
-
-            form.addEventListener("submit", () => {
-                // jQuery Validate check (if present)
-                const jqValidator = (typeof $ !== "undefined" && $(form).data("validator"));
-                const valid = jqValidator ? $(form).valid() : form.checkValidity();
-
-                if (!valid) {
-                    WfToast.error("Please fix the highlighted fields before continuing.", "Validation Failed");
-                    return;
-                }
-
-                submitBtn.classList.add("loading");
-                WfLoader.show("Saving settings…", "Submitting your workflow configuration");
-            });
+document.addEventListener('DOMContentLoaded', () => {
+    ['valuationPeriod','financialYearSelect','rollSelect','noticeSelect'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', () => {
+            const map = {valuationPeriod:'field-ValuationPeriodCode,err-ValuationPeriodCode',
+                         financialYearSelect:'field-FinancialYear,err-FinancialYear',
+                         rollSelect:'field-RollId,err-RollId',
+                         noticeSelect:'field-Notice,err-Notice'};
+            const [fid,eid] = (map[id]||'').split(',');
+            if (fid) setFieldErr(fid, eid, null);
         });
+    });
 
-        /* ════════════════════════════════════════
-           NOTICE BLOCK LOGIC
-        ════════════════════════════════════════ */
-        function toIsoDate(d) {
-            return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    document.getElementById('wf-form').addEventListener('submit', e => {
+        const errs = validateAll();
+        if (errs.length > 0) {
+            e.preventDefault();
+            const banner = document.getElementById('valBanner');
+            const list   = document.getElementById('valBannerList');
+            list.innerHTML = errs.map(x=>`<li>${x} is required</li>`).join('');
+            banner.style.display = 'flex';
+            banner.scrollIntoView({behavior:'smooth', block:'nearest'});
+            WfToast.error('Fix the required fields before continuing.', 'Validation Failed');
+            return;
         }
-        function getTodayIso() { return toIsoDate(new Date()); }
+        document.getElementById('valBanner').style.display = 'none';
+        document.getElementById('wf-submit-btn').classList.add('loading');
+        WfLoader.show('Saving settings…', 'Submitting your notice configuration');
+    });
+});
 
-        function mapNoticeStringToEnum(val) {
-            return ["S49","S51","S52","S53","DJ","IN","S78"].includes(val) ? val : "S49";
+function scrollTo(id) {
+    document.getElementById(id)?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+/* ── Notice blocks ──────────────────────────────── */
+const NOTICE_DESCS = {
+    S49:'Section 49 — objection window, inspection dates and signature',
+    S51:'Section 51 — objection decision, evidence close date',
+    S52:'Section 52 — appeal notices, backlog processing by date range',
+    S53:'Section 53 — appeal period, close date with weekend / holiday adjustment',
+    DJ: 'Dear Johnny — only letter date required',
+    IN: 'Invalid notice — objection or omission sub-type',
+    S78:'Section 78 — review period and extraction settings',
+};
+const NOTICE_BADGE = {S49:'s1-badge-s49',S51:'s1-badge-s51',S52:'s1-badge-s52',S53:'s1-badge-s53',DJ:'s1-badge-dj',IN:'s1-badge-in',S78:'s1-badge-s78'};
+
+function toIsoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function getTodayIso(){ return toIsoDate(new Date()); }
+
+function showBlocks() {
+    const notice = document.getElementById('noticeSelect')?.value || 'S49';
+    const mode   = document.getElementById('modeSelect')?.value   || '2';
+
+    document.getElementById('noticeHidden').value = notice;
+
+    // Badge + subtitle
+    const badge = document.getElementById('noticeBadge');
+    if (badge) { badge.textContent = notice; badge.className = `s1-notice-badge ${NOTICE_BADGE[notice]||''}`; }
+    const sub = document.getElementById('noticeSpecificSub');
+    if (sub && NOTICE_DESCS[notice]) sub.textContent = NOTICE_DESCS[notice];
+
+    // Sidebar notice label
+    const sbl = document.getElementById('sb-notice-label');
+    const sbd = document.getElementById('sb-notice-desc');
+    if (sbl) sbl.textContent = notice;
+    if (sbd) sbd.textContent = NOTICE_DESCS[notice]||'';
+
+    // Hide all
+    document.querySelectorAll('.notice-block').forEach(b => b.style.display='none');
+
+    const map = {S49:'blockS49',S51:'blockS51',S52:'blockS52',S53:'blockS53',S78:'blockS78'};
+    if (map[notice]) document.getElementById(map[notice]).style.display = 'block';
+    if (notice==='DJ'||notice==='IN') {
+        document.getElementById('blockDJIN').style.display = 'block';
+        const hdr  = document.getElementById('djinHeader');
+        const note = document.getElementById('djinNote');
+        const inSub = document.getElementById('blockINSubType');
+        if (notice==='IN') {
+            if(hdr)  { hdr.textContent='Invalid Notice'; hdr.className='s1-notice-header s1-notice-in'; }
+            if(note) note.style.display='none';
+            if(inSub) inSub.style.display='block';
+        } else {
+            if(hdr)  { hdr.textContent='Dear Johnny Notice'; hdr.className='s1-notice-header s1-notice-dj'; }
+            if(note) note.style.display='block';
+            if(inSub) inSub.style.display='none';
         }
+    }
 
-        function showBlocks() {
-            const noticeVal = document.getElementById("noticeSelect")?.value || "S49";
-            const modeVal   = document.getElementById("modeSelect")?.value   || "2";
+    const chk   = document.getElementById('overrideS53');
+    const ovBlk = document.getElementById('blockS53Override');
+    const ap    = document.getElementById('appealCloseDate');
+    if (chk) {
+        if(ovBlk) ovBlk.style.display = chk.checked?'block':'none';
+        if(ap)    ap.readOnly = !chk.checked;
+    }
 
-            const hidden = document.getElementById("noticeHidden");
-            if (hidden) hidden.value = mapNoticeStringToEnum(noticeVal);
+    const letter  = document.getElementById('letterDate')?.value;
+    const ovLetter = document.getElementById('letterOverrideBlock');
+    if (ovLetter)
+        ovLetter.style.display = (notice==='S49'&&letter&&letter!==getTodayIso()) ? 'block':'none';
+}
 
-            document.querySelectorAll(".notice-block").forEach(x => x.style.display = "none");
+function calcS51EvidenceClose() {
+    if (document.getElementById('noticeSelect')?.value!=='S51') return;
+    const letter = document.getElementById('letterDate')?.value;
+    const out    = document.getElementById('evidenceCloseDate');
+    if (!letter||!out) return;
+    const dt = new Date(letter+'T00:00:00');
+    dt.setDate(dt.getDate()+30);
+    out.value = toIsoDate(dt);
+}
 
-            const blockMap = { S49:"blockS49", S51:"blockS51", S52:"blockS52", S53:"blockS53", S78:"blockS78" };
-            if (blockMap[noticeVal]) document.getElementById(blockMap[noticeVal]).style.display = "block";
-            if (noticeVal === "DJ" || noticeVal === "IN") document.getElementById("blockDJIN").style.display = "block";
+async function calcS53AppealClose() {
+    if (document.getElementById('noticeSelect')?.value!=='S53') return;
+    if (document.getElementById('overrideS53')?.checked) return;
+    const rollId = document.getElementById('rollSelect')?.value;
+    const letter = document.getElementById('letterDate')?.value;
+    const out    = document.getElementById('appealCloseDate');
+    if (!rollId||rollId==='0'||!letter||!out) return;
+    WfLoader.show('Calculating appeal date…','Checking weekends and public holidays');
+    try {
+        const res = await fetch(`/Workflow/CalcS53AppealCloseDate?rollId=${encodeURIComponent(rollId)}&letterDate=${encodeURIComponent(letter)}`,
+            {headers:{'Accept':'application/json'}});
+        if (!res.ok) { WfToast.warning('Could not calculate appeal close date.','Calculation Failed'); return; }
+        const data = await res.json();
+        if (data?.appealCloseDate) { out.value=data.appealCloseDate; WfToast.info(`Appeal close date set to ${data.appealCloseDate}.`,'Date Calculated'); }
+    } catch { WfToast.error('Network error.','Error'); }
+    finally  { WfLoader.hide(); }
+}
 
-            if (noticeVal === "S52") {
-                const isBulk = (modeVal === "2" || String(modeVal).toLowerCase() === "bulk");
-                document.getElementById("blockS52Bulk").style.display   = isBulk ? "block" : "none";
-                document.getElementById("blockS52Single").style.display = isBulk ? "none"  : "block";
-            }
+async function runAll() {
+    showBlocks(); calcS51EvidenceClose(); await calcS53AppealClose();
+}
 
-            const chk         = document.getElementById("overrideS53");
-            const overrideBlk = document.getElementById("blockS53Override");
-            const appeal      = document.getElementById("appealCloseDate");
-            if (chk) {
-                if (overrideBlk) overrideBlk.style.display = chk.checked ? "block" : "none";
-                if (appeal) appeal.readOnly = !chk.checked;
-            }
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('noticeSelect')?.addEventListener('change', runAll);
+    document.getElementById('modeSelect')?.addEventListener('change', runAll);
+    document.getElementById('rollSelect')?.addEventListener('change', runAll);
+    document.getElementById('letterDate')?.addEventListener('change', runAll);
+    document.getElementById('overrideS53')?.addEventListener('change', runAll);
+    runAll();
+});
 
-            const letterDate        = document.getElementById("letterDate")?.value;
-            const letterOverrideBlk = document.getElementById("letterOverrideBlock");
-            if (letterOverrideBlk) {
-                letterOverrideBlk.style.display =
-                    (noticeVal === "S49" && letterDate && letterDate !== getTodayIso()) ? "block" : "none";
-            }
+/* ── Financial year cascade ─────────────────────── */
+async function onValuationPeriodChange() {
+    const fySelect = document.getElementById('financialYearSelect');
+    const code = document.getElementById('valuationPeriod')?.value;
+    fySelect.innerHTML = '<option value="">— Select —</option>';
+    fySelect.disabled  = true;
+    document.getElementById('fyStart').value = '';
+    document.getElementById('fyEnd').value   = '';
+    document.getElementById('fyText').value  = '';
+    setFieldErr('field-FinancialYear','err-FinancialYear',null);
+    if (!code) return;
+    WfLoader.show('Loading financial years…','Fetching available periods');
+    try {
+        const res  = await fetch(`/Workflow/FinancialYears?valuationPeriodCode=${encodeURIComponent(code)}`);
+        if (!res.ok) { WfToast.error('Failed to load financial years.','Load Error'); return; }
+        const list = await res.json();
+        const savedStart = document.getElementById('fyStart').value;
+        for (const item of list) {
+            const opt = document.createElement('option');
+            opt.value = `${item.start}|${item.end}|${item.text}`;
+            opt.textContent = item.text;
+            if (savedStart && item.start && item.start.startsWith(savedStart.substring(0,4))) opt.selected = true;
+            fySelect.appendChild(opt);
         }
+        fySelect.disabled = false;
+        if (list.length) { WfToast.success(`${list.length} year(s) loaded.`,'Loaded'); fySelect.dispatchEvent(new Event('change')); }
+    } catch { WfToast.error('Network error.','Error'); }
+    finally  { WfLoader.hide(); }
+}
 
-        function calcS51EvidenceClose() {
-            if (document.getElementById("noticeSelect")?.value !== "S51") return;
-            const letter = document.getElementById("letterDate")?.value;
-            const out    = document.getElementById("evidenceCloseDate");
-            if (!letter || !out) return;
-            const dt = new Date(letter + "T00:00:00");
-            dt.setDate(dt.getDate() + 30);
-            out.value = toIsoDate(dt);
-        }
+function onFinancialYearChange() {
+    const v = document.getElementById('financialYearSelect')?.value;
+    if (!v) return;
+    const [start,end,text] = v.split('|');
+    document.getElementById('fyStart').value = start;
+    document.getElementById('fyEnd').value   = end;
+    document.getElementById('fyText').value  = text;
+    setFieldErr('field-FinancialYear','err-FinancialYear',null);
+}
 
-        async function calcS53AppealClose() {
-            if (document.getElementById("noticeSelect")?.value !== "S53") return;
-            if (document.getElementById("overrideS53")?.checked) return;
+document.addEventListener('DOMContentLoaded', async () => {
+    const vp = document.getElementById('valuationPeriod')?.value;
+    if (vp) await onValuationPeriodChange();
+});
 
-            const rollId = document.getElementById("rollSelect")?.value;
-            const letter = document.getElementById("letterDate")?.value;
-            const out    = document.getElementById("appealCloseDate");
-            if (!rollId || rollId === "0" || !letter || !out) return;
-
-            WfLoader.show("Calculating appeal date…", "Checking weekends and public holidays");
-            try {
-                const url  = `/Workflow/CalcS53AppealCloseDate?rollId=${encodeURIComponent(rollId)}&letterDate=${encodeURIComponent(letter)}`;
-                const resp = await fetch(url, { headers: { "Accept": "application/json" } });
-                if (!resp.ok) {
-                    WfToast.warning("Could not calculate the appeal close date. Please check your inputs.", "Calculation Failed");
-                    return;
-                }
-                const data = await resp.json();
-                if (data?.appealCloseDate) {
-                    out.value = data.appealCloseDate;
-                    WfToast.info(`Appeal close date set to ${data.appealCloseDate}.`, "Date Calculated");
-                }
-            } catch {
-                WfToast.error("A network error occurred while calculating the appeal date.", "Network Error");
-            } finally {
-                WfLoader.hide();
-            }
-        }
-
-        async function runAll() {
-            showBlocks();
-            calcS51EvidenceClose();
-            await calcS53AppealClose();
-        }
-
-        document.addEventListener("DOMContentLoaded", () => {
-            document.getElementById("noticeSelect")?.addEventListener("change", runAll);
-            document.getElementById("modeSelect")?.addEventListener("change", runAll);
-            document.getElementById("rollSelect")?.addEventListener("change", runAll);
-            document.getElementById("letterDate")?.addEventListener("change", runAll);
-            document.getElementById("overrideS53")?.addEventListener("change", runAll);
-            runAll();
-        });
-
-        /* ════════════════════════════════════════
-           FINANCIAL YEAR CASCADE
-        ════════════════════════════════════════ */
-        document.getElementById("valuationPeriod").addEventListener("change", async function () {
-            const fySelect = document.getElementById("financialYearSelect");
-            const fyStart  = document.getElementById("fyStart");
-            const fyEnd    = document.getElementById("fyEnd");
-            const fyText   = document.getElementById("fyText");
-            const code     = this.value;
-
-            fySelect.innerHTML = `<option value="">— Select —</option>`;
-            fyStart.value = fyEnd.value = fyText.value = "";
-            if (!code) return;
-
-            WfLoader.show("Loading financial years…", "Fetching available periods");
-            try {
-                const res = await fetch(`/Workflow/FinancialYears?valuationPeriodCode=${encodeURIComponent(code)}`);
-                if (!res.ok) {
-                    WfToast.error("Failed to load financial years for this valuation period.", "Load Error");
-                    return;
-                }
-                const list = await res.json();
-                for (const item of list) {
-                    const opt = document.createElement("option");
-                    opt.value       = `${item.start}|${item.end}|${item.text}`;
-                    opt.textContent = item.text;
-                    fySelect.appendChild(opt);
-                }
-                if (list.length) WfToast.success(`${list.length} financial year(s) loaded.`, "Periods Loaded");
-            } catch {
-                WfToast.error("A network error occurred while loading financial years.", "Network Error");
-            } finally {
-                WfLoader.hide();
-            }
-        });
-
-        document.getElementById("financialYearSelect").addEventListener("change", function () {
-            const v = this.value;
-            if (!v) return;
-            const [start, end, text] = v.split("|");
-            document.getElementById("fyStart").value = start;
-            document.getElementById("fyEnd").value   = end;
-            document.getElementById("fyText").value  = text;
-        });
-
-        // ── S52 radio: show/hide date sub-blocks and sync hidden field ────────
-        function onS52ModeChange(radio) {
-            if (radio) document.getElementById('s52SendModeHidden').value = radio.value;
-            onS52ModeChangeFromValue();
-        }
-        function onS52ModeChangeFromValue() {
-            const val = parseInt(document.getElementById('s52SendModeHidden').value || '3');
-            // 1=ReviewOnly, 2=AppealDecisionOnly, 3=Both
-            document.getElementById('blockS52Review').style.display  = (val === 1 || val === 3) ? 'block' : 'none';
-            document.getElementById('blockS52Appeal').style.display  = (val === 2 || val === 3) ? 'block' : 'none';
-            // sync radio buttons
-            document.querySelectorAll('input[name="S52SendMode"]').forEach(r => {
-                r.checked = (parseInt(r.value) === val);
-            });
-        }
-        // Run on load to restore state from model
-        document.addEventListener('DOMContentLoaded', function() {
-            if (document.getElementById('blockS52') &&
-                document.getElementById('blockS52').style.display !== 'none') {
-                onS52ModeChangeFromValue();
-            }
-        });
-    </script>
+/* ── S52 radio ──────────────────────────────────── */
+function onS52ModeChange(radio) {
+    if (radio) document.getElementById('s52SendModeHidden').value = radio.value;
+    const val = parseInt(document.getElementById('s52SendModeHidden').value||'3');
+    document.getElementById('blockS52Review').style.display = (val===1||val===3)?'block':'none';
+    document.getElementById('blockS52Appeal').style.display = (val===2||val===3)?'block':'none';
+    document.querySelectorAll('input[name="S52SendMode"]').forEach(r => r.checked=parseInt(r.value)===val);
+}
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('blockS52')?.style.display!=='none') onS52ModeChange(null);
+});
+</script>
 }

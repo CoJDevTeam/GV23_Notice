@@ -1,0 +1,518 @@
+﻿/* ═══════════════════════════════════════════════════════════════
+   VNS Layout — LayoutCss.css
+   Sidebar shell  ·  COJ dark  ·  Syne + Outfit + DM Mono
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+    --bg: #0e1520;
+    --bg2: #131d2e;
+    --bg3: #18263b;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.11);
+    --gold: #c9a84c;
+    --gold-l: #e2c270;
+    --gold-d: rgba(201,168,76,0.14);
+    --text: #dce8f5;
+    --text-m: #7a92aa;
+    --text-d: #3e5468;
+    --green: #3ecf8e;
+    --sidebar-w: 220px;
+    --sidebar-collapsed: 60px;
+    --topstrip-h: 44px;
+    --fh: 'Syne', sans-serif;
+    --fb: 'Outfit', sans-serif;
+    --fm: 'DM Mono', monospace;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html, body {
+    min-height: 100vh;
+    font-family: var(--fb);
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--text);
+}
+
+/* ── LAYOUT SHELL ──────────────────────────────────────── */
+.vns-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ── SIDEBAR ────────────────────────────────────────────── */
+.vns-sidebar {
+    width: var(--sidebar-w);
+    min-height: 100vh;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
+    z-index: 200;
+    transition: width 0.25s ease;
+}
+
+    /* Collapsed state */
+    .vns-sidebar.collapsed {
+        width: var(--sidebar-collapsed);
+    }
+
+        .vns-sidebar.collapsed .vns-brand-text,
+        .vns-sidebar.collapsed .vns-nav-label,
+        .vns-sidebar.collapsed .vns-nav-badge,
+        .vns-sidebar.collapsed .vns-nav-section-label,
+        .vns-sidebar.collapsed .vns-user-info {
+            opacity: 0;
+            width: 0;
+            overflow: hidden;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        .vns-sidebar.collapsed .vns-sidebar-brand {
+            justify-content: center;
+            padding: 0 12px;
+        }
+
+        .vns-sidebar.collapsed .vns-sidebar-toggle {
+            transform: rotate(180deg);
+        }
+
+        .vns-sidebar.collapsed .vns-nav-item {
+            justify-content: center;
+            padding: 10px 0;
+        }
+
+        .vns-sidebar.collapsed .vns-sidebar-user-inner {
+            justify-content: center;
+        }
+
+        .vns-sidebar.collapsed .vns-online-dot {
+            display: none;
+        }
+
+body.sidebar-collapsed .vns-main-wrap {
+    margin-left: var(--sidebar-collapsed);
+}
+
+/* ── BRAND ──────────────────────────────────────────────── */
+.vns-sidebar-brand {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+    height: 60px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.vns-brand-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    overflow: hidden;
+}
+
+.vns-brand-mark {
+    background: linear-gradient(135deg, var(--gold), #a07830);
+    color: #0e1520;
+    font-family: var(--fh);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    padding: 5px 8px;
+    border-radius: 5px;
+    flex-shrink: 0;
+    line-height: 1;
+}
+
+.vns-brand-name {
+    font-family: var(--fh);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+    transition: opacity 0.2s, width 0.25s;
+}
+
+.vns-brand-sub {
+    font-size: 10px;
+    color: var(--text-m);
+    white-space: nowrap;
+    margin-top: 1px;
+    font-family: var(--fm);
+    transition: opacity 0.2s, width 0.25s;
+}
+
+.vns-sidebar-toggle {
+    background: none;
+    border: 1px solid var(--border2);
+    border-radius: 5px;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-m);
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+    .vns-sidebar-toggle:hover {
+        background: var(--bg3);
+        color: var(--text);
+    }
+
+/* ── NAV ────────────────────────────────────────────────── */
+.vns-sidebar-nav {
+    flex: 1;
+    padding: 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.vns-nav-section-label {
+    font-family: var(--fm);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-d);
+    padding: 10px 8px 4px;
+    white-space: nowrap;
+    transition: opacity 0.2s, width 0.25s;
+}
+
+.vns-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border-radius: 7px;
+    text-decoration: none;
+    color: var(--text-m);
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: all 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    position: relative;
+}
+
+    .vns-nav-item:hover {
+        background: var(--bg3);
+        color: var(--text);
+    }
+
+    .vns-nav-item.active {
+        background: var(--gold-d);
+        color: var(--gold-l);
+        font-weight: 600;
+    }
+
+        .vns-nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: var(--gold);
+            border-radius: 0 2px 2px 0;
+        }
+
+.vns-nav-icon {
+    flex-shrink: 0;
+    width: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-d);
+    transition: color 0.15s;
+}
+
+.vns-nav-item:hover .vns-nav-icon,
+.vns-nav-item.active .vns-nav-icon {
+    color: var(--gold);
+}
+
+.vns-nav-label {
+    flex: 1;
+    transition: opacity 0.2s, width 0.25s;
+    overflow: hidden;
+}
+
+.vns-nav-badge {
+    font-family: var(--fm);
+    font-size: 9px;
+    background: var(--green);
+    color: #0e1520;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+    transition: opacity 0.2s;
+}
+
+/* ── SIDEBAR USER ───────────────────────────────────────── */
+.vns-sidebar-user {
+    border-top: 1px solid var(--border);
+    padding: 10px 8px;
+    flex-shrink: 0;
+}
+
+.vns-sidebar-user-inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+
+.vns-user-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--gold), #a07830);
+    color: #0e1520;
+    font-family: var(--fh);
+    font-size: 11px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.vns-user-info {
+    flex: 1;
+    overflow: hidden;
+    transition: opacity 0.2s, width 0.25s;
+}
+
+.vns-user-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vns-user-role {
+    font-family: var(--fm);
+    font-size: 10px;
+    color: var(--gold);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+}
+
+.vns-online-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--green);
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ── MAIN WRAP ──────────────────────────────────────────── */
+.vns-main-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin-left: 0;
+    transition: margin-left 0.25s ease;
+}
+
+/* ── TOP STRIP ──────────────────────────────────────────── */
+.vns-topstrip {
+    height: var(--topstrip-h);
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 14px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    flex-shrink: 0;
+}
+
+.vns-mobile-toggle {
+    display: none;
+    background: none;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--text-m);
+    flex-shrink: 0;
+}
+
+.vns-breadcrumb {
+    flex: 1;
+    font-family: var(--fm);
+    font-size: 11.5px;
+    color: var(--text-m);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vns-topstrip-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.vns-live-dot {
+    display: flex;
+    align-items: center;
+}
+
+.vns-pulse {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: vns-pulse 2.2s infinite;
+}
+
+@keyframes vns-pulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.35;
+        transform: scale(0.6);
+    }
+}
+
+.vns-topstrip-clock {
+    font-family: var(--fm);
+    font-size: 11px;
+    color: var(--text-d);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+/* ── PAGE CONTENT ───────────────────────────────────────── */
+.vns-page-content {
+    flex: 1;
+    min-width: 0;
+}
+
+/* ── FOOTER ─────────────────────────────────────────────── */
+.vns-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 28px;
+    border-top: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+}
+
+    .vns-footer span {
+        font-family: var(--fm);
+        font-size: 10.5px;
+        color: var(--text-d);
+        letter-spacing: 0.03em;
+    }
+
+    .vns-footer a {
+        font-family: var(--fm);
+        font-size: 10.5px;
+        color: var(--text-d);
+        text-decoration: none;
+        transition: color 0.15s;
+    }
+
+        .vns-footer a:hover {
+            color: var(--gold);
+        }
+
+/* ── MOBILE OVERLAY ─────────────────────────────────────── */
+.vns-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 150;
+    backdrop-filter: blur(2px);
+}
+
+    .vns-overlay.active {
+        display: block;
+    }
+
+/* ── RESPONSIVE ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .vns-sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease, width 0.25s ease;
+        z-index: 300;
+    }
+
+        .vns-sidebar.mobile-open {
+            transform: translateX(0);
+        }
+
+    .vns-mobile-toggle {
+        display: flex;
+    }
+
+    .vns-topstrip-clock {
+        display: none;
+    }
+
+    .vns-sidebar-toggle {
+        display: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .vns-footer {
+        flex-direction: column;
+        gap: 6px;
+        align-items: flex-start;
+    }
+
+    .vns-topstrip {
+        padding: 0 14px;
+    }
+}

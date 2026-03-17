@@ -58,4 +58,11 @@
         AppealDecisionOnly = 2,
         Both = 3
     }
+
+    public enum INSendMode
+    {
+        InvalidObjectionOnly = 1,
+        InvalidOmissionOnly = 2,
+        Both = 3
+    }
 }

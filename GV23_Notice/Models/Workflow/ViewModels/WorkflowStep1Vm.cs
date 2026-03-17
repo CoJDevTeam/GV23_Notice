@@ -5,18 +5,26 @@ namespace GV23_Notice.Models.Workflow.ViewModels
 {
     public class WorkflowStep1Vm
     {
-        // Selection
-        [Required]
-        public RollCode Roll { get; set; }
+        // ── Core selection (all required) ──────────────────────────────────
+        [Required(ErrorMessage = "Roll is required.")]
+        [Range(1, int.MaxValue, ErrorMessage = "Please select a roll.")]
+        public int RollId { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "Notice type is required.")]
         public NoticeKind Notice { get; set; }
 
-        public int RollId { get; set; }
-        [Required]
-        public BatchMode Mode { get; set; } = BatchMode.Bulk; // default, you can change
+        [Required(ErrorMessage = "Batch mode is required.")]
+        public BatchMode Mode { get; set; } = BatchMode.Bulk;
 
-        // Common
+        [Required(ErrorMessage = "Valuation Period is required.")]
+        public string? ValuationPeriodCode { get; set; }
+
+        // Financial year — validated by checking FinancialYearStart on server
+        public DateTime? FinancialYearStart { get; set; }
+        public DateTime? FinancialYearEnd { get; set; }
+        public string? FinancialYearsText { get; set; }
+
+        // ── Common fields ──────────────────────────────────────────────────
         [DataType(DataType.Date)]
         public DateTime LetterDate { get; set; } = DateTime.Today;
 
@@ -25,7 +33,6 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         [MaxLength(500)]
         public string? LetterDateOverrideReason { get; set; }
 
-        // Shared optional fields
         [MaxLength(500)]
         public string? PortalUrl { get; set; }
 
@@ -35,7 +42,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         [DataType(DataType.Date)]
         public DateTime? CityManagerSignDate { get; set; }
 
-        // S49
+        // ── S49 ────────────────────────────────────────────────────────────
         [DataType(DataType.Date)]
         public DateTime? ObjectionStartDate { get; set; }
 
@@ -45,26 +52,24 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         [DataType(DataType.Date)]
         public DateTime? ExtensionDate { get; set; }
 
-        // Signature file will be uploaded in controller (IFormFile)
         public string? ExistingSignaturePath { get; set; }
 
-        // S51 (auto calc)
+        // ── S51 ────────────────────────────────────────────────────────────
         [DataType(DataType.Date)]
-        public DateTime? EvidenceCloseDate { get; set; } // will be auto-set = LetterDate + 30
+        public DateTime? EvidenceCloseDate { get; set; }
 
-        // S52 bulk range
+        // ── S52 ────────────────────────────────────────────────────────────
         [DataType(DataType.Date)]
         public DateTime? BulkFromDate { get; set; }
 
         [DataType(DataType.Date)]
         public DateTime? BulkToDate { get; set; }
 
-        /// <summary>Which S52 sub-type(s) to send: ReviewOnly / AppealDecisionOnly / Both</summary>
         public S52SendMode S52SendMode { get; set; } = S52SendMode.Both;
 
-        // S53
+        // ── S53 ────────────────────────────────────────────────────────────
         [DataType(DataType.Date)]
-        public DateTime? BatchDate { get; set; } // default today
+        public DateTime? BatchDate { get; set; }
 
         [DataType(DataType.Date)]
         public DateTime? AppealCloseDate { get; set; }
@@ -76,7 +81,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
 
         public string? ExistingOverrideEvidencePath { get; set; }
 
-        // S78
+        // ── S78 ────────────────────────────────────────────────────────────
         [DataType(DataType.Date)]
         public DateTime? ExtractionDate { get; set; }
 
@@ -89,25 +94,14 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         [DataType(DataType.Date)]
         public DateTime? ReviewCloseDate { get; set; }
 
-        // Used for redirecting to Step2 after approve
+        // ── IN ─────────────────────────────────────────────────────────────
+        public INSendMode INSendMode { get; set; } = INSendMode.Both;
+
+        // ── Meta / display ─────────────────────────────────────────────────
         public int? SettingsId { get; set; }
+        public string? RollShortCode { get; set; }
 
-
-        public string? RollShortCode { get; set; } // optional for display
-
-
-        public string? ValuationPeriodCode { get; set; } // "GV23"
-
-        public DateTime? FinancialYearStart { get; set; }
-        public DateTime? FinancialYearEnd { get; set; }
-
-        // Optional: keep for display
-        public string? FinancialYearsText { get; set; }
-
-
-
-
-
-
+        // Kept for migration compatibility
+        public bool? IsInvalidOmission { get; set; }
     }
 }
