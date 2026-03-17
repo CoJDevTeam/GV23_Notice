@@ -1,0 +1,407 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3LandingVm
+@using GV23_Notice.Domain.Workflow
+@{
+    ViewData["Title"] = "Step 3 — Data Team Landing";
+
+    string NoticeFull(NoticeKind n) => n switch
+    {
+        NoticeKind.S49 => "Section 49 — Public Inspection &amp; Objections",
+        NoticeKind.S51 => "Section 51 — Objection Decision",
+        NoticeKind.S52 => "Section 52 — Appeal Notices",
+        NoticeKind.S53 => "Section 53 — Appeal Period",
+        NoticeKind.DJ => "Dear Johnny Notice",
+        NoticeKind.IN => "Invalid Notice",
+        NoticeKind.S78 => "Section 78 — Review Period",
+        _ => n.ToString()
+    };
+
+    bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
+    string noticeClass = Model.Notice.ToString().ToLower();
+    string approvedDate = Model.ApprovedAtUtc?.ToString("dd MMM yyyy HH:mm") ?? "—";
+}
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+<link href="~/css/step3/step3landingpage.css" rel="stylesheet" />
+<div class="lp-root">
+
+    <!-- ══ TOP BAR ════════════════════════════════════════════ -->
+    <div class="lp-topbar">
+        <div class="lp-topbar-left">
+            <div class="lp-logo-mark">VNS</div>
+            <div class="lp-topbar-div"></div>
+            <div>
+                <div class="lp-page-title">Step 3 — Data Team</div>
+                <div class="lp-page-sub">Review configuration before starting</div>
+            </div>
+        </div>
+        <div class="lp-topbar-right">
+            <div class="lp-approved-chip">
+                <span class="lp-approved-dot"></span>
+                Approved by @(Model.ApprovedBy?.Split('\\').Last() ?? "Admin") on @approvedDate
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ HERO NOTICE BANNER ══════════════════════════════════ -->
+    <div class="lp-hero lp-hero-@noticeClass">
+        <div class="lp-hero-left">
+            <div class="lp-notice-code">@Model.Notice</div>
+            <div>
+                <div class="lp-notice-full">@Html.Raw(NoticeFull(Model.Notice))</div>
+                <div class="lp-notice-meta">
+                    <span class="lp-meta-chip">@Model.RollShortCode</span>
+                    <span class="lp-meta-sep">·</span>
+                    <span>@Model.RollName</span>
+                    <span class="lp-meta-sep">·</span>
+                    <span class="lp-meta-ver">v@Model.Version</span>
+                    @if (!string.IsNullOrWhiteSpace(Model.FinancialYearsText))
+                    {
+                        <span class="lp-meta-sep">·</span>
+                        <span>@Model.FinancialYearsText</span>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="lp-hero-right">
+            <div class="lp-readonly-badge">🔒 Read Only — Admin Approved Configuration</div>
+        </div>
+    </div>
+
+    <div class="lp-body">
+
+        <!-- LEFT: Configuration detail cards -->
+        <div class="lp-left">
+
+            <!-- Config Overview -->
+            <div class="lp-card">
+                <div class="lp-card-header">
+                    <div class="lp-card-icon">⊞</div>
+                    <div>
+                        <div class="lp-card-title">Workflow Configuration</div>
+                        <div class="lp-card-sub">Roll, notice type and period — set by Admin in Step 1</div>
+                    </div>
+                    <div class="lp-card-readonly">Read Only</div>
+                </div>
+                <div class="lp-detail-grid">
+                    <div class="lp-row">
+                        <span class="lp-label">Notice Type</span>
+                        <span class="lp-val lp-val-strong">@Html.Raw(NoticeFull(Model.Notice))</span>
+                    </div>
+                    <div class="lp-row">
+                        <span class="lp-label">Roll</span>
+                        <span class="lp-val">
+                            <span class="lp-code-chip">@Model.RollShortCode</span>
+                            <span>@Model.RollName</span>
+                        </span>
+                    </div>
+                    <div class="lp-row">
+                        <span class="lp-label">Batch Mode</span>
+                        <span class="lp-val">
+                            @if (Model.Mode.ToString().ToLower() == "bulk")
+                            {
+                                <span class="lp-badge lp-badge-bulk">Bulk</span>
+                            }
+                            else
+                            {
+
+                                <span class="lp-badge lp-badge-single">Single</span>
+                            }
+                        </span>
+                    </div>
+                    <div class="lp-row">
+                        <span class="lp-label">Version</span>
+                        <span class="lp-val"><span class="lp-badge lp-badge-ver">v@Model.Version</span></span>
+                    </div>
+                </div>
+                <div class="lp-divider"></div>
+                <div class="lp-detail-grid">
+                    <div class="lp-row">
+                        <span class="lp-label">Letter Date</span>
+                        <span class="lp-val lp-mono">@Model.LetterDate.ToString("dd MMMM yyyy")</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Model.FinancialYearsText))
+                    {
+                        <div class="lp-row">
+                            <span class="lp-label">Financial Year</span>
+                            <span class="lp-val lp-mono">@Model.FinancialYearsText</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.PortalUrl))
+                    {
+                        <div class="lp-row">
+                            <span class="lp-label">Portal URL</span>
+                            <span class="lp-val"><a href="@Model.PortalUrl" target="_blank" class="lp-link">@Model.PortalUrl</a></span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.EnquiriesLine))
+                    {
+                        <div class="lp-row">
+                            <span class="lp-label">Enquiries</span>
+                            <span class="lp-val">@Model.EnquiriesLine</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Notice-specific card -->
+            @if (Model.Notice == NoticeKind.S49)
+            {
+                <div class="lp-card lp-card-s49">
+                    <div class="lp-card-header">
+                        <div class="lp-card-icon lp-icon-s49">§49</div>
+                        <div>
+                            <div class="lp-card-title">Section 49 — Objection Window</div>
+                            <div class="lp-card-sub">Inspection dates and signature</div>
+                        </div>
+                    </div>
+                    <div class="lp-detail-grid">
+                        <div class="lp-row">
+                            <span class="lp-label">Objection Start</span>
+                            <span class="lp-val lp-mono">@(Model.ObjectionStartDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                        </div>
+                        <div class="lp-row">
+                            <span class="lp-label">Objection End</span>
+                            <span class="lp-val lp-mono">@(Model.ObjectionEndDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                        </div>
+                        <div class="lp-row">
+                            <span class="lp-label">Extension Date</span>
+                            <span class="lp-val lp-mono">@(Model.ExtensionDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                        </div>
+                        <div class="lp-row">
+                            <span class="lp-label">Signature</span>
+                            <span class="lp-val">
+                                @if (hasSignature)
+                                {
+                                    <span class="lp-badge lp-badge-ok">✓ Uploaded</span>
+                                }
+                                else
+                                {
+
+                                    <span class="lp-badge lp-badge-warn">⚠ Missing</span>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (Model.Notice == NoticeKind.S51)
+            {
+                <div class="lp-card">
+                    <div class="lp-card-header">
+                        <div class="lp-card-icon lp-icon-s51">§51</div>
+                        <div><div class="lp-card-title">Section 51 — Objection Decision</div></div>
+                    </div>
+                    <div class="lp-detail-grid">
+                        <div class="lp-row">
+                            <span class="lp-label">Evidence Close Date</span>
+                            <span class="lp-val lp-mono">@(Model.EvidenceCloseDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (Model.Notice == NoticeKind.S52)
+            {
+                <div class="lp-card">
+                    <div class="lp-card-header">
+                        <div class="lp-card-icon lp-icon-s52">§52</div>
+                        <div><div class="lp-card-title">Section 52 — Appeal Notices</div></div>
+                    </div>
+                    <div class="lp-detail-grid">
+                        <div class="lp-row">
+                            <span class="lp-label">Sub-Type</span>
+                            <span class="lp-val">
+                                @if (Model.S52SendMode == S52SendMode.ReviewOnly)
+                                {
+                                    <span class="lp-badge lp-badge-s52r">Section 52 Review only</span>
+                                }
+                                else if (Model.S52SendMode == S52SendMode.AppealDecisionOnly)
+                                {
+
+                                    <span class="lp-badge lp-badge-s52a">Appeal Decision only</span>
+                                }
+                                else
+                                {
+
+                                    <span class="lp-badge lp-badge-both">Both sub-types</span>
+                                }
+                            </span>
+                        </div>
+                        <div class="lp-row">
+                            <span class="lp-label">Date Range</span>
+                            <span class="lp-val lp-mono">
+                                @(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "—") →
+                                @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (Model.Notice == NoticeKind.S53)
+            {
+                <div class="lp-card">
+                    <div class="lp-card-header">
+                        <div class="lp-card-icon lp-icon-s53">§53</div>
+                        <div><div class="lp-card-title">Section 53 — Appeal Period</div></div>
+                    </div>
+                    <div class="lp-detail-grid">
+                        <div class="lp-row">
+                            <span class="lp-label">Batch Date</span>
+                            <span class="lp-val lp-mono">@(Model.BatchDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                        </div>
+                        <div class="lp-row">
+                            <span class="lp-label">Appeal Close Date</span>
+                            <span class="lp-val lp-mono lp-val-strong">@(Model.AppealCloseDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(Model.AppealCloseOverrideReason))
+                        {
+                            <div class="lp-row">
+                                <span class="lp-label">Override Reason</span>
+                                <span class="lp-val">@Model.AppealCloseOverrideReason</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (Model.Notice == NoticeKind.DJ)
+            {
+                <div class="lp-card">
+                    <div class="lp-card-header">
+                        <div class="lp-card-icon lp-icon-dj">DJ</div>
+                        <div>
+                            <div class="lp-card-title">Dear Johnny Notice</div>
+                            <div class="lp-card-sub">Letter date is the only required field for DJ</div>
+                        </div>
+                    </div>
+                    <div class="lp-detail-grid">
+                        <div class="lp-row">
+                            <span class="lp-label">Letter Date</span>
+                            <span class="lp-val lp-mono">@Model.LetterDate.ToString("dd MMMM yyyy")</span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (Model.Notice == NoticeKind.IN)
+            {
+                <div class="lp-card">
+                    <div class="lp-card-header">
+                        <div class="lp-card-icon lp-icon-in">IN</div>
+                        <div><div class="lp-card-title">Invalid Notice</div></div>
+                    </div>
+                    <div class="lp-detail-grid">
+                        <div class="lp-row">
+                            <span class="lp-label">Sub-Type</span>
+                            <span class="lp-val">
+                                @if (Model.INSendMode == INSendMode.InvalidObjectionOnly)
+                                {
+                                    <span class="lp-badge lp-badge-in">Invalid Objection only</span>
+                                }
+                                else if (Model.INSendMode == INSendMode.InvalidOmissionOnly)
+                                {
+
+                                    <span class="lp-badge lp-badge-in">Invalid Omission only</span>
+                                }
+                                else
+                                {
+
+                                    <span class="lp-badge lp-badge-both">Both — Objection + Omission</span>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+        </div>
+
+        <!-- RIGHT: Approval card + Start button -->
+        <div class="lp-right">
+            <div class="lp-action-card">
+                <div class="lp-action-header">
+                    <div class="lp-action-title">Ready to Process</div>
+                    <div class="lp-action-sub">Review the configuration above then click Start</div>
+                </div>
+
+                <div class="lp-checklist">
+                    <div class="lp-check ok">
+                        <div class="lp-check-dot ok">✓</div>
+                        <span>Configuration approved by Admin</span>
+                    </div>
+                    <div class="lp-check ok">
+                        <div class="lp-check-dot ok">✓</div>
+                        <span>@Html.Raw(NoticeFull(Model.Notice))</span>
+                    </div>
+                    <div class="lp-check ok">
+                        <div class="lp-check-dot ok">✓</div>
+                        <span>Roll — <strong>@Model.RollShortCode</strong></span>
+                    </div>
+                    @if (Model.Notice == NoticeKind.S49)
+                    {
+                        if (hasSignature)
+                        {
+                            <div class="lp-check ok">
+                                <div class="lp-check-dot ok">✓</div>
+                                <span>Signature uploaded</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="lp-check warn">
+                                <div class="lp-check-dot warn">!</div>
+                                <span>Signature <strong>missing</strong></span>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="lp-meta-block">
+                    <div class="lp-meta-row">
+                        <span class="lp-meta-label">Settings ID</span>
+                        <span class="lp-meta-val lp-mono">#@Model.SettingsId</span>
+                    </div>
+                    <div class="lp-meta-row">
+                        <span class="lp-meta-label">Approved by</span>
+                        <span class="lp-meta-val">@(Model.ApprovedBy?.Split('\\').Last() ?? "—")</span>
+                    </div>
+                    <div class="lp-meta-row">
+                        <span class="lp-meta-label">Approved on</span>
+                        <span class="lp-meta-val lp-mono">@approvedDate</span>
+                    </div>
+                </div>
+
+                <div class="lp-action-btns">
+                    <a class="lp-btn lp-btn-start" href="@Model.KickoffUrl" id="startBtn">
+                        <span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <polygon points="5 3 19 12 5 21 5 3" />
+                            </svg>
+                            Start Processing
+                        </span>
+                        <span class="lp-btn-arrow">→</span>
+                    </a>
+                    <div class="lp-btn-note">
+                        Opens PDF preview, email preview and batch creation tools
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        document.getElementById('startBtn').addEventListener('click', function() {
+            this.style.opacity = '.7';
+            this.style.pointerEvents = 'none';
+            this.querySelector('span').textContent = 'Loading…';
+        });
+    </script>
+}

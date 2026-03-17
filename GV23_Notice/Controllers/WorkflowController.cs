@@ -1064,8 +1064,10 @@ namespace GV23_Notice.Controllers
                 pdfFileName: pv.PdfFileName ?? "",
                 ct: ct);
 
+            // All email links go to the Landing Page first (read-only config review)
+            // Data Team clicks "Start Processing" on the landing page to reach Step3Kickoff
             var kickoffBaseUrl = Url.Action(
-                action: nameof(Step3Kickoff),
+                action: "Step3Landing",
                 controller: "Workflow",
                 values: new { settingsId = s.Id },
                 protocol: Request.Scheme);
@@ -1271,6 +1273,86 @@ namespace GV23_Notice.Controllers
                 mode = ToUiMode(dto.Mode),
                 appealNo = dto.AppealNo
             });
+        }
+
+        // ── Step 3 Landing Page ─────────────────────────────────────────────
+        // Entry point for all email links. Validates the key, shows the Step 1
+        // configuration in read-only mode. Data Team clicks "Start Processing"
+        // to proceed to Step3Kickoff (preview + batch creation).
+        [Authorize(Policy = "DataTeamCreateBatchPrint")]
+        [HttpGet("Step3Landing")]
+        public async Task<IActionResult> Step3Landing(
+            int settingsId,
+            Guid key,
+            string? variant,
+            CancellationToken ct)
+        {
+            var s = await _settings.GetByIdAsync(settingsId, ct);
+            if (s is null) return NotFound();
+
+            if (!s.IsApproved)
+                return BadRequest("Settings are not yet approved.");
+
+            if (!s.ApprovalKey.HasValue || s.ApprovalKey.Value == Guid.Empty || s.ApprovalKey.Value != key)
+                return Unauthorized("Invalid or expired link.");
+
+            var roll = await _db.RollRegistry.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+            if (roll is null) return NotFound();
+
+            // Build the Step3Kickoff URL that the "Start Processing" button will navigate to
+            var kickoffUrl = Url.Action(
+                action: nameof(Step3Kickoff),
+                controller: "Workflow",
+                values: new { settingsId, key, variant },
+                protocol: Request.Scheme)!;
+
+            var vm = new WorkflowStep3LandingVm
+            {
+                SettingsId = settingsId,
+                ApprovalKey = key,
+                KickoffUrl = kickoffUrl,
+                Variant = variant,
+
+                RollShortCode = roll.ShortCode ?? "",
+                RollName = s.RollName ?? roll.Name ?? "",
+                Notice = s.Notice,
+                Mode = s.Mode,
+                Version = s.Version,
+
+                ApprovedBy = s.ApprovedBy,
+                ApprovedAtUtc = s.ApprovedAtUtc,
+
+                LetterDate = s.LetterDate,
+                FinancialYearsText = s.FinancialYearsText,
+                PortalUrl = s.PortalUrl,
+                EnquiriesLine = s.EnquiriesLine,
+                CityManagerSignDate = s.CityManagerSignDate,
+
+                // S49
+                ObjectionStartDate = s.ObjectionStartDate,
+                ObjectionEndDate = s.ObjectionEndDate,
+                ExtensionDate = s.ExtensionDate,
+                SignaturePath = s.SignaturePath,
+
+                // S51
+                EvidenceCloseDate = s.EvidenceCloseDate,
+
+                // S52
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate,
+                S52SendMode = s.S52SendMode,
+
+                // S53
+                BatchDate = s.BatchDate,
+                AppealCloseDate = s.AppealCloseDate,
+                AppealCloseOverrideReason = s.AppealCloseOverrideReason,
+
+                // IN
+                INSendMode = s.INSendMode,
+            };
+
+            return View(vm);
         }
 
         [Authorize(Policy = "DataTeamCreateBatchPrint")]
