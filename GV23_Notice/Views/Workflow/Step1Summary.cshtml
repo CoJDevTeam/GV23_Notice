@@ -2,425 +2,527 @@
 @using GV23_Notice.Domain.Workflow
 @{
     ViewData["Title"] = "Step 1 Summary";
+
+    // Full notice name map
+    string NoticeFullName(NoticeKind n) => n switch
+    {
+        NoticeKind.S49 => "Section 49 — Public Inspection &amp; Objections",
+        NoticeKind.S51 => "Section 51 — Objection Decision",
+        NoticeKind.S52 => "Section 52 — Appeal Notices",
+        NoticeKind.S53 => "Section 53 — Appeal Period",
+        NoticeKind.DJ => "Dear Johnny Notice",
+        NoticeKind.IN => "Invalid Notice",
+        NoticeKind.S78 => "Section 78 — Review Period",
+        _ => n.ToString()
+    };
+
+    bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
+    bool sigRequired = Model.Notice == NoticeKind.S49;
+    bool sigOk = !sigRequired || hasSignature;
+    bool canApprove = sigOk;
 }
 
-<link href="~/css/admincss/step1summarycss.css" rel="stylesheet" />
-<!-- Loader -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link href="~/css/AdminCss/Step1SummaryCss1.css" rel="stylesheet" />
+
 <div id="wf-loader" role="status">
-    <div class="wf-spinner"></div>
+    <div class="ss-spinner"></div>
     <div>
-        <div class="wf-loader-text" id="wf-loader-text">Processing…</div>
-        <div class="wf-loader-sub" id="wf-loader-sub">Please wait</div>
+        <div id="wf-loader-text" class="ss-loader-text">Processing…</div>
+        <div id="wf-loader-sub" class="ss-loader-sub">Please wait</div>
     </div>
 </div>
-
-<!-- Toast container -->
 <div id="wf-toast-container" aria-live="polite"></div>
 
-<div class="wf-wrap">
+<div class="ss-root">
 
-    <!-- Title bar -->
-    <div class="wf-titlebar">
-        <div class="logo-mark">GV</div>
-        <h2>Step 1 Summary — Approve Dates</h2>
-        <span class="admin-badge">Admin</span>
-    </div>
-
-    <!-- Step progress (step 2 active = summary/approve) -->
-    <div class="wf-steps">
-        <div class="wf-step done"><div class="sn">✓</div><span>Configure</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step active"><div class="sn">2</div><span>Review Summary</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">3</div><span>Approve</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">4</div><span>Generate</span></div>
-    </div>
-
-    <div class="wf-body">
-        <div class="wf-layout">
-
-            <!-- ── Left column: detail cards ── -->
+    <!-- TOP BAR -->
+    <div class="ss-topbar">
+        <div class="ss-topbar-left">
+            <div class="ss-logo-mark">VNS</div>
+            <div class="ss-topbar-div"></div>
             <div>
+                <div class="ss-page-title">Step 1 Summary</div>
+                <div class="ss-page-sub">Review configuration before approving</div>
+            </div>
+        </div>
+        <div class="ss-topbar-right">
+            <a class="ss-topbar-link"
+               asp-controller="Workflow" asp-action="Step1"
+               asp-route-settingsId="@Model.SettingsId">
+                ← Edit Configuration
+            </a>
+        </div>
+    </div>
 
-                <!-- Settings overview -->
-                <div class="wf-card">
-                    <div class="wf-card-title">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" /></svg>
-                        Configuration Overview
+    <!-- STEPPER -->
+    <div class="ss-stepper">
+        <div class="ss-step ss-done">
+            <div class="ss-step-num">✓</div>
+            <div class="ss-step-label">Configure</div>
+        </div>
+        <div class="ss-step-line"></div>
+        <div class="ss-step ss-active">
+            <div class="ss-step-num">2</div>
+            <div class="ss-step-label">Summary</div>
+        </div>
+        <div class="ss-step-line"></div>
+        <div class="ss-step">
+            <div class="ss-step-num">3</div>
+            <div class="ss-step-label">Approve</div>
+        </div>
+        <div class="ss-step-line"></div>
+        <div class="ss-step">
+            <div class="ss-step-num">4</div>
+            <div class="ss-step-label">Generate</div>
+        </div>
+    </div>
+
+    <!-- SIGNATURE WARNING BANNER (S49 only) -->
+    @if (sigRequired && !hasSignature)
+    {
+        <div class="ss-warn-banner">
+            <span class="ss-warn-icon">⚠</span>
+            <div>
+                <div class="ss-warn-title">Signature Required for Section 49</div>
+                <div class="ss-warn-text">
+                    A signature image must be uploaded before you can approve this configuration.
+                    Go back to Step 1 and upload the signature file.
+                </div>
+            </div>
+            <a class="ss-warn-btn"
+               asp-controller="Workflow" asp-action="Step1"
+               asp-route-settingsId="@Model.SettingsId">
+                Upload Signature →
+            </a>
+        </div>
+    }
+
+    <div class="ss-body">
+
+        <!-- LEFT: detail cards -->
+        <div class="ss-left">
+
+            <!-- Config Overview -->
+            <div class="ss-card">
+                <div class="ss-card-header">
+                    <div class="ss-card-header-left">
+                        <div class="ss-card-icon">⊞</div>
+                        <div>
+                            <div class="ss-card-title">Configuration Overview</div>
+                            <div class="ss-card-sub">Roll, notice type and valuation period</div>
+                        </div>
                     </div>
-                    <div class="wf-detail-list">
-                        <div class="wf-detail-row">
-                            <span class="wf-detail-label">Roll</span>
-                            <span class="wf-detail-value" style="font-weight:700;">
-                                @Model.RollShortCode
-                                <span class="sub">@Model.RollName</span>
-                            </span>
-                        </div>
-                        <div class="wf-detail-row">
-                            <span class="wf-detail-label">Notice</span>
-                            <span class="wf-detail-value"><span class="wf-badge badge-notice">@Model.Notice</span></span>
-                        </div>
-                        <div class="wf-detail-row">
-                            <span class="wf-detail-label">Mode</span>
-                            <span class="wf-detail-value">
-                                @if (Model.Mode.ToString().ToLower() == "bulk")
-                                {
-                                    <span class="wf-badge badge-bulk">Bulk</span>
-                                }
-                                else
-                                {
-                                    <span class="wf-badge badge-single">Single</span>
-                                }
-                            </span>
-                        </div>
-                        <div class="wf-detail-row">
-                            <span class="wf-detail-label">Version</span>
-                            <span class="wf-detail-value"><span class="wf-badge badge-version">@Model.Version</span></span>
-                        </div>
-                    </div>
-
-                    <hr class="wf-divider" />
-
-                    <div class="wf-detail-list">
-                        <div class="wf-detail-row">
-                            <span class="wf-detail-label">Letter Date</span>
-                            <span class="wf-detail-value mono">@Model.LetterDate.ToString("yyyy-MM-dd")</span>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(Model.PortalUrl))
-                        {
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Portal URL</span>
-                                <span class="wf-detail-value"><a href="@Model.PortalUrl" target="_blank" style="color:var(--gold-dark);text-decoration:none;font-size:12px;">@Model.PortalUrl</a></span>
-                            </div>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(Model.EnquiriesLine))
-                        {
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Enquiries</span>
-                                <span class="wf-detail-value">@Model.EnquiriesLine</span>
-                            </div>
-                        }
-                        <div class="wf-detail-row">
-                            <span class="wf-detail-label">City Manager Sign</span>
-                            <span class="wf-detail-value mono">@(Model.CityManagerSignDate?.ToString("yyyy-MM-dd") ?? "—")</span>
-                        </div>
+                    <div class="ss-notice-tag ss-tag-@Model.Notice.ToString().ToLower()">
+                        @Html.Raw(NoticeFullName(Model.Notice))
                     </div>
                 </div>
 
-                <!-- S49 block -->
-                @if (Model.Notice == NoticeKind.S49)
-                {
-                    <div class="wf-card">
-                        <div class="wf-card-title">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
-                            Section 49 — Objection Window
-                        </div>
-                        @if (string.IsNullOrWhiteSpace(Model.SignaturePath))
-                        {
-                            <div class="wf-warning-banner">
-                                <span class="icon">⚠</span>
-                                <span>Signature is missing. Upload it in Step 1 before approving — it is required for notice generation.</span>
-                            </div>
-                        }
-                        <div class="wf-detail-list">
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Objection Start</span>
-                                <span class="wf-detail-value mono">@Model.ObjectionStartDate?.ToString("yyyy-MM-dd")</span>
-                            </div>
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Objection End</span>
-                                <span class="wf-detail-value mono">@Model.ObjectionEndDate?.ToString("yyyy-MM-dd")</span>
-                            </div>
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Extension Date</span>
-                                <span class="wf-detail-value mono">@(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "—")</span>
-                            </div>
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Signature</span>
-                                <span class="wf-detail-value">
-                                    @if (string.IsNullOrWhiteSpace(Model.SignaturePath))
-                                    {
-                                        <span class="wf-badge badge-sig-miss">⚠ Missing</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="wf-badge badge-sig-ok">✓ Uploaded</span>
-                                        <span class="sub" style="font-size:11px;color:var(--grey-light);display:block;margin-top:4px;">@Model.SignaturePath</span>
-                                    }
-                                </span>
-                            </div>
-                        </div>
+                <div class="ss-detail-grid">
+                    <div class="ss-detail-row">
+                        <span class="ss-detail-label">Roll</span>
+                        <span class="ss-detail-value">
+                            <span class="ss-code-chip">@Model.RollShortCode</span>
+                            <span class="ss-detail-name">@Model.RollName</span>
+                        </span>
                     </div>
-                }
-
-                <!-- S52 block -->
-                @if (Model.Notice == NoticeKind.S52)
-                {
-                    <div class="wf-card">
-                        <div class="wf-card-title">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-                            Appeal Notices — Backlog Processing
-                        </div>
-                        <div class="wf-detail-list">
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Sub-Type to Send</span>
-                                <span class="wf-detail-value">
-                                    @if (Model.S52SendMode == S52SendMode.ReviewOnly)
-                                    {
-                                        <span class="wf-badge" style="background:#e8eeff;color:#3355cc;">Section 52 Review Notice only</span>
-                                    }
-                                    else if (Model.S52SendMode == S52SendMode.AppealDecisionOnly)
-                                    {
-                                        <span class="wf-badge" style="background:#fff3cd;color:#856404;">Appeal Decision Notice only</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="wf-badge" style="background:#e8f5e9;color:#1b5e20;">Both — Section 52 Review AND Appeal Decision</span>
-                                    }
-                                </span>
-                            </div>
-                            @if (Model.ShowReview)
-                            {
-                                <div class="wf-detail-row">
-                                    <span class="wf-detail-label">Review Batch From</span>
-                                    <span class="wf-detail-value mono">@(Model.BulkFromDate?.ToString("yyyy-MM-dd") ?? "—")</span>
-                                </div>
-                                <div class="wf-detail-row">
-                                    <span class="wf-detail-label">Review Batch To</span>
-                                    <span class="wf-detail-value mono">@(Model.BulkToDate?.ToString("yyyy-MM-dd") ?? "—")</span>
-                                </div>
-                            }
-                            @if (Model.ShowAppealDecision)
-                            {
-                                <div class="wf-detail-row">
-                                    <span class="wf-detail-label">Appeal Decision Batch From</span>
-                                    <span class="wf-detail-value mono">@(Model.BulkFromDate?.ToString("yyyy-MM-dd") ?? "—")</span>
-                                </div>
-                                <div class="wf-detail-row">
-                                    <span class="wf-detail-label">Appeal Decision Batch To</span>
-                                    <span class="wf-detail-value mono">@(Model.BulkToDate?.ToString("yyyy-MM-dd") ?? "—")</span>
-                                </div>
-                            }
-                        </div>
+                    <div class="ss-detail-row">
+                        <span class="ss-detail-label">Notice</span>
+                        <span class="ss-detail-value ss-detail-strong">
+                            @Html.Raw(NoticeFullName(Model.Notice))
+                        </span>
                     </div>
-                }
-
-                <!-- S53 block -->
-                @if (Model.Notice == NoticeKind.S53)
-                {
-                    <div class="wf-card">
-                        <div class="wf-card-title">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-                            Section 53 — Appeal Period
-                        </div>
-                        <div class="wf-detail-list">
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Batch Date</span>
-                                <span class="wf-detail-value mono">@Model.BatchDate?.ToString("yyyy-MM-dd")</span>
-                            </div>
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Appeal Close Date</span>
-                                <span class="wf-detail-value mono" style="font-weight:700;">@Model.AppealCloseDate?.ToString("yyyy-MM-dd")</span>
-                            </div>
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Override Reason</span>
-                                <span class="wf-detail-value">
-                                    @if (string.IsNullOrWhiteSpace(Model.AppealCloseOverrideReason))
-                                    {
-                                        <span style="color:var(--grey-light);">—</span>
-                                    }
-                                    else
-                                    {
-                                        @Model.AppealCloseOverrideReason
-                                    }
-                                </span>
-                            </div>
-                            <div class="wf-detail-row">
-                                <span class="wf-detail-label">Override Evidence</span>
-                                <span class="wf-detail-value">
-                                    @if (string.IsNullOrWhiteSpace(Model.AppealCloseOverrideEvidencePath))
-                                    {
-                                        <span style="color:var(--grey-light);">—</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="wf-badge badge-sig-ok">✓ Uploaded</span>
-                                    }
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                }
-
-            </div>
-
-            <!-- ── Right column: status + approve ── -->
-            <div>
-                <div class="wf-status-card">
-                    <div class="wf-status-header">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
-                        <h3>Approval Checklist</h3>
-                    </div>
-                    <div class="wf-status-body">
-
-                        <div class="wf-checklist">
-                            <div class="wf-check-item ok">
-                                <div class="wf-check-dot ok">✓</div>
-                                Roll selected
-                            </div>
-                            <div class="wf-check-item ok">
-                                <div class="wf-check-dot ok">✓</div>
-                                Notice type configured
-                            </div>
-                            <div class="wf-check-item ok">
-                                <div class="wf-check-dot ok">✓</div>
-                                Letter date set
-                            </div>
-
-                            @if (Model.Notice == NoticeKind.S49)
+                    <div class="ss-detail-row">
+                        <span class="ss-detail-label">Mode</span>
+                        <span class="ss-detail-value">
+                            @if (Model.Mode.ToString().ToLower() == "bulk")
                             {
-                                if (string.IsNullOrWhiteSpace(Model.SignaturePath))
-                                {
-                                    <div class="wf-check-item warn">
-                                        <div class="wf-check-dot warn">!</div>
-                                        Signature missing — required
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="wf-check-item ok">
-                                        <div class="wf-check-dot ok">✓</div>
-                                        Signature uploaded
-                                    </div>
-                                }
-                                <div class="wf-check-item ok">
-                                    <div class="wf-check-dot ok">✓</div>
-                                    Objection dates set
-                                </div>
+                                <span class="ss-badge ss-badge-bulk">Bulk</span>
                             }
-
-                            @if (Model.Notice == NoticeKind.S53)
+                            else
                             {
-                                <div class="wf-check-item ok">
-                                    <div class="wf-check-dot ok">✓</div>
-                                    Appeal close date calculated
-                                </div>
+
+                                <span class="ss-badge ss-badge-single">Single</span>
                             }
-                        </div>
+                        </span>
+                    </div>
+                    <div class="ss-detail-row">
+                        <span class="ss-detail-label">Version</span>
+                        <span class="ss-detail-value"><span class="ss-badge ss-badge-version">v@Model.Version</span></span>
+                    </div>
+                </div>
 
-                        <!-- Settings summary pill list -->
-                        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--grey-line);display:flex;flex-direction:column;gap:8px;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
-                                <span style="color:var(--grey-mid);font-weight:500;">Settings ID</span>
-                                <span style="font-weight:700;font-variant-numeric:tabular-nums;font-size:12px;">#@Model.SettingsId</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
-                                <span style="color:var(--grey-mid);font-weight:500;">Letter Date</span>
-                                <span style="font-weight:600;font-variant-numeric:tabular-nums;">@Model.LetterDate.ToString("yyyy-MM-dd")</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
-                                <span style="color:var(--grey-mid);font-weight:500;">Version</span>
-                                <span class="wf-badge badge-version" style="font-size:10px;">@Model.Version</span>
-                            </div>
-                        </div>
+                <div class="ss-divider"></div>
 
-                        <!-- Actions -->
-                        <div class="wf-actions">
-                            <form id="approve-form" asp-action="Step1SummaryApprove" asp-controller="Workflow" method="post">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                                <button id="approve-btn" class="wf-btn wf-btn-approve" type="submit">
-                                    <span class="btn-spinner"></span>
-                                    <span class="btn-label" style="display:inline-flex;align-items:center;gap:7px;">
-                                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-                                        Approve &amp; Go to Step 2
-                                    </span>
-                                </button>
-                            </form>
-                            <a class="wf-btn wf-btn-edit"
-                               href="@Url.Action("Step1", "Workflow", new { settingsId = Model.SettingsId })">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                                Edit Configuration
-                            </a>
+                <div class="ss-detail-grid">
+                    <div class="ss-detail-row">
+                        <span class="ss-detail-label">Letter Date</span>
+                        <span class="ss-detail-value ss-mono">@Model.LetterDate.ToString("dd MMMM yyyy")</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Model.PortalUrl))
+                    {
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Portal URL</span>
+                            <span class="ss-detail-value">
+                                <a href="@Model.PortalUrl" target="_blank" class="ss-link">@Model.PortalUrl</a>
+                            </span>
                         </div>
-
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.EnquiriesLine))
+                    {
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Enquiries</span>
+                            <span class="ss-detail-value">@Model.EnquiriesLine</span>
+                        </div>
+                    }
+                    <div class="ss-detail-row">
+                        <span class="ss-detail-label">City Manager Sign</span>
+                        <span class="ss-detail-value ss-mono">
+                            @(Model.CityManagerSignDate?.ToString("dd MMMM yyyy") ?? "—")
+                        </span>
                     </div>
                 </div>
             </div>
+
+            <!-- S49 block -->
+            @if (Model.Notice == NoticeKind.S49)
+            {
+                <div class="ss-card">
+                    <div class="ss-card-header">
+                        <div class="ss-card-header-left">
+                            <div class="ss-card-icon ss-icon-s49">§</div>
+                            <div>
+                                <div class="ss-card-title">Section 49 — Objection Window</div>
+                                <div class="ss-card-sub">Inspection dates and signature</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ss-detail-grid">
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Objection Start</span>
+                            <span class="ss-detail-value ss-mono">
+                                @(Model.ObjectionStartDate?.ToString("dd MMMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Objection End</span>
+                            <span class="ss-detail-value ss-mono">
+                                @(Model.ObjectionEndDate?.ToString("dd MMMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Extension Date</span>
+                            <span class="ss-detail-value ss-mono">
+                                @(Model.ExtensionDate?.ToString("dd MMMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Signature</span>
+                            <span class="ss-detail-value">
+                                @if (hasSignature)
+                                {
+                                    <span class="ss-badge ss-badge-ok">✓ Uploaded</span>
+                                    <span class="ss-file-path">@System.IO.Path.GetFileName(Model.SignaturePath)</span>
+                                }
+                                else
+                                {
+                                    <span class="ss-badge ss-badge-warn">⚠ Missing — required</span>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- S51 block -->
+            @if (Model.Notice == NoticeKind.S51)
+            {
+                <div class="ss-card">
+                    <div class="ss-card-header">
+                        <div class="ss-card-header-left">
+                            <div class="ss-card-icon ss-icon-s51">§</div>
+                            <div>
+                                <div class="ss-card-title">Section 51 — Objection Decision</div>
+                                <div class="ss-card-sub">Evidence close date</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ss-detail-grid">
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Evidence Close Date</span>
+                            <span class="ss-detail-value ss-mono">
+                                @(Model.EvidenceCloseDate?.ToString("dd MMMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            <!-- S52 block -->
+            @if (Model.Notice == NoticeKind.S52)
+            {
+                <div class="ss-card">
+                    <div class="ss-card-header">
+                        <div class="ss-card-header-left">
+                            <div class="ss-card-icon ss-icon-s52">§</div>
+                            <div>
+                                <div class="ss-card-title">Section 52 — Appeal Notices</div>
+                                <div class="ss-card-sub">Backlog processing configuration</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ss-detail-grid">
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Sub-Type</span>
+                            <span class="ss-detail-value">
+                                @if (Model.S52SendMode == S52SendMode.ReviewOnly)
+                                {
+                                    <span class="ss-badge ss-badge-s52r">Section 52 Review only</span>
+                                }
+                                else if (Model.S52SendMode == S52SendMode.AppealDecisionOnly)
+                                {
+
+                                    <span class="ss-badge ss-badge-s52a">Appeal Decision only</span>
+                                }
+                                else
+                                {
+
+                                    <span class="ss-badge ss-badge-both">Both sub-types</span>
+                                }
+                            </span>
+                        </div>
+                        @if (Model.ShowReview || Model.ShowAppealDecision)
+                        {
+                            <div class="ss-detail-row">
+                                <span class="ss-detail-label">Date Range From</span>
+                                <span class="ss-detail-value ss-mono">@(Model.BulkFromDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                            </div>
+                            <div class="ss-detail-row">
+                                <span class="ss-detail-label">Date Range To</span>
+                                <span class="ss-detail-value ss-mono">@(Model.BulkToDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- S53 block -->
+            @if (Model.Notice == NoticeKind.S53)
+            {
+                <div class="ss-card">
+                    <div class="ss-card-header">
+                        <div class="ss-card-header-left">
+                            <div class="ss-card-icon ss-icon-s53">§</div>
+                            <div>
+                                <div class="ss-card-title">Section 53 — Appeal Period</div>
+                                <div class="ss-card-sub">Batch date and appeal close date</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ss-detail-grid">
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Batch Date</span>
+                            <span class="ss-detail-value ss-mono">@(Model.BatchDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                        </div>
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Appeal Close Date</span>
+                            <span class="ss-detail-value ss-mono ss-detail-strong">
+                                @(Model.AppealCloseDate?.ToString("dd MMMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(Model.AppealCloseOverrideReason))
+                        {
+                            <div class="ss-detail-row">
+                                <span class="ss-detail-label">Override Reason</span>
+                                <span class="ss-detail-value">@Model.AppealCloseOverrideReason</span>
+                            </div>
+                        }
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Override Evidence</span>
+                            <span class="ss-detail-value">
+                                @if (!string.IsNullOrWhiteSpace(Model.AppealCloseOverrideEvidencePath))
+                                {
+                                    <span class="ss-badge ss-badge-ok">✓ Uploaded</span>
+                                }
+                                else
+                                {
+
+                                    <span class="ss-mono" style="color:var(--ss-text-d)">—</span>
+                                }
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
 
         </div>
+
+        <!-- RIGHT: checklist + approve -->
+        <div class="ss-right">
+            <div class="ss-action-card">
+                <div class="ss-action-header">
+                    <div class="ss-action-title">Approval Checklist</div>
+                    <div class="ss-action-sub">All items must be ✓ before approving</div>
+                </div>
+
+                <div class="ss-checklist">
+                    <div class="ss-check ok">
+                        <div class="ss-check-dot ok">✓</div>
+                        <span>Roll selected — <strong>@Model.RollShortCode</strong></span>
+                    </div>
+                    <div class="ss-check ok">
+                        <div class="ss-check-dot ok">✓</div>
+                        <span>@Html.Raw(NoticeFullName(Model.Notice)) configured</span>
+                    </div>
+                    <div class="ss-check ok">
+                        <div class="ss-check-dot ok">✓</div>
+                        <span>Letter date — <strong>@Model.LetterDate.ToString("dd MMM yyyy")</strong></span>
+                    </div>
+
+                    @if (Model.Notice == NoticeKind.S49)
+                    {
+                        if (hasSignature)
+                        {
+                            <div class="ss-check ok">
+                                <div class="ss-check-dot ok">✓</div>
+                                <span>Signature uploaded</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="ss-check warn">
+                                <div class="ss-check-dot warn">!</div>
+                                <span>Signature <strong>missing</strong> — required for Section 49</span>
+                            </div>
+                        }
+                        <div class="ss-check ok">
+                            <div class="ss-check-dot ok">✓</div>
+                            <span>Objection dates configured</span>
+                        </div>
+                    }
+
+                    @if (Model.Notice == NoticeKind.S53)
+                    {
+                        <div class="ss-check ok">
+                            <div class="ss-check-dot ok">✓</div>
+                            <span>Appeal close date calculated</span>
+                        </div>
+                    }
+                </div>
+
+                <!-- Meta pills -->
+                <div class="ss-meta-block">
+                    <div class="ss-meta-row">
+                        <span class="ss-meta-label">Settings ID</span>
+                        <span class="ss-meta-val ss-mono">#@Model.SettingsId</span>
+                    </div>
+                    <div class="ss-meta-row">
+                        <span class="ss-meta-label">Letter Date</span>
+                        <span class="ss-meta-val ss-mono">@Model.LetterDate.ToString("yyyy-MM-dd")</span>
+                    </div>
+                    <div class="ss-meta-row">
+                        <span class="ss-meta-label">Version</span>
+                        <span class="ss-badge ss-badge-version">v@Model.Version</span>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="ss-action-btns">
+                    <form id="approve-form" asp-action="Step1SummaryApprove"
+                          asp-controller="Workflow" method="post">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+                        <button id="approve-btn" type="submit"
+                                class="ss-btn ss-btn-approve @(!canApprove ? "ss-btn-disabled" : "")"
+                                @(!canApprove ? "disabled" : "")>
+                            <span class="ss-btn-spinner"></span>
+                            <span>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                Approve &amp; Go to Step 2
+                            </span>
+                        </button>
+                    </form>
+
+                    <a class="ss-btn ss-btn-edit"
+                       asp-controller="Workflow" asp-action="Step1"
+                       asp-route-settingsId="@Model.SettingsId">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        Edit Configuration
+                    </a>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
 @section Scripts {
     <script>
-        /* ── Toast ── */
         const WfToast = (() => {
-            const c = document.getElementById("wf-toast-container");
-            const ICONS={success:"✓",error:"✕",warning:"!",info:"i"};
-            const TITLES={success:"Success",error:"Error",warning:"Warning",info:"Info"};
-            const DUR=5000;
-            function show(type,msg,title){
-                const t=document.createElement("div");
+            const c = document.getElementById('wf-toast-container');
+            const ICONS={success:'✓',error:'✕',warning:'!',info:'i'};
+            const TITLES={success:'Success',error:'Error',warning:'Warning',info:'Info'};
+            function show(type,msg,title) {
+                const t=document.createElement('div');
                 t.className=`wf-toast t-${type}`;
-                t.innerHTML=`<div class="wf-toast-main"><div class="wf-toast-stripe"></div><div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div><div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div><div class="wf-toast-msg">${msg}</div></div></div><button class="wf-toast-close">×</button></div><div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
+                t.innerHTML=`<div class="wf-toast-main"><div class="wf-toast-stripe"></div>
+                    <div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div>
+                    <div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div>
+                    <div class="wf-toast-msg">${msg}</div></div></div>
+                    <button class="wf-toast-close">×</button></div>
+                    <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
                 c.appendChild(t);
-                requestAnimationFrame(()=>requestAnimationFrame(()=>t.classList.add("show")));
-                const bar=t.querySelector(".wf-toast-bar");
-                requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition=`transform ${DUR}ms linear`;bar.style.transform="scaleX(0)";}));
-                const tm=setTimeout(()=>dismiss(t),DUR);
-                t.querySelector(".wf-toast-close").addEventListener("click",()=>{clearTimeout(tm);dismiss(t);});
+                requestAnimationFrame(()=>requestAnimationFrame(()=>{
+                    t.classList.add('show');
+                    const bar=t.querySelector('.wf-toast-bar');
+                    bar.style.transition='transform 5000ms linear';
+                    bar.style.transform='scaleX(0)';
+                }));
+                const tm=setTimeout(()=>dismiss(t),5000);
+                t.querySelector('.wf-toast-close').onclick=()=>{clearTimeout(tm);dismiss(t);};
             }
-            function dismiss(t){t.classList.remove("show");t.classList.add("hide");t.addEventListener("transitionend",()=>t.remove(),{once:true});}
-            return{success:(m,t)=>show("success",m,t),error:(m,t)=>show("error",m,t),warning:(m,t)=>show("warning",m,t),info:(m,t)=>show("info",m,t)};
+            function dismiss(t){t.classList.replace('show','hide');t.addEventListener('transitionend',()=>t.remove(),{once:true});}
+            return{success:(m,t)=>show('success',m,t),error:(m,t)=>show('error',m,t),
+                   warning:(m,t)=>show('warning',m,t),info:(m,t)=>show('info',m,t)};
         })();
 
-        /* ── Loader ── */
         const WfLoader={
             show:(msg,hint)=>{
-                document.getElementById("wf-loader-text").textContent=msg||"Loading…";
-                document.getElementById("wf-loader-sub").textContent=hint||"Please wait";
-                document.getElementById("wf-loader").classList.add("active");
+                document.getElementById('wf-loader-text').textContent=msg||'Loading…';
+                document.getElementById('wf-loader-sub').textContent=hint||'Please wait';
+                document.getElementById('wf-loader').classList.add('active');
             },
-            hide:()=>document.getElementById("wf-loader").classList.remove("active")
+            hide:()=>document.getElementById('wf-loader').classList.remove('active')
         };
 
-        /* ── TempData toasts ── */
         @if (TempData["Error"] != null)
         {
-                    <text>
-                    document.addEventListener("DOMContentLoaded", () =>
-                        WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
-                    </text>
+                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));</text>
         }
         @if (TempData["Success"] != null)
         {
-                    <text>
-                    document.addEventListener("DOMContentLoaded", () =>
-                        WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
-                    </text>
+                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));</text>
         }
 
-        /* ── Approve form ── */
-        document.addEventListener("DOMContentLoaded", () => {
-            const form = document.getElementById("approve-form");
-            const btn  = document.getElementById("approve-btn");
-
-            if (form) {
-                form.addEventListener("submit", () => {
-                    btn.classList.add("loading");
-                    WfLoader.show("Approving configuration…", "Saving and moving to Step 2");
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('approve-form');
+            const btn  = document.getElementById('approve-btn');
+            if (form && btn && !btn.disabled) {
+                form.addEventListener('submit', () => {
+                    btn.classList.add('loading');
+                    WfLoader.show('Approving configuration…', 'Saving and moving to Step 2');
                 });
             }
-
-            /* Edit button loader */
-            document.querySelectorAll(".wf-btn-edit").forEach(a => {
-                a.addEventListener("click", () => WfLoader.show("Loading editor…", "Opening Step 1 configuration"));
-            });
-
-            /* Page load info toast */
-            WfToast.info("Review all details carefully before approving.", "Summary Loaded");
+            document.querySelectorAll('.ss-btn-edit').forEach(a =>
+                a.addEventListener('click', () => WfLoader.show('Loading editor…', 'Opening Step 1 configuration')));
         });
     </script>
 }

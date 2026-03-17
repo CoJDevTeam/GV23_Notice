@@ -1,223 +1,426 @@
 ﻿@model List<GV23_Notice.Models.Workflow.ViewModels.SettingsLibraryRowVm>
+@using GV23_Notice.Domain.Workflow
 @{
-    ViewData["Title"] = "Approved Settings Library";
+    ViewData["Title"] = "Settings Library";
+
+    string NoticeFull(NoticeKind n) => n switch
+    {
+        NoticeKind.S49 => "Section 49",
+        NoticeKind.S51 => "Section 51",
+        NoticeKind.S52 => "Section 52",
+        NoticeKind.S53 => "Section 53",
+        NoticeKind.DJ => "Dear Johnny",
+        NoticeKind.IN => "Invalid",
+        NoticeKind.S78 => "Section 78",
+        _ => n.ToString()
+    };
+
+    string NoticeDesc(NoticeKind n) => n switch
+    {
+        NoticeKind.S49 => "Public Inspection & Objections",
+        NoticeKind.S51 => "Objection Decision",
+        NoticeKind.S52 => "Appeal Notices",
+        NoticeKind.S53 => "Appeal Period",
+        NoticeKind.DJ => "Dear Johnny Notice",
+        NoticeKind.IN => "Invalid Notice",
+        NoticeKind.S78 => "Review Period",
+        _ => ""
+    };
+
+    int totalSettings = Model.Count;
+    int withSignature = Model.Count(x => !string.IsNullOrWhiteSpace(x.SignaturePath));
+    int missingSignature = Model.Count(x => string.IsNullOrWhiteSpace(x.SignaturePath) && x.Notice == NoticeKind.S49);
+    int distinctNotices = Model.Select(x => x.Notice).Distinct().Count();
 }
 
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link href="~/css/AdminCss/SettingLibaryCss1.css" rel="stylesheet" />
 
-<link href="~/css/admincss/settinglibarycss.css" rel="stylesheet" />
-<!-- Loader -->
 <div id="wf-loader" role="status">
-    <div class="wf-spinner"></div>
+    <div class="sl-spinner"></div>
     <div>
-        <div class="wf-loader-text" id="wf-loader-text">Loading…</div>
-        <div class="wf-loader-sub" id="wf-loader-sub">Please wait</div>
+        <div id="wf-loader-text" class="sl-loader-text">Loading…</div>
+        <div id="wf-loader-sub" class="sl-loader-sub">Please wait</div>
     </div>
 </div>
-
-<!-- Toast container -->
 <div id="wf-toast-container" aria-live="polite"></div>
 
-<div class="wf-wrap">
+<div class="sl-root">
 
-    <!-- Title bar -->
-    <div class="wf-titlebar">
-        <div class="logo-mark">GV</div>
-        <h2>Approved Settings Library</h2>
-        <span class="admin-badge">Admin</span>
-    </div>
-
-    <!-- Step progress -->
-    <div class="wf-steps">
-        <div class="wf-step active"><div class="sn">1</div><span>Configure</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">2</div><span>Review Summary</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">3</div><span>Approve</span></div>
-        <div class="wf-sep"></div>
-        <div class="wf-step"><div class="sn">4</div><span>Generate</span></div>
-    </div>
-
-    <div class="wf-body">
-
-        <!-- Stats -->
-        <div class="wf-stats">
-            <div class="wf-stat gold-accent">
-                <div class="wf-stat-label">Total Settings</div>
-                <div class="wf-stat-value">@Model.Count</div>
-                <div class="wf-stat-sub">Approved configurations</div>
-            </div>
-            <div class="wf-stat">
-                <div class="wf-stat-label">With Signature</div>
-                <div class="wf-stat-value">@Model.Count(x => !string.IsNullOrWhiteSpace(x.SignaturePath))</div>
-                <div class="wf-stat-sub">Ready for generation</div>
-            </div>
-            <div class="wf-stat">
-                <div class="wf-stat-label">Missing Signature</div>
-                <div class="wf-stat-value">@Model.Count(x => string.IsNullOrWhiteSpace(x.SignaturePath))</div>
-                <div class="wf-stat-sub">Requires upload</div>
-            </div>
-            <div class="wf-stat">
-                <div class="wf-stat-label">Notice Types</div>
-                <div class="wf-stat-value">@Model.Select(x => x.Notice).Distinct().Count()</div>
-                <div class="wf-stat-sub">Distinct notices used</div>
+    <!-- ══ TOP BAR ═══════════════════════════════════════════════ -->
+    <div class="sl-topbar">
+        <div class="sl-topbar-left">
+            <div class="sl-logo-mark">VNS</div>
+            <div class="sl-topbar-div"></div>
+            <div>
+                <div class="sl-page-title">Settings Library</div>
+                <div class="sl-page-sub">Approved notice configurations</div>
             </div>
         </div>
+        <div class="sl-topbar-right">
+            <a class="sl-topbar-btn sl-topbar-btn-gold"
+               asp-controller="Workflow" asp-action="Step1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                New Configuration
+            </a>
+            <a class="sl-topbar-btn" asp-controller="Home" asp-action="Index">
+                ← Dashboard
+            </a>
+        </div>
+    </div>
 
-        <!-- Table card -->
-        <div class="wf-card">
-            <div class="wf-card-header">
-                <div class="wf-card-title">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
-                    Approved Configurations
+    <!-- ══ STAT STRIP ════════════════════════════════════════════ -->
+    <div class="sl-stats">
+        <div class="sl-stat">
+            <div class="sl-stat-num" id="ctr-total">@totalSettings</div>
+            <div class="sl-stat-label">Total Settings</div>
+            <div class="sl-stat-sub">Approved configurations</div>
+        </div>
+        <div class="sl-stat sl-stat-green">
+            <div class="sl-stat-num">@withSignature</div>
+            <div class="sl-stat-label">With Signature</div>
+            <div class="sl-stat-sub">Section 49 ready</div>
+        </div>
+        @if (missingSignature > 0)
+        {
+            <div class="sl-stat sl-stat-amber">
+                <div class="sl-stat-num">@missingSignature</div>
+                <div class="sl-stat-label">Sig. Missing</div>
+                <div class="sl-stat-sub">S49 needs upload</div>
+            </div>
+        }
+        else
+        {
+            <div class="sl-stat sl-stat-green">
+                <div class="sl-stat-num">0</div>
+                <div class="sl-stat-label">Sig. Missing</div>
+                <div class="sl-stat-sub">All S49 complete</div>
+            </div>
+        }
+        <div class="sl-stat sl-stat-gold">
+            <div class="sl-stat-num">@distinctNotices</div>
+            <div class="sl-stat-label">Notice Types</div>
+            <div class="sl-stat-sub">Distinct types used</div>
+        </div>
+    </div>
+
+    <!-- ══ TABLE CARD ════════════════════════════════════════════ -->
+    <div class="sl-body">
+
+        <div class="sl-card">
+            <!-- Card header -->
+            <div class="sl-card-header">
+                <div class="sl-card-header-left">
+                    <div class="sl-card-icon">◫</div>
+                    <div>
+                        <div class="sl-card-title">Approved Configurations</div>
+                        <div class="sl-card-sub">All approved notice settings — click any row to open</div>
+                    </div>
                 </div>
-                <span class="wf-card-meta">Click a column header to sort · Use the search box to filter</span>
+                <!-- Search + filter bar -->
+                <div class="sl-toolbar">
+                    <div class="sl-search-wrap">
+                        <svg class="sl-search-icon" width="14" height="14" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                        </svg>
+                        <input type="text" id="sl-search" class="sl-search"
+                               placeholder="Search by roll, notice, date…"
+                               oninput="filterTable()" />
+                    </div>
+                    <select id="sl-filter-notice" class="sl-filter" onchange="filterTable()">
+                        <option value="">All notices</option>
+                        <option value="s49">Section 49</option>
+                        <option value="s51">Section 51</option>
+                        <option value="s52">Section 52</option>
+                        <option value="s53">Section 53</option>
+                        <option value="dj">Dear Johnny</option>
+                        <option value="in">Invalid</option>
+                    </select>
+                    <select id="sl-filter-sig" class="sl-filter" onchange="filterTable()">
+                        <option value="">All signatures</option>
+                        <option value="ok">✓ Uploaded</option>
+                        <option value="missing">⚠ Missing</option>
+                    </select>
+                    <div class="sl-count-chip" id="sl-visible-count">@Model.Count rows</div>
+                </div>
             </div>
 
             @if (!Model.Any())
             {
-                <div class="wf-empty">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-                    <p>No approved settings found.<br />Create a new configuration from Step 1.</p>
+                <div class="sl-empty">
+                    <div class="sl-empty-glyph">□</div>
+                    <div class="sl-empty-title">No approved settings yet</div>
+                    <div class="sl-empty-sub">Create a new configuration from Step 1 to get started.</div>
+                    <a class="sl-empty-btn" asp-controller="Workflow" asp-action="Step1">
+                        Create First Configuration →
+                    </a>
                 </div>
             }
             else
             {
-                <table id="settingsTable" class="table" style="width:100%">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Roll</th>
-                            <th>Notice</th>
-                            <th>Mode</th>
-                            <th>Version</th>
-                            <th>Letter Date</th>
-                            <th>Signature</th>
-                            <th style="width:160px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var r in Model)
-                        {
+                <div class="sl-table-wrap">
+                    <table class="sl-table" id="sl-table">
+                        <thead>
                             <tr>
-                                <td>
-                                    <span style="font-size:11px;font-weight:700;color:var(--grey-light);font-family:monospace;">
-                                        #@r.SettingsId
-                                    </span>
-                                </td>
-                                <td style="font-weight:600;">@r.RollShortCode</td>
-                                <td><span class="wf-badge badge-notice">@r.Notice</span></td>
-                                <td>
-                                    @if (r.Mode.ToString().ToLower() == "bulk")
-                                    {
-                                        <span class="wf-badge badge-bulk">Bulk</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="wf-badge badge-single">Single</span>
-                                    }
-                                </td>
-                                <td style="color:var(--grey-mid);font-size:12px;">@r.Version</td>
-                                <td style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--grey-dark);">
-                                    @r.LetterDate.ToString("dd-MM-yyyy")
-                                </td>
-                                <td>
-                                    @if (string.IsNullOrWhiteSpace(r.SignaturePath))
-                                    {
-                                        <span class="wf-badge badge-sig-miss">⚠ Not Required</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="wf-badge badge-sig-ok">✓ Uploaded</span>
-                                    }
-                                </td>
-                                <td>
-                                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                                        <a class="wf-btn wf-btn-primary"
-                                           href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                                            Update Notice Settings
-                                        </a>
-                                        <a class="wf-btn wf-btn-secondary"
-                                           href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                                            Summary
-                                        </a>
-                                    </div>
-                                </td>
+                                <th class="sl-th-id" onclick="sortTable(0)">
+                                    <span>ID</span>
+                                    <svg class="sl-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                                </th>
+                                <th onclick="sortTable(1)">
+                                    <span>Roll</span>
+                                    <svg class="sl-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                                </th>
+                                <th onclick="sortTable(2)">
+                                    <span>Notice</span>
+                                    <svg class="sl-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                                </th>
+                                <th onclick="sortTable(3)">
+                                    <span>Mode</span>
+                                    <svg class="sl-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                                </th>
+                                <th onclick="sortTable(4)">
+                                    <span>Ver</span>
+                                    <svg class="sl-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                                </th>
+                                <th onclick="sortTable(5)">
+                                    <span>Letter Date</span>
+                                    <svg class="sl-sort-icon active" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                                </th>
+                                <th onclick="sortTable(6)">
+                                    <span>Signature</span>
+                                    <svg class="sl-sort-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                                </th>
+                                <th>Actions</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody id="sl-tbody">
+                            @foreach (var r in Model.OrderByDescending(x => x.LetterDate))
+                            {
+                                var noticeFull = NoticeFull(r.Notice);
+                                var noticeDesc = NoticeDesc(r.Notice);
+                                var noticeClass = r.Notice.ToString().ToLower();
+                                var hasSig = !string.IsNullOrWhiteSpace(r.SignaturePath);
+                                var sigWarning = r.Notice == NoticeKind.S49 && !hasSig;
+
+                                <tr class="sl-row @(sigWarning ? "sl-row-warn" : "")"
+                                    data-notice="@noticeClass"
+                                    data-sig="@(hasSig ? "ok" : "missing")"
+                                    data-search="@r.RollShortCode.ToLower() @r.RollName.ToLower() @noticeClass @r.LetterDate.ToString("yyyy-MM-dd") #@r.SettingsId"
+                                    onclick="openSettings(@r.SettingsId)">
+
+                                    <td class="sl-td-id">
+                                        <span class="sl-id-chip">#@r.SettingsId</span>
+                                    </td>
+
+                                    <td>
+                                        <div class="sl-roll-name">@r.RollName</div>
+                                        <div class="sl-roll-code">@r.RollShortCode</div>
+                                    </td>
+
+                                    <td>
+                                        <div class="sl-notice-tag sl-tag-@noticeClass">
+                                            @noticeFull
+                                        </div>
+                                        <div class="sl-notice-desc">@noticeDesc</div>
+                                    </td>
+
+                                    <td>
+                                        @if (r.Mode.ToString().ToLower() == "bulk")
+                                        {
+                                            <span class="sl-badge sl-badge-bulk">Bulk</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="sl-badge sl-badge-single">Single</span>
+                                        }
+                                    </td>
+
+                                    <td>
+                                        <span class="sl-badge sl-badge-ver">v@r.Version</span>
+                                    </td>
+
+                                    <td class="sl-td-date">
+                                        @r.LetterDate.ToString("dd MMM yyyy")
+                                    </td>
+
+                                    <td>
+                                        @if (r.Notice == NoticeKind.S49)
+                                        {
+                                            if (hasSig)
+                                            {
+                                                <span class="sl-badge sl-badge-ok">✓ Uploaded</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="sl-badge sl-badge-warn">⚠ Missing</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="sl-badge sl-badge-na">—</span>
+                                        }
+                                    </td>
+
+                                    <td onclick="event.stopPropagation()">
+                                        <div class="sl-actions">
+                                            <a class="sl-action-btn sl-action-primary"
+                                               href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })"
+                                               title="Edit configuration">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                                                </svg>
+                                                Edit
+                                            </a>
+                                            <a class="sl-action-btn"
+                                               href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })"
+                                               title="View summary">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                    <circle cx="12" cy="12" r="3" />
+                                                </svg>
+                                                Summary
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Table footer -->
+                <div class="sl-table-footer">
+                    <div class="sl-footer-info" id="sl-footer-info">
+                        Showing all @Model.Count configuration(s)
+                    </div>
+                    <div class="sl-pagination" id="sl-pagination"></div>
+                </div>
             }
         </div>
-
     </div>
+
 </div>
 
 @section Scripts {
     <script>
-        /* ── Toast ── */
+        /* ── Toast ─────────────────────────────────────── */
         const WfToast = (() => {
-            const c = document.getElementById("wf-toast-container");
-            const ICONS={success:"✓",error:"✕",warning:"!",info:"i"};
-            const TITLES={success:"Success",error:"Error",warning:"Warning",info:"Info"};
-            const DUR=5000;
+            const c = document.getElementById('wf-toast-container');
+            const ICONS  = {success:'✓',error:'✕',warning:'!',info:'i'};
+            const TITLES = {success:'Success',error:'Error',warning:'Warning',info:'Info'};
             function show(type,msg,title){
-                const t=document.createElement("div");
+                const t=document.createElement('div');
                 t.className=`wf-toast t-${type}`;
-                t.innerHTML=`<div class="wf-toast-main"><div class="wf-toast-stripe"></div><div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div><div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div><div class="wf-toast-msg">${msg}</div></div></div><button class="wf-toast-close">×</button></div><div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
+                t.innerHTML=`<div class="wf-toast-main"><div class="wf-toast-stripe"></div>
+                    <div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div>
+                    <div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div>
+                    <div class="wf-toast-msg">${msg}</div></div></div>
+                    <button class="wf-toast-close">×</button></div>
+                    <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
                 c.appendChild(t);
-                requestAnimationFrame(()=>requestAnimationFrame(()=>t.classList.add("show")));
-                const bar=t.querySelector(".wf-toast-bar");
-                requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition=`transform ${DUR}ms linear`;bar.style.transform="scaleX(0)";}));
-                const tm=setTimeout(()=>dismiss(t),DUR);
-                t.querySelector(".wf-toast-close").addEventListener("click",()=>{clearTimeout(tm);dismiss(t);});
+                requestAnimationFrame(()=>requestAnimationFrame(()=>{
+                    t.classList.add('show');
+                    const bar=t.querySelector('.wf-toast-bar');
+                    bar.style.transition='transform 5000ms linear';
+                    bar.style.transform='scaleX(0)';
+                }));
+                const tm=setTimeout(()=>dismiss(t),5000);
+                t.querySelector('.wf-toast-close').onclick=()=>{clearTimeout(tm);dismiss(t);};
             }
-            function dismiss(t){t.classList.remove("show");t.classList.add("hide");t.addEventListener("transitionend",()=>t.remove(),{once:true});}
-            return{success:(m,t)=>show("success",m,t),error:(m,t)=>show("error",m,t),warning:(m,t)=>show("warning",m,t),info:(m,t)=>show("info",m,t)};
+            function dismiss(t){t.classList.replace('show','hide');t.addEventListener('transitionend',()=>t.remove(),{once:true});}
+            return{success:(m,t)=>show('success',m,t),error:(m,t)=>show('error',m,t),
+                   warning:(m,t)=>show('warning',m,t),info:(m,t)=>show('info',m,t)};
         })();
 
-        /* ── Loader ── */
+        /* ── Loader ─────────────────────────────────────── */
         const WfLoader={
-            show:(msg,hint)=>{
-                document.getElementById("wf-loader-text").textContent=msg||"Loading…";
-                document.getElementById("wf-loader-sub").textContent=hint||"Please wait";
-                document.getElementById("wf-loader").classList.add("active");
+            show:(m,h)=>{
+                document.getElementById('wf-loader-text').textContent=m||'Loading…';
+                document.getElementById('wf-loader-sub').textContent=h||'Please wait';
+                document.getElementById('wf-loader').classList.add('active');
             },
-            hide:()=>document.getElementById("wf-loader").classList.remove("active")
+            hide:()=>document.getElementById('wf-loader').classList.remove('active')
         };
 
-        /* ── DataTable init ── */
-        document.addEventListener("DOMContentLoaded", () => {
-            if (typeof $.fn.DataTable === "undefined") return;
+        /* ── Navigate to settings ───────────────────────── */
+        function openSettings(id){
+            WfLoader.show('Opening configuration…','Loading settings');
+            window.location.href=`/Workflow/Step1?settingsId=${id}`;
+        }
 
-            $('#settingsTable').DataTable({
-                pageLength: 15,
-                lengthMenu: [10, 15, 25, 50, 100],
-                order: [[5, 'desc']],   // default sort by LetterDate desc
-                columnDefs: [
-                    { orderable: false, targets: 7 }   // disable sort on Actions column
-                ],
-                language: {
-                    search: "",
-                    searchPlaceholder: "Search settings…",
-                    lengthMenu: "Show _MENU_ rows",
-                    info: "Showing _START_–_END_ of _TOTAL_ settings",
-                    infoEmpty: "No settings found",
-                    paginate: { previous: "‹", next: "›" }
-                },
-                dom: "<'dt-toolbar'<'dataTables_length'l><'dataTables_filter'f>>t<'row'<'col-sm-6'i><'col-sm-6'p>>",
-                initComplete: function () {
-                    WfToast.info(`${this.api().data().length} approved setting(s) loaded.`, "Library Ready");
-                }
+        /* ── Filter + search ────────────────────────────── */
+        let sortCol=5, sortDir=-1;  // default: LetterDate desc
+
+        function filterTable(){
+            const q     = (document.getElementById('sl-search')?.value||'').toLowerCase();
+            const notice= (document.getElementById('sl-filter-notice')?.value||'').toLowerCase();
+            const sig   = (document.getElementById('sl-filter-sig')?.value||'');
+            const rows  = document.querySelectorAll('#sl-tbody .sl-row');
+            let vis=0;
+
+            rows.forEach(row=>{
+                const search = (row.dataset.search||'').toLowerCase();
+                const rNotice= (row.dataset.notice||'').toLowerCase();
+                const rSig   = (row.dataset.sig||'');
+
+                const matchQ = !q      || search.includes(q);
+                const matchN = !notice || rNotice.startsWith(notice.replace('section ','s').replace(' ',''));
+                const matchS = !sig    || rSig===sig;
+
+                const show = matchQ && matchN && matchS;
+                row.style.display = show ? '' : 'none';
+                if(show) vis++;
             });
-        });
 
-        /* ── Track navigation clicks ── */
-        document.querySelectorAll(".wf-btn").forEach(btn => {
-            btn.addEventListener("click", function () {
-                const label = this.textContent.trim();
-                WfLoader.show(`Opening ${label}…`, "Loading configuration");
+            const chip = document.getElementById('sl-visible-count');
+            if(chip) chip.textContent = `${vis} row${vis===1?'':'s'}`;
+            const fi = document.getElementById('sl-footer-info');
+            if(fi) fi.textContent = `Showing ${vis} of ${rows.length} configuration(s)`;
+        }
+
+        /* ── Sort ───────────────────────────────────────── */
+        function sortTable(col){
+            if(sortCol===col) sortDir*=-1;
+            else { sortCol=col; sortDir=-1; }
+
+            // update header icon
+            document.querySelectorAll('.sl-sort-icon').forEach((ic,i)=>{
+                ic.classList.toggle('active', i===col);
+                ic.style.transform = (i===col&&sortDir===1) ? 'rotate(180deg)' : '';
+            });
+
+            const tbody = document.getElementById('sl-tbody');
+            const rows  = Array.from(tbody.querySelectorAll('.sl-row'));
+
+            rows.sort((a,b)=>{
+                const aVal = a.cells[col]?.textContent.trim()||'';
+                const bVal = b.cells[col]?.textContent.trim()||'';
+                return aVal.localeCompare(bVal, undefined, {numeric:true}) * sortDir;
+            });
+
+            rows.forEach(r=>tbody.appendChild(r));
+        }
+
+        /* ── Init ───────────────────────────────────────── */
+        document.addEventListener('DOMContentLoaded',()=>{
+            const total = document.querySelectorAll('#sl-tbody .sl-row').length;
+            if(total>0) WfToast.info(`${total} configuration(s) loaded.`,'Library Ready');
+            // default sort: letter date desc (col 5)
+            sortTable(5);
+            document.querySelectorAll('.sl-action-btn, .sl-topbar-btn').forEach(btn=>{
+                btn.addEventListener('click',()=>{
+                    WfLoader.show('Opening…','Loading configuration');
+                });
             });
         });
     </script>

@@ -135,5 +135,10 @@ namespace GV23_Notice.Domain.Workflow.Entities
 
         public bool? IsInvalidOmission { get; set; } // only used when Notice = IN
 
+        /// <summary>
+        /// Which IN sub-notice(s) to send: InvalidObjectionOnly / InvalidOmissionOnly / Both
+        /// </summary>
+        public INSendMode INSendMode { get; set; } = INSendMode.Both;
+
     }
 }

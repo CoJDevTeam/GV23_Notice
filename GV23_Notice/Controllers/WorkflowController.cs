@@ -131,7 +131,7 @@ namespace GV23_Notice.Controllers
             });
         }
 
-      
+
         private static void ApplyValuationAndFinancialYear(WorkflowStep1Vm vm, NoticeSettings e)
         {
             e.ValuationPeriodCode = vm.ValuationPeriodCode;
@@ -816,7 +816,10 @@ namespace GV23_Notice.Controllers
                 S52SendMode = s.S52SendMode,
 
                 BatchDate = s.BatchDate,
-                AppealCloseDate = s.AppealCloseDate
+                AppealCloseDate = s.AppealCloseDate,
+
+                // ✅ FIX: was missing — caused Step2 to always show "Not Uploaded"
+                SignaturePath = s.SignaturePath
             };
 
             return View(vm);
@@ -1556,7 +1559,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
                 ExtendedEndDate = s.ExtensionDate,
 
                 FinancialYearsText = s.FinancialYearsText ?? "1 July 2025 – 30 June 2026",
-               
+
                 RollHeaderText = rollName
             };
 

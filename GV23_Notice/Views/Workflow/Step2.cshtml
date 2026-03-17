@@ -42,9 +42,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-   @*  <link href="~/css/step2css.css" rel="stylesheet" /> *@
-    <link href="~/css/admincss/step2css.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    @*  <link href="~/css/step2css.css" rel="stylesheet" /> *@
+    <link href="~/css/admincss/step2css1.css" rel="stylesheet" />
 </head>
 <body>
 
@@ -304,11 +304,20 @@
                             @if (hasSignature)
                             {
                                 <span class="badge badge-success">✓ Uploaded</span>
-                                <span class="sig-path" title="@Model.SignaturePath">@Model.SignaturePath</span>
+                                <span class="sig-path" title="@Model.SignaturePath">
+                                    @System.IO.Path.GetFileName(Model.SignaturePath)
+                                </span>
                             }
                             else
                             {
-                                <span class="badge badge-warn">⚠ Not Uploaded</span>
+                                @if (Model.Notice == NoticeKind.S49)
+                                {
+                                    <span class="badge badge-warn">⚠ Missing — required for Section 49</span>
+                                }
+                                else
+                                {
+                                    <span class="badge" style="background:#f5f5f5;color:#888;border:1px solid #e0e0e0;">N/A</span>
+                                }
                             }
                         </div>
                     </div>
