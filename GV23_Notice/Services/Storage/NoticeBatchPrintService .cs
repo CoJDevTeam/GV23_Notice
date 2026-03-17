@@ -167,7 +167,39 @@ namespace GV23_Notice.Services.Storage
             switch (settings.Notice)
             {
                 case NoticeKind.S49:
-                    (pdfBytes, propertyDesc) = await BuildS49PdfAsync(settings, roll, batch, log, ct);
+                    // Mark 'P' on the roll table before attempting PDF generation.
+                    // This ensures re-runs skip premises currently being processed
+                    // and prevents double-printing if the process restarts.
+                    if (!string.IsNullOrWhiteSpace(log.PremiseId))
+                    {
+                        try { await _s49Repo.MarkPrintingAsync(roll.RollId, log.PremiseId, ct); }
+                        catch (Exception markEx)
+                        {
+                            _log.LogWarning(markEx,
+                                "S49 MarkPrinting failed for PremiseId={PremiseId} — continuing anyway",
+                                log.PremiseId);
+                        }
+                    }
+                    try
+                    {
+                        (pdfBytes, propertyDesc) = await BuildS49PdfAsync(settings, roll, batch, log, ct);
+                    }
+                    catch
+                    {
+                        // Mark 'NP' so batch reports correctly and the premise isn't skipped
+                        // permanently — a manual re-run can reset it.
+                        if (!string.IsNullOrWhiteSpace(log.PremiseId))
+                        {
+                            try { await _s49Repo.MarkPrintFailedAsync(roll.RollId, log.PremiseId, ct); }
+                            catch (Exception npEx)
+                            {
+                                _log.LogWarning(npEx,
+                                    "S49 MarkPrintFailed failed for PremiseId={PremiseId}",
+                                    log.PremiseId);
+                            }
+                        }
+                        throw;
+                    }
                     break;
 
                 case NoticeKind.S51:
@@ -304,7 +336,8 @@ namespace GV23_Notice.Services.Storage
                 FinancialYearsText = settings.FinancialYearsText,
                 SignaturePath = settings.SignaturePath,
                 ForceFourRows = forceFour,
-                PropertyRows = propRows
+                PropertyRows = propRows,
+                RollHeaderText = settings.RollName ?? roll.Name ?? roll.ShortCode ?? "Valuation Roll"
             };
 
             var pdfBytes = _s49Builder.BuildNotice(pdfData, ctx);

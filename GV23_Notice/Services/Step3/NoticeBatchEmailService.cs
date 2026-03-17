@@ -116,20 +116,13 @@ namespace GV23_Notice.Services.Email
                     var req = BuildEmailRequest(settings, roll, log);
                     var (subject, bodyHtml) = _templates.Build(req);
 
-                   
+
 
                     // ── S53: paired email logic ───────────────────────────────────────
-                    // Mirrors the print pairing:
-                    //   Owner             → 1 email  (sent here)
-                    //   Representative    → 2 emails (Representative + Owner_Rep, both sent here)
-                    //   Owner_Rep         → secondary, already sent by Representative RunLog — mark Sent
-                    //   Third_Party       → 2 emails (Third_Party + Owner_Third_Party, both sent here)
-                    //   Owner_Third_Party → secondary, already sent by Third_Party RunLog — mark Sent
                     if (settings.Notice == NoticeKind.S53)
                     {
                         var objectorType = log.RecipientName ?? "Owner";
 
-                        // Secondary RunLogs: primary already sent their email
                         if (objectorType == "Owner_Rep" || objectorType == "Owner_Third_Party")
                         {
                             log.Status = RunStatus.Sent;
@@ -142,7 +135,6 @@ namespace GV23_Notice.Services.Email
                         var cs53 = _config.GetConnectionString("DefaultConnection")
                                    ?? throw new InvalidOperationException("DefaultConnection not configured.");
 
-                        // ── Primary email (this RunLog's own row) ────────────────────
                         var primaryPdfPath = log.PdfPath
                             ?? throw new FileNotFoundException(
                                 $"S53 RunLog {log.Id} has no PdfPath — was it printed?");
@@ -153,7 +145,6 @@ namespace GV23_Notice.Services.Email
                         await SendOneEmailAsync(subject, bodyHtml, log, ct);
                         log.EmlPath = primaryEmlPath;
 
-                        // ── Paired email (Owner_Rep / Owner_Third_Party row) ──────────
                         var pairedType = objectorType == "Representative" ? "Owner_Rep" : "Owner_Third_Party";
                         var pairedRow = await FetchS53MvdEmailRowAsync(cs53, batch!, log.ObjectionNo!, batch!.BatchName, pairedType, ct);
 
@@ -238,26 +229,20 @@ namespace GV23_Notice.Services.Email
                                 log.ObjectionNo,
                                 propertyDesc);
 
-                        // update NoticeRunLog from source-of-truth row
                         log.RecipientEmail = recipientEmail;
                         log.PropertyDesc = propertyDesc;
 
-                        // 1) Save .eml copy first
                         await SaveEmlAsync(djEmlPath, recipientEmail, subject, bodyHtml, pdfPath, ct);
 
-                        // 2) Persist EmlPath + email immediately
                         log.EmlPath = djEmlPath;
                         await _db.SaveChangesAsync(ct);
 
-                        // 3) Send SMTP using updated log
                         await SendOneEmailAsync(subject, bodyHtml, log, ct);
 
-                        // 4) Mark RunLog as sent
                         log.Status = RunStatus.Sent;
                         log.SentAtUtc = DateTime.UtcNow;
                         result.Sent++;
 
-                        // 5) Mark DearJohnnyTable + Obj_Property_Info as sent
                         await SetDjNoticeSentAsync(
                             connStr,
                             batch.RollId,
@@ -344,6 +329,18 @@ namespace GV23_Notice.Services.Email
                     log.Status = RunStatus.Failed;
                     log.ErrorMessage = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
                     result.Failed++;
+
+                    // ADDED: Mark 'N' (email failed) on the roll table for S49
+                    if (settings.Notice == NoticeKind.S49 && !string.IsNullOrWhiteSpace(log.PremiseId))
+                    {
+                        try { await _s49Repo.MarkEmailFailedAsync(roll.RollId, log.PremiseId, ct); }
+                        catch (Exception nEx)
+                        {
+                            _log.LogWarning(nEx,
+                                "S49 MarkEmailFailed failed for PremiseId={PremiseId}",
+                                log.PremiseId);
+                        }
+                    }
                 }
 
                 await _db.SaveChangesAsync(ct);
@@ -429,12 +426,14 @@ namespace GV23_Notice.Services.Email
             {
                 Notice = s.Notice,
                 RollShortCode = roll.ShortCode ?? "",
-                RollName = roll.Name ?? "",
+                RollName = s.RollName ?? roll.Name ?? "",  // ADDED: prefer settings.RollName
                 RecipientName = log.RecipientName ?? "",
                 RecipientEmail = log.RecipientEmail ?? "",
                 FinancialYearsText = s.FinancialYearsText,
                 IsSection52Review = s.IsSection52Review,
-                InvalidKind = s.IsInvalidOmission == true
+                // ADDED: read Kind from log.RecipientName (set by SP) not IsInvalidOmission
+                InvalidKind = (log.RecipientName ?? "")
+                                .Equals("InvalidOmission", StringComparison.OrdinalIgnoreCase)
                                      ? InvalidNoticeKind.InvalidOmission
                                      : InvalidNoticeKind.InvalidObjection,
                 Items = new List<NoticeEmailPropertyItem>
@@ -464,12 +463,12 @@ namespace GV23_Notice.Services.Email
 
         // ── Save .eml file (RFC 2822 MIME with HTML body + PDF attachment) ───
         private static async Task SaveEmlAsync(
-            string emlPath,
-            string toEmail,
-            string subject,
-            string bodyHtml,
-            string pdfPath,
-            CancellationToken ct)
+     string emlPath,
+     string toEmail,
+     string subject,
+     string bodyHtml,
+     string pdfPath,
+     CancellationToken ct)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(emlPath)!);
 
