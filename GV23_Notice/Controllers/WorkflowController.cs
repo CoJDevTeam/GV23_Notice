@@ -1064,10 +1064,8 @@ namespace GV23_Notice.Controllers
                 pdfFileName: pv.PdfFileName ?? "",
                 ct: ct);
 
-            // All email links go to the Landing Page first (read-only config review)
-            // Data Team clicks "Start Processing" on the landing page to reach Step3Kickoff
             var kickoffBaseUrl = Url.Action(
-                action: "Step3Landing",
+                action: nameof(Step3Kickoff),
                 controller: "Workflow",
                 values: new { settingsId = s.Id },
                 protocol: Request.Scheme);
@@ -1075,39 +1073,26 @@ namespace GV23_Notice.Controllers
             if (string.IsNullOrWhiteSpace(kickoffBaseUrl))
                 throw new InvalidOperationException("Could not build Step3Kickoff URL.");
 
-            var join = kickoffBaseUrl.Contains('?') ? "&" : "?";
-
             // S52: build separate kickoff URLs per sub-type so Data Team gets individual links
             string? appealKickoffUrl = null;
             string? reviewKickoffUrl = null;
             if (s.Notice == NoticeKind.S52)
             {
+                var join = kickoffBaseUrl.Contains('?') ? "&" : "?";
                 if (s.S52SendMode != S52SendMode.ReviewOnly)
                     appealKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&variant=S52Appeal";
                 if (s.S52SendMode != S52SendMode.AppealDecisionOnly)
                     reviewKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&variant=S52Review";
             }
 
-            // For notices that support Split PDF (S49, S51, S53, S78), include both
-            // Single and Split PDF kickoff links so the Data Team can choose which to use.
-            // DJ and IN do not have a split-PDF variant.
-            string? splitPdfKickoffUrl = null;
-            bool supportsSplitPdf = s.Notice != NoticeKind.DJ && s.Notice != NoticeKind.IN && s.Notice != NoticeKind.S52;
-            if (supportsSplitPdf)
-                splitPdfKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&mode=splitpdf";
-
-            // Standard single kickoff always included
-            var singleKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&mode=single";
-
             var (approvalSubject, approvalBodyHtml) = _wfEmails.BuildApprovalEmail(
                 s,
                 roll,
                 approvedBy,
                 s.ApprovalKey.Value,
-                singleKickoffUrl,
+                kickoffBaseUrl,
                 appealKickoffUrl,
-                reviewKickoffUrl,
-                splitPdfKickoffUrl);
+                reviewKickoffUrl);
 
             var domain = ResolveDomain(s.Notice);
 
@@ -1155,14 +1140,43 @@ namespace GV23_Notice.Controllers
             s.ApprovedBy = approvedBy;
             await _db.SaveChangesAsync(ct);
 
-            TempData["Success"] = "Step 2 approved. Snapshot saved + approval email archived to disk (and sent if configured).";
-            return RedirectToAction("Step2", new
+            TempData["EmailSubject"] = approvalSubject;
+            return RedirectToAction("Step2EmailSuccess", new
             {
                 settingsId = dto.SettingsId,
-                variant = dto.Variant.ToString(),
-                mode = ToUiMode(dto.Mode),
-                appealNo = dto.AppealNo
+                kind = "approval",
+                recipientList = string.Join(", ", GetApprovalRecipients().To)
             });
+        }
+
+
+        // GET: /Workflow/Step2EmailSuccess
+        [Authorize(Policy = "ValuationAdminCreateApprove")]
+        [HttpGet("Step2EmailSuccess")]
+        public async Task<IActionResult> Step2EmailSuccess(
+            int settingsId, string kind, string? recipientList, CancellationToken ct)
+        {
+            var s = await _settings.GetByIdAsync(settingsId, ct);
+            if (s is null) return NotFound();
+
+            var roll = await _db.RollRegistry.AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+
+            var vm = new Step2EmailSuccessVm
+            {
+                SettingsId = settingsId,
+                Kind = kind ?? "approval",
+                RollShortCode = roll?.ShortCode ?? "",
+                RollName = s.RollName ?? roll?.Name ?? "",
+                Notice = s.Notice,
+                Version = s.Version,
+                RecipientList = recipientList ?? "",
+                EmailSubject = TempData["EmailSubject"]?.ToString() ?? "",
+                ApprovedBy = s.ApprovedBy ?? User?.Identity?.Name ?? "",
+                ApprovedAtUtc = kind == "approval" ? s.ApprovedAtUtc : DateTime.UtcNow
+            };
+
+            return View(vm);
         }
 
         [Authorize(Policy = "ValuationAdminCreateApprove")]
@@ -1265,94 +1279,13 @@ namespace GV23_Notice.Controllers
             s.CorrectionEmailSavedPath = savedPath;
             await _db.SaveChangesAsync(ct);
 
-            TempData["Success"] = "Correction request saved with snapshot + email archived (and sent if configured).";
-            return RedirectToAction("Step2", new
+            TempData["EmailSubject"] = subject;
+            return RedirectToAction("Step2EmailSuccess", new
             {
                 settingsId = dto.SettingsId,
-                variant = dto.Variant.ToString(),
-                mode = ToUiMode(dto.Mode),
-                appealNo = dto.AppealNo
+                kind = "correction",
+                recipientList = string.Join(", ", GetCorrectionRecipients().To)
             });
-        }
-
-        // ── Step 3 Landing Page ─────────────────────────────────────────────
-        // Entry point for all email links. Validates the key, shows the Step 1
-        // configuration in read-only mode. Data Team clicks "Start Processing"
-        // to proceed to Step3Kickoff (preview + batch creation).
-        [Authorize(Policy = "DataTeamCreateBatchPrint")]
-        [HttpGet("Step3Landing")]
-        public async Task<IActionResult> Step3Landing(
-            int settingsId,
-            Guid key,
-            string? variant,
-            CancellationToken ct)
-        {
-            var s = await _settings.GetByIdAsync(settingsId, ct);
-            if (s is null) return NotFound();
-
-            if (!s.IsApproved)
-                return BadRequest("Settings are not yet approved.");
-
-            if (!s.ApprovalKey.HasValue || s.ApprovalKey.Value == Guid.Empty || s.ApprovalKey.Value != key)
-                return Unauthorized("Invalid or expired link.");
-
-            var roll = await _db.RollRegistry.AsNoTracking()
-                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
-            if (roll is null) return NotFound();
-
-            // Build the Step3Kickoff URL that the "Start Processing" button will navigate to
-            var kickoffUrl = Url.Action(
-                action: nameof(Step3Kickoff),
-                controller: "Workflow",
-                values: new { settingsId, key, variant },
-                protocol: Request.Scheme)!;
-
-            var vm = new WorkflowStep3LandingVm
-            {
-                SettingsId = settingsId,
-                ApprovalKey = key,
-                KickoffUrl = kickoffUrl,
-                Variant = variant,
-
-                RollShortCode = roll.ShortCode ?? "",
-                RollName = s.RollName ?? roll.Name ?? "",
-                Notice = s.Notice,
-                Mode = s.Mode,
-                Version = s.Version,
-
-                ApprovedBy = s.ApprovedBy,
-                ApprovedAtUtc = s.ApprovedAtUtc,
-
-                LetterDate = s.LetterDate,
-                FinancialYearsText = s.FinancialYearsText,
-                PortalUrl = s.PortalUrl,
-                EnquiriesLine = s.EnquiriesLine,
-                CityManagerSignDate = s.CityManagerSignDate,
-
-                // S49
-                ObjectionStartDate = s.ObjectionStartDate,
-                ObjectionEndDate = s.ObjectionEndDate,
-                ExtensionDate = s.ExtensionDate,
-                SignaturePath = s.SignaturePath,
-
-                // S51
-                EvidenceCloseDate = s.EvidenceCloseDate,
-
-                // S52
-                BulkFromDate = s.BulkFromDate,
-                BulkToDate = s.BulkToDate,
-                S52SendMode = s.S52SendMode,
-
-                // S53
-                BatchDate = s.BatchDate,
-                AppealCloseDate = s.AppealCloseDate,
-                AppealCloseOverrideReason = s.AppealCloseOverrideReason,
-
-                // IN
-                INSendMode = s.INSendMode,
-            };
-
-            return View(vm);
         }
 
         [Authorize(Policy = "DataTeamCreateBatchPrint")]
