@@ -25,7 +25,8 @@ namespace GV23_Notice.Services.Email
             Guid workflowKey,
             string kickoffBaseUrl,
             string? appealKickoffUrl = null,
-            string? reviewKickoffUrl = null)
+            string? reviewKickoffUrl = null,
+            string? splitPdfKickoffUrl = null)
         {
             var join = kickoffBaseUrl.Contains('?') ? "&" : "?";
             var kickoffUrl = $"{kickoffBaseUrl}{join}key={workflowKey:D}";
@@ -125,7 +126,7 @@ namespace GV23_Notice.Services.Email
         Please review the reason below, update the configuration in Step 1, and re-submit for approval.
       </p>
 
-      <p style='margin:0 0 10px;font-size:13px;font-weighbt:700;color:#111111;text-transform:uppercase;letter-spacing:0.6px;border-bottom:2px solid #e6b000;padding-bottom:6px;'>Reason / Required Changes</p>
+      <p style='margin:0 0 10px;font-size:13px;font-weight:700;color:#111111;text-transform:uppercase;letter-spacing:0.6px;border-bottom:2px solid #e6b000;padding-bottom:6px;'>Reason / Required Changes</p>
       <table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='margin-bottom:24px;'>
         <tr>
           <td style='background:#fdf8e8;border:1px solid #e6b000;border-left:4px solid #e6b000;border-radius:6px;padding:16px 18px;font-size:13px;color:#222222;line-height:1.7;'>
@@ -260,7 +261,8 @@ namespace GV23_Notice.Services.Email
             string kickoffUrl,
             string? appealKickoffUrl,
             string? reviewKickoffUrl,
-            Guid workflowKey)
+            Guid workflowKey,
+            string? splitPdfKickoffUrl = null)
         {
             var key = H(workflowKey.ToString("D"));
 
@@ -302,17 +304,36 @@ namespace GV23_Notice.Services.Email
                 return sb.ToString();
             }
 
-            // Standard single kickoff link for all other notices
-            return $@"
-      <table role='presentation' cellpadding='0' cellspacing='0' width='100%' style='margin:0 0 28px;'>
+            // Standard kickoff links: single + split PDF (when applicable)
+            var sb2 = new System.Text.StringBuilder();
+            sb2.Append("<table role='presentation' cellpadding='0' cellspacing='0' width='100%' style='margin:0 0 28px;'>");
+
+            // Single PDF link
+            sb2.Append($@"
         <tr>
           <td style='background:#fdf8e8;border:1px solid #e6b000;border-left:4px solid #e6b000;border-radius:6px;padding:18px 20px;'>
-            <p style='margin:0 0 6px;font-size:12px;font-weight:700;color:#b38900;text-transform:uppercase;letter-spacing:0.8px;'>Kickoff Link (Secure)</p>
+            <p style='margin:0 0 4px;font-size:12px;font-weight:700;color:#b38900;text-transform:uppercase;letter-spacing:0.8px;'>Single PDF — Step 3 Kickoff (Secure)</p>
             <a href='{H(kickoffUrl)}' style='font-size:13px;color:#0066cc;word-break:break-all;text-decoration:underline;'>{H(kickoffUrl)}</a>
             <p style='margin:10px 0 0;font-size:11px;color:#888888;'>Workflow Key: {key}</p>
           </td>
-        </tr>
-      </table>";
+        </tr>");
+
+            // Split PDF link (when notice supports it)
+            if (!string.IsNullOrWhiteSpace(splitPdfKickoffUrl))
+            {
+                sb2.Append($@"
+        <tr><td style='height:10px;'></td></tr>
+        <tr>
+          <td style='background:#f0f9f4;border:1px solid #2a8c4a;border-left:4px solid #2a8c4a;border-radius:6px;padding:18px 20px;'>
+            <p style='margin:0 0 4px;font-size:12px;font-weight:700;color:#1b5e20;text-transform:uppercase;letter-spacing:0.8px;'>Split / Multipurpose PDF — Step 3 Kickoff (Secure)</p>
+            <a href='{H(splitPdfKickoffUrl)}' style='font-size:13px;color:#0066cc;word-break:break-all;text-decoration:underline;'>{H(splitPdfKickoffUrl)}</a>
+            <p style='margin:10px 0 0;font-size:11px;color:#888888;'>Use this link for split/multipurpose properties. Workflow Key: {key}</p>
+          </td>
+        </tr>");
+            }
+
+            sb2.Append("</table>");
+            return sb2.ToString();
         }
 
         private static string SummaryRow(string label, string value, bool alt = false)

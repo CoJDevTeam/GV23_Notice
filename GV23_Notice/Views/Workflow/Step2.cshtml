@@ -42,8 +42,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
-    @*  <link href="~/css/step2css.css" rel="stylesheet" /> *@
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+   @*  <link href="~/css/step2css.css" rel="stylesheet" /> *@
     <link href="~/css/admincss/step2css1.css" rel="stylesheet" />
 </head>
 <body>
@@ -304,20 +304,11 @@
                             @if (hasSignature)
                             {
                                 <span class="badge badge-success">✓ Uploaded</span>
-                                <span class="sig-path" title="@Model.SignaturePath">
-                                    @System.IO.Path.GetFileName(Model.SignaturePath)
-                                </span>
+                                <span class="sig-path" title="@Model.SignaturePath">@Model.SignaturePath</span>
                             }
                             else
                             {
-                                @if (Model.Notice == NoticeKind.S49)
-                                {
-                                    <span class="badge badge-warn">⚠ Missing — required for Section 49</span>
-                                }
-                                else
-                                {
-                                    <span class="badge" style="background:#f5f5f5;color:#888;border:1px solid #e0e0e0;">N/A</span>
-                                }
+                                <span class="badge badge-warn">⚠ Not Uploaded</span>
                             }
                         </div>
                     </div>
@@ -366,8 +357,8 @@
             <form asp-action="Step2Approve" asp-controller="Workflow" method="post">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                <input type="hidden" name="variant" value="@selectedVariant" />
-                <input type="hidden" name="mode" value="@selectedMode" />
+                <input type="hidden" name="variant"    value="@selectedVariant" />
+                <input type="hidden" name="mode"       value="@selectedMode" />
 
                 <div class="modal-head">
                     <h5>Approve — Generate Handover Email</h5>
@@ -385,14 +376,29 @@
                         <div class="ms-row"><span class="ms-key">Roll</span><span class="ms-val">@Model.RollShortCode — @Model.RollName</span></div>
                         <div class="ms-row"><span class="ms-key">Notice</span><span class="ms-val">@Model.Notice</span></div>
                         <div class="ms-row"><span class="ms-key">Variant</span><span class="ms-val">@selectedVariant</span></div>
-                        <div class="ms-row"><span class="ms-key">Mode</span><span class="ms-val">@selectedMode</span></div>
+                        <div class="ms-row">
+                            <span class="ms-key">Approval Mode</span>
+                            <span class="ms-val">
+                                @if (allowSplitPdf)
+                                {
+                                    <strong>Single PDF</strong> @:&nbsp;+&nbsp;<strong>Split PDF</strong>
+                                    <small style="display:block;color:#888;font-size:11px;margin-top:2px;">
+                                        The kickoff email will include links for both Single and Split PDF modes.
+                                    </small>
+                                }
+                                else
+                                {
+                                    @selectedMode
+                                }
+                            </span>
+                        </div>
                         <div class="ms-row"><span class="ms-key">Letter Date</span><span class="ms-val">@Model.LetterDate.ToString("yyyy-MM-dd")</span></div>
 
                         @if (Model.Notice == NoticeKind.S49)
                         {
                             <div class="ms-row"><span class="ms-key">Objection Period</span><span class="ms-val">@(Model.ObjectionStartDate?.ToString("yyyy-MM-dd") ?? "—") → @(Model.ObjectionEndDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
                             <div class="ms-row"><span class="ms-key">Extension</span><span class="ms-val">@(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                            <div class="ms-row"><span class="ms-key">Signature</span><span class="ms-val">@(hasSignature ? "Uploaded" : "⚠ NOT UPLOADED")</span></div>
+                            <div class="ms-row"><span class="ms-key">Signature</span><span class="ms-val">@(hasSignature ? "✓ Uploaded" : "⚠ NOT UPLOADED")</span></div>
                         }
                         @if (Model.Notice == NoticeKind.S51)
                         {
@@ -460,7 +466,7 @@
                     </div>
 
                     <label class="form-label">Correction Comment <span style="color:var(--danger)">*</span></label>
-                    <textarea class="form-control" name="correctionComment" rows="5" required
+                    <textarea class="form-control" name="Reason" rows="5" required
                               placeholder="Explain what must be corrected — PDF wording, dates, email body, layout, etc."></textarea>
                 </div>
 

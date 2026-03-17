@@ -1073,26 +1073,39 @@ namespace GV23_Notice.Controllers
             if (string.IsNullOrWhiteSpace(kickoffBaseUrl))
                 throw new InvalidOperationException("Could not build Step3Kickoff URL.");
 
+            var join = kickoffBaseUrl.Contains('?') ? "&" : "?";
+
             // S52: build separate kickoff URLs per sub-type so Data Team gets individual links
             string? appealKickoffUrl = null;
             string? reviewKickoffUrl = null;
             if (s.Notice == NoticeKind.S52)
             {
-                var join = kickoffBaseUrl.Contains('?') ? "&" : "?";
                 if (s.S52SendMode != S52SendMode.ReviewOnly)
                     appealKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&variant=S52Appeal";
                 if (s.S52SendMode != S52SendMode.AppealDecisionOnly)
                     reviewKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&variant=S52Review";
             }
 
+            // For notices that support Split PDF (S49, S51, S53, S78), include both
+            // Single and Split PDF kickoff links so the Data Team can choose which to use.
+            // DJ and IN do not have a split-PDF variant.
+            string? splitPdfKickoffUrl = null;
+            bool supportsSplitPdf = s.Notice != NoticeKind.DJ && s.Notice != NoticeKind.IN && s.Notice != NoticeKind.S52;
+            if (supportsSplitPdf)
+                splitPdfKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&mode=splitpdf";
+
+            // Standard single kickoff always included
+            var singleKickoffUrl = $"{kickoffBaseUrl}{join}key={s.ApprovalKey:D}&mode=single";
+
             var (approvalSubject, approvalBodyHtml) = _wfEmails.BuildApprovalEmail(
                 s,
                 roll,
                 approvedBy,
                 s.ApprovalKey.Value,
-                kickoffBaseUrl,
+                singleKickoffUrl,
                 appealKickoffUrl,
-                reviewKickoffUrl);
+                reviewKickoffUrl,
+                splitPdfKickoffUrl);
 
             var domain = ResolveDomain(s.Notice);
 

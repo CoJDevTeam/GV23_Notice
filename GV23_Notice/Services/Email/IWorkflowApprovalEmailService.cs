@@ -18,7 +18,8 @@ namespace GV23_Notice.Services.Email
             Guid workflowKey,
             string kickoffBaseUrl,
             string? appealKickoffUrl = null,
-            string? reviewKickoffUrl = null);
+            string? reviewKickoffUrl = null,
+            string? splitPdfKickoffUrl = null);
 
         /// <summary>
         /// Builds the Step 2 CORRECTION REQUEST workflow email.
