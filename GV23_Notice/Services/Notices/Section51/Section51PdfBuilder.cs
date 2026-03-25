@@ -335,18 +335,25 @@ namespace GV23_Notice.Services.Notices.Section51
                 else
                 {
                     DataRow(t, "Category", gvCategory, objCategory);
-                    DataRow(t, "Category Split 1", gvCategory1, objCategory1);
-                    DataRow(t, "Category Split 2", gvCategory2, objCategory2);
-
                     DataRow(t, "Area m²", gvArea, objArea);
-                    DataRow(t, "Area m² Split 1", gvArea1, objArea1);
-                    DataRow(t, "Area m² Split 2", gvArea2, objArea2);
-
                     DataRow(t, "Market Value", gvValue, objValue);
-                    DataRow(t, "Market Value Split 1", gvValue1, objValue1);
-                    DataRow(t, "Market Value Split 2", gvValue2, objValue2);
-
                     DataRow(t, "With Effective Date", effectiveDateText, effectiveDateText);
+
+                    DataRow(t, "", "","");
+
+                    DataRow(t, "Category Split 1", gvCategory1, objCategory1);
+                    DataRow(t, "Area m² Split 1", gvArea1, objArea1);
+                    DataRow(t, "Market Value Split 1", gvValue1, objValue1);
+                    DataRow(t, "With Effective Date", effectiveDateText, effectiveDateText);
+
+                    DataRow(t, "", "", "");
+
+                    DataRow(t, "Category Split 2", gvCategory2, objCategory2);
+                    DataRow(t, "Area m² Split 2", gvArea2, objArea2);
+                    DataRow(t, "Market Value Split 2", gvValue2, objValue2);
+                    DataRow(t, "With Effective Date", effectiveDateText, effectiveDateText);
+
+
                 }
             });
 

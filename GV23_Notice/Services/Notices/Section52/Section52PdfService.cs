@@ -93,8 +93,8 @@ namespace GV23_Notice.Services.Notices.Section52
             var recipient = Safe(model.ADDR1);
             var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
 
-            var sigName = "VALUATION APPEAL BOARD";
-            var sigOrg = "City of Johannesburg";
+            var sigName = "VALUATION APPEAL BOARD SECRETARY";
+            var sigOrg = "CITY OF JOHANNESBURG";
 
             var valuationKey = Safe(model.valuation_Key);
             var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
@@ -189,7 +189,7 @@ namespace GV23_Notice.Services.Notices.Section52
                         col.Item().PaddingTop(3).Text(greeting).FontFamily("Arial").FontSize(9).Bold();
 
                         col.Item().PaddingTop(3).Text(
-                            "With reference to the above matter, I wish to advise that the Valuation Appeal Board for the property description below:"
+                            "With reference to the above matter, the city wish to advise that the Valuation Appeal Board for the property description below:"
                         ).FontFamily("Arial").FontSize(9).Justify();
 
                         col.Item().PaddingTop(1).Text(t =>
@@ -250,7 +250,8 @@ namespace GV23_Notice.Services.Notices.Section52
                         col.Item().PaddingTop(14).Column(sig =>
                         {
                             sig.Item().Text(sigName).FontFamily("Arial").FontSize(9).SemiBold();
-                            sig.Item().Text(sigOrg).FontFamily("Arial").FontSize(9);
+
+                            sig.Item().Text(sigOrg).FontFamily("Arial").FontSize(9).SemiBold();
                         });
                     });
                 });

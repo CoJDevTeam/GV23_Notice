@@ -134,7 +134,7 @@ namespace GV23_Notice.Services.Notices.Section53
 
                         col.Item().PaddingTop(2);
 
-                        col.Item().AlignCenter().Text("SECTION 51 NOTICE").Style(title12);
+                        col.Item().AlignCenter().Text("SECTION 53:MVD NOTICE").Style(title12);
 
                         col.Item().AlignCenter()
                             .Text("Notification of outcome of objection in terms of section 53(1) of the Municipal Property Rates Act, No.6 of 2004 as amended")
@@ -203,15 +203,16 @@ namespace GV23_Notice.Services.Notices.Section53
                         });
 
                         col.Item().PaddingTop(1).Text(
-                                "An acknowledgement letter will be provided and should be kept as proof that the appeal was submitted. Please include this notice when submitting your appeal for ease of reference. Kindly note that objections against issues other than the above (eg. Owners name, street address etc) are not dealt with as an objection, but will be forwarded to the relevant department as amended to the valuation roll in terms of the section 79 of above Act. If a representative is appointed, proof of authorisation must be attached to the appeal form.")
+                                "An acknowledgement letter will be auto-generated and should be kept as proof that the appeal was submitted. Please include this notice when submitting your appeal for ease of reference. Kindly note that objections relating to matters other than those stated above (e.g., owner’s name, street address, etc.) will not be dealt with as objections, but will be forwarded to the relevant department for amendment to the valuation roll in terms of Section 79 of the above Act. If a representative is appointed, proof of authorisation must be attached to the appeal form.")
                             .Style(body9)
                             .Justify();
 
                         if (!string.IsNullOrWhiteSpace(model.ContactLine))
                             col.Item().PaddingTop(1).Text(model.ContactLine).Style(body9).Bold();
 
-                        col.Item().PaddingTop(1).Text(model.MunicipalValuerName).Style(body9b);
                         col.Item().Text(model.MunicipalValuerTitle).Style(body9b);
+                        col.Item().PaddingTop(1).Text(model.MunicipalValuerName).Style(body9b);
+                        
                     });
                 });
             }).GeneratePdf();
@@ -287,20 +288,24 @@ namespace GV23_Notice.Services.Notices.Section53
                 else
                 {
                     DataRow(t, "Category", gvCategory, mvdCategory);
-                    DataRow(t, "Category Split 1", gvCategory1, mvdCategory1);
-                    DataRow(t, "Category Split 2", gvCategory2, mvdCategory2);
-
-                    DataRow(t, "", "", "");
-
-
                     DataRow(t, "Extent", gvExtent, mvdExtent);
-                    DataRow(t, "Extent Split 1", gvExtent1, mvdExtent1);
-                    DataRow(t, "Extent Split 2", gvExtent2, mvdExtent2);
+                    DataRow(t, "Market Value", gvValue, mvdValue);
+                    DataRow(t, "With Effective Date", "", "");
+
+
 
                     DataRow(t, "", "", "");
 
-                    DataRow(t, "Market Value", gvValue, mvdValue);
+
+                    DataRow(t, "Category Split 1", gvCategory1, mvdCategory1);
+                    DataRow(t, "Extent Split 1", gvExtent1, mvdExtent1);
                     DataRow(t, "Market Value Split 1", gvValue1, mvdValue1);
+                    DataRow(t, "With Effective Date", "", "");
+
+                    DataRow(t, "", "", "");
+
+                    DataRow(t, "Category Split 2", gvCategory2, mvdCategory2);
+                    DataRow(t, "Extent Split 2", gvExtent2, mvdExtent2);
                     DataRow(t, "Market Value Split 2", gvValue2, mvdValue2);
                     DataRow(t, "With Effective Date", "", "");
 

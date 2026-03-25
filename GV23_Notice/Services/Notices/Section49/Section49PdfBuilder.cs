@@ -39,7 +39,7 @@ namespace GV23_Notice.Services.Notices.Section49
 
             static string Safe(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
             var recipient = Safe(data.Addr1);
-            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
+            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Property Owner" : $"Dear: {recipient}";
 
             // rollDisplayName  – uppercased for headings  e.g. "SUPPLEMENTARY VALUATION ROLL 1"
             // rollDisplayTitle – proper case for body text e.g. "Supplementary Valuation Roll 1"
@@ -154,7 +154,7 @@ namespace GV23_Notice.Services.Notices.Section49
                         ).Style(body9);
 
                         col.Item().Background(Color.FromRGB(240, 240, 240))
-                            .Padding(8)
+                            .Padding(4)
                             .Column(box =>
                             {
                                 box.Item().Text("Valuation Services: Administration").Style(body9b);
@@ -197,62 +197,62 @@ namespace GV23_Notice.Services.Notices.Section49
   t.Span(Safe(data.PhysicalAddress))
       .Style(body9);
 });
-                        // Property table
+                        // Property table — styled to match Section 53 table
                         col.Item().Table(table =>
                         {
                             table.ColumnsDefinition(c =>
                             {
+                                c.RelativeColumn();    // Property Category
+                                c.ConstantColumn(80);  // Area/m²
                                 c.ConstantColumn(110); // Market Value
-                                c.ConstantColumn(80);  // Extent
-                                c.RelativeColumn();    // Category
-                                c.RelativeColumn();    // Remarks
+                                c.RelativeColumn();    // With Effective Date
                             });
 
-                            // Header cell helper
-                            void HeaderCell(string text) =>
-                                table.Cell().Background(Color.FromRGB(70, 130, 180))
-                                    .PaddingVertical(4).PaddingHorizontal(4)
-                                    .AlignCenter()
-                                    .Text(text)
-                                    .FontFamily("Arial").FontSize(8).SemiBold()
-                                    .FontColor(Colors.White);
-                            HeaderCell("Property Category");
-                            HeaderCell("Area/m²");
-                            HeaderCell("Market Value");
-
-
-                            HeaderCell("With Effective Date");
-
-                            // Row cell helper
-                            void Cell(string? text, bool right = false, bool center = false)
+                            // Header — identical to S53 BlueHeaderCell style
+                            table.Header(h =>
                             {
-                                var cell = table.Cell().Padding(4);
+                                void HCell(string text) =>
+                                    h.Cell()
+                                     .Border(1)
+                                     .Background(Color.FromRGB(70, 130, 180))
+                                     .PaddingVertical(4).PaddingHorizontal(6)
+                                     .Text(text)
+                                     .FontFamily("Arial").FontSize(9).SemiBold()
+                                     .FontColor(Colors.White);
 
-                                if (right) cell = cell.AlignRight();
-                                else if (center) cell = cell.AlignCenter();
+                                HCell("Property Category");
+                                HCell("Area/m²");
+                                HCell("Market Value");
+                                HCell("With Effective Date");
+                            });
 
-                                cell.Text(Safe(text)).FontFamily("Arial").FontSize(7);
+                            // Data cell helper — identical to S53 CellBase + FontSize(9)
+                            void DataCell(string? text, bool right = false, bool center = false)
+                            {
+                                var c = table.Cell().Border(1).PaddingVertical(4).PaddingHorizontal(6);
+                                if (right) c = c.AlignRight();
+                                else if (center) c = c.AlignCenter();
+                                c.Text(Safe(text)).FontFamily("Arial").FontSize(9);
                             }
 
-                            // ✅ 4 rows already enforced above; just render them
                             foreach (var rr in rows)
                             {
-                                Cell(rr.MarketValue, right: true);
-                                Cell(rr.Extent, center: true);
-                                Cell(rr.Category);
-                                Cell(rr.Remarks);
+                                DataCell(rr.Category);
+                                DataCell(rr.Extent);
+                                DataCell(rr.MarketValue);
+                                DataCell("");
                             }
                         });
 
                         // Closing date
                         col.Item().PaddingTop(10).AlignCenter().Text(
-                            $"⚠ CLOSING DATE FOR OBJECTIONS IS 15:00 ON {closingDate:dd MMMM yyyy}"
+                            $"⚠ CLOSING DATE FOR OBJECTIONS IS 15:00 ON {closingDate:dd MMMM yyyy}".ToUpper()
                         ).Style(body9b);
 
                         // Signature (small + left aligned)
                         if (!string.IsNullOrWhiteSpace(ctx.SignaturePath) && File.Exists(ctx.SignaturePath))
                         {
-                            col.Item().PaddingTop(10).AlignLeft().Width(180).Height(65)
+                            col.Item().PaddingTop(10).AlignLeft().Width(185).Height(65)
                                 .Image(ctx.SignaturePath, ImageScaling.FitArea);
                         }
                     });
