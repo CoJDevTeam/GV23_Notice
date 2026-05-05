@@ -3,29 +3,39 @@
 @{
     ViewData["Title"] = "Step 1 Summary";
 
-    // Full notice name map
-    string NoticeFullName(NoticeKind n) => n switch
+    // Full notice names (no abbreviations shown to user)
+    string NoticeName(NoticeKind n) => n switch
     {
         NoticeKind.S49 => "Section 49 — Public Inspection &amp; Objections",
         NoticeKind.S51 => "Section 51 — Objection Decision",
         NoticeKind.S52 => "Section 52 — Appeal Notices",
-        NoticeKind.S53 => "Section 53 — Appeal Period",
-        NoticeKind.DJ => "Dear Johnny Notice",
+        NoticeKind.S53 => "Section 53 — Municipal Valuation Decision",
+        NoticeKind.DJ => "Dear Johnny — Acknowledgement Notice",
         NoticeKind.IN => "Invalid Notice",
-        NoticeKind.S78 => "Section 78 — Review Period",
+        NoticeKind.S78 => "Section 78 — Property Verification Review",
         _ => n.ToString()
+    };
+
+    // Icon letter per notice
+    string NoticeIcon(NoticeKind n) => n switch
+    {
+        NoticeKind.S49 => "49",
+        NoticeKind.S51 => "51",
+        NoticeKind.S52 => "52",
+        NoticeKind.S53 => "53",
+        NoticeKind.DJ => "DJ",
+        NoticeKind.IN => "IN",
+        NoticeKind.S78 => "78",
+        _ => "?"
     };
 
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
     bool sigRequired = Model.Notice == NoticeKind.S49;
-    bool sigOk = !sigRequired || hasSignature;
-    bool canApprove = sigOk;
+    bool canApprove = !sigRequired || hasSignature;
 }
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
-<link href="~/css/AdminCss/Step1SummaryCss1.css" rel="stylesheet" />
 
+<link href="~/css/step1/step1summarycss.css" rel="stylesheet" />
 <div id="wf-loader" role="status">
     <div class="ss-spinner"></div>
     <div>
@@ -43,8 +53,8 @@
             <div class="ss-logo-mark">VNS</div>
             <div class="ss-topbar-div"></div>
             <div>
-                <div class="ss-page-title">Step 1 Summary</div>
-                <div class="ss-page-sub">Review configuration before approving</div>
+                <div class="ss-page-title">Configuration Summary</div>
+                <div class="ss-page-sub">Step 1 — Review before approving</div>
             </div>
         </div>
         <div class="ss-topbar-right">
@@ -59,40 +69,42 @@
     <!-- STEPPER -->
     <div class="ss-stepper">
         <div class="ss-step ss-done">
-            <div class="ss-step-num">✓</div>
-            <div class="ss-step-label">Configure</div>
+            <div class="ss-step-num">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+            </div>
+            <div class="ss-step-label">Configure Dates</div>
         </div>
         <div class="ss-step-line"></div>
         <div class="ss-step ss-active">
             <div class="ss-step-num">2</div>
-            <div class="ss-step-label">Summary</div>
+            <div class="ss-step-label">Preview</div>
         </div>
         <div class="ss-step-line"></div>
         <div class="ss-step">
             <div class="ss-step-num">3</div>
-            <div class="ss-step-label">Approve</div>
-        </div>
-        <div class="ss-step-line"></div>
-        <div class="ss-step">
-            <div class="ss-step-num">4</div>
-            <div class="ss-step-label">Generate</div>
+            <div class="ss-step-label">Start Step 3</div>
         </div>
     </div>
 
-    <!-- SIGNATURE WARNING BANNER (S49 only) -->
+    <!-- SIGNATURE WARNING (S49 only) -->
     @if (sigRequired && !hasSignature)
     {
         <div class="ss-warn-banner">
-            <span class="ss-warn-icon">⚠</span>
+            <span class="ss-warn-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+            </span>
             <div>
-                <div class="ss-warn-title">Signature Required for Section 49</div>
+                <div class="ss-warn-title">Signature Required — Section 49</div>
                 <div class="ss-warn-text">
-                    A signature image must be uploaded before you can approve this configuration.
+                    A signature image must be uploaded before this configuration can be approved.
                     Go back to Step 1 and upload the signature file.
                 </div>
             </div>
-            <a class="ss-warn-btn"
-               asp-controller="Workflow" asp-action="Step1"
+            <a class="ss-warn-btn" asp-controller="Workflow" asp-action="Step1"
                asp-route-settingsId="@Model.SettingsId">
                 Upload Signature →
             </a>
@@ -101,21 +113,23 @@
 
     <div class="ss-body">
 
-        <!-- LEFT: detail cards -->
+        <!-- ── LEFT: detail cards ─────────────────────────────── -->
         <div class="ss-left">
 
-            <!-- Config Overview -->
+            <!-- Configuration Overview -->
             <div class="ss-card">
                 <div class="ss-card-header">
                     <div class="ss-card-header-left">
-                        <div class="ss-card-icon">⊞</div>
+                        <div class="ss-card-icon ss-icon-@Model.Notice.ToString().ToLower()">
+                            @NoticeIcon(Model.Notice)
+                        </div>
                         <div>
                             <div class="ss-card-title">Configuration Overview</div>
                             <div class="ss-card-sub">Roll, notice type and valuation period</div>
                         </div>
                     </div>
                     <div class="ss-notice-tag ss-tag-@Model.Notice.ToString().ToLower()">
-                        @Html.Raw(NoticeFullName(Model.Notice))
+                        @Html.Raw(NoticeName(Model.Notice))
                     </div>
                 </div>
 
@@ -128,13 +142,13 @@
                         </span>
                     </div>
                     <div class="ss-detail-row">
-                        <span class="ss-detail-label">Notice</span>
+                        <span class="ss-detail-label">Notice Type</span>
                         <span class="ss-detail-value ss-detail-strong">
-                            @Html.Raw(NoticeFullName(Model.Notice))
+                            @Html.Raw(NoticeName(Model.Notice))
                         </span>
                     </div>
                     <div class="ss-detail-row">
-                        <span class="ss-detail-label">Mode</span>
+                        <span class="ss-detail-label">Batch Mode</span>
                         <span class="ss-detail-value">
                             @if (Model.Mode.ToString().ToLower() == "bulk")
                             {
@@ -149,7 +163,9 @@
                     </div>
                     <div class="ss-detail-row">
                         <span class="ss-detail-label">Version</span>
-                        <span class="ss-detail-value"><span class="ss-badge ss-badge-version">v@Model.Version</span></span>
+                        <span class="ss-detail-value">
+                            <span class="ss-badge ss-badge-version">v @Model.Version</span>
+                        </span>
                     </div>
                 </div>
 
@@ -177,7 +193,7 @@
                         </div>
                     }
                     <div class="ss-detail-row">
-                        <span class="ss-detail-label">City Manager Sign</span>
+                        <span class="ss-detail-label">City Manager</span>
                         <span class="ss-detail-value ss-mono">
                             @(Model.CityManagerSignDate?.ToString("dd MMMM yyyy") ?? "—")
                         </span>
@@ -185,37 +201,31 @@
                 </div>
             </div>
 
-            <!-- S49 block -->
+            <!-- Section 49 details -->
             @if (Model.Notice == NoticeKind.S49)
             {
                 <div class="ss-card">
                     <div class="ss-card-header">
                         <div class="ss-card-header-left">
-                            <div class="ss-card-icon ss-icon-s49">§</div>
+                            <div class="ss-card-icon ss-icon-s49">49</div>
                             <div>
-                                <div class="ss-card-title">Section 49 — Objection Window</div>
-                                <div class="ss-card-sub">Inspection dates and signature</div>
+                                <div class="ss-card-title">Section 49 — Public Inspection &amp; Objections</div>
+                                <div class="ss-card-sub">Objection window and signature</div>
                             </div>
                         </div>
                     </div>
                     <div class="ss-detail-grid">
                         <div class="ss-detail-row">
-                            <span class="ss-detail-label">Objection Start</span>
-                            <span class="ss-detail-value ss-mono">
-                                @(Model.ObjectionStartDate?.ToString("dd MMMM yyyy") ?? "—")
-                            </span>
+                            <span class="ss-detail-label">Objection Opens</span>
+                            <span class="ss-detail-value ss-mono">@(Model.ObjectionStartDate?.ToString("dd MMMM yyyy") ?? "—")</span>
                         </div>
                         <div class="ss-detail-row">
-                            <span class="ss-detail-label">Objection End</span>
-                            <span class="ss-detail-value ss-mono">
-                                @(Model.ObjectionEndDate?.ToString("dd MMMM yyyy") ?? "—")
-                            </span>
+                            <span class="ss-detail-label">Objection Closes</span>
+                            <span class="ss-detail-value ss-mono">@(Model.ObjectionEndDate?.ToString("dd MMMM yyyy") ?? "—")</span>
                         </div>
                         <div class="ss-detail-row">
                             <span class="ss-detail-label">Extension Date</span>
-                            <span class="ss-detail-value ss-mono">
-                                @(Model.ExtensionDate?.ToString("dd MMMM yyyy") ?? "—")
-                            </span>
+                            <span class="ss-detail-value ss-mono">@(Model.ExtensionDate?.ToString("dd MMMM yyyy") ?? "—")</span>
                         </div>
                         <div class="ss-detail-row">
                             <span class="ss-detail-label">Signature</span>
@@ -227,6 +237,7 @@
                                 }
                                 else
                                 {
+
                                     <span class="ss-badge ss-badge-warn">⚠ Missing — required</span>
                                 }
                             </span>
@@ -235,13 +246,13 @@
                 </div>
             }
 
-            <!-- S51 block -->
+            <!-- Section 51 details -->
             @if (Model.Notice == NoticeKind.S51)
             {
                 <div class="ss-card">
                     <div class="ss-card-header">
                         <div class="ss-card-header-left">
-                            <div class="ss-card-icon ss-icon-s51">§</div>
+                            <div class="ss-card-icon ss-icon-s51">51</div>
                             <div>
                                 <div class="ss-card-title">Section 51 — Objection Decision</div>
                                 <div class="ss-card-sub">Evidence close date</div>
@@ -250,22 +261,20 @@
                     </div>
                     <div class="ss-detail-grid">
                         <div class="ss-detail-row">
-                            <span class="ss-detail-label">Evidence Close Date</span>
-                            <span class="ss-detail-value ss-mono">
-                                @(Model.EvidenceCloseDate?.ToString("dd MMMM yyyy") ?? "—")
-                            </span>
+                            <span class="ss-detail-label">Evidence Closes</span>
+                            <span class="ss-detail-value ss-mono">@(Model.EvidenceCloseDate?.ToString("dd MMMM yyyy") ?? "—")</span>
                         </div>
                     </div>
                 </div>
             }
 
-            <!-- S52 block -->
+            <!-- Section 52 details -->
             @if (Model.Notice == NoticeKind.S52)
             {
                 <div class="ss-card">
                     <div class="ss-card-header">
                         <div class="ss-card-header-left">
-                            <div class="ss-card-icon ss-icon-s52">§</div>
+                            <div class="ss-card-icon ss-icon-s52">52</div>
                             <div>
                                 <div class="ss-card-title">Section 52 — Appeal Notices</div>
                                 <div class="ss-card-sub">Backlog processing configuration</div>
@@ -307,15 +316,15 @@
                 </div>
             }
 
-            <!-- S53 block -->
+            <!-- Section 53 details -->
             @if (Model.Notice == NoticeKind.S53)
             {
                 <div class="ss-card">
                     <div class="ss-card-header">
                         <div class="ss-card-header-left">
-                            <div class="ss-card-icon ss-icon-s53">§</div>
+                            <div class="ss-card-icon ss-icon-s53">53</div>
                             <div>
-                                <div class="ss-card-title">Section 53 — Appeal Period</div>
+                                <div class="ss-card-title">Section 53 — Municipal Valuation Decision</div>
                                 <div class="ss-card-sub">Batch date and appeal close date</div>
                             </div>
                         </div>
@@ -326,10 +335,8 @@
                             <span class="ss-detail-value ss-mono">@(Model.BatchDate?.ToString("dd MMMM yyyy") ?? "—")</span>
                         </div>
                         <div class="ss-detail-row">
-                            <span class="ss-detail-label">Appeal Close Date</span>
-                            <span class="ss-detail-value ss-mono ss-detail-strong">
-                                @(Model.AppealCloseDate?.ToString("dd MMMM yyyy") ?? "—")
-                            </span>
+                            <span class="ss-detail-label">Appeal Closes</span>
+                            <span class="ss-detail-value ss-mono ss-detail-strong">@(Model.AppealCloseDate?.ToString("dd MMMM yyyy") ?? "—")</span>
                         </div>
                         @if (!string.IsNullOrWhiteSpace(Model.AppealCloseOverrideReason))
                         {
@@ -348,7 +355,7 @@
                                 else
                                 {
 
-                                    <span class="ss-mono" style="color:var(--ss-text-d)">—</span>
+                                    <span style="color:var(--ss-mu);font-size:13px">—</span>
                                 }
                             </span>
                         </div>
@@ -358,60 +365,58 @@
 
         </div>
 
-        <!-- RIGHT: checklist + approve -->
+        <!-- ── RIGHT: checklist + approve ────────────────────── -->
         <div class="ss-right">
             <div class="ss-action-card">
                 <div class="ss-action-header">
                     <div class="ss-action-title">Approval Checklist</div>
-                    <div class="ss-action-sub">All items must be ✓ before approving</div>
+                    <div class="ss-action-sub">All items must pass before approving</div>
                 </div>
 
                 <div class="ss-checklist">
-                    <div class="ss-check ok">
+                    <div class="ss-check">
                         <div class="ss-check-dot ok">✓</div>
-                        <span>Roll selected — <strong>@Model.RollShortCode</strong></span>
+                        <span>Roll — <strong>@Model.RollName</strong></span>
                     </div>
-                    <div class="ss-check ok">
+                    <div class="ss-check">
                         <div class="ss-check-dot ok">✓</div>
-                        <span>@Html.Raw(NoticeFullName(Model.Notice)) configured</span>
+                        <span>@Html.Raw(NoticeName(Model.Notice))</span>
                     </div>
-                    <div class="ss-check ok">
+                    <div class="ss-check">
                         <div class="ss-check-dot ok">✓</div>
                         <span>Letter date — <strong>@Model.LetterDate.ToString("dd MMM yyyy")</strong></span>
                     </div>
 
                     @if (Model.Notice == NoticeKind.S49)
                     {
-                        if (hasSignature)
-                        {
-                            <div class="ss-check ok">
+                        <div class="ss-check">
+                            @if (hasSignature)
+                            {
                                 <div class="ss-check-dot ok">✓</div>
                                 <span>Signature uploaded</span>
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="ss-check warn">
+     }
+                            else
+                            {
                                 <div class="ss-check-dot warn">!</div>
-                                <span>Signature <strong>missing</strong> — required for Section 49</span>
-                            </div>
-                        }
-                        <div class="ss-check ok">
+                                <span>Signature <strong>missing</strong> — required</span>
+     }
+                        </div>
+                        <div class="ss-check">
                             <div class="ss-check-dot ok">✓</div>
-                            <span>Objection dates configured</span>
+                            <span>Objection window configured</span>
                         </div>
                     }
 
                     @if (Model.Notice == NoticeKind.S53)
                     {
-                        <div class="ss-check ok">
+                        <div class="ss-check">
                             <div class="ss-check-dot ok">✓</div>
-                            <span>Appeal close date calculated</span>
+                            <span>Appeal close date — <strong>@(Model.AppealCloseDate?.ToString("dd MMM yyyy") ?? "not set")</strong></span>
                         </div>
                     }
                 </div>
 
-                <!-- Meta pills -->
+                <!-- Meta -->
                 <div class="ss-meta-block">
                     <div class="ss-meta-row">
                         <span class="ss-meta-label">Settings ID</span>
@@ -423,11 +428,11 @@
                     </div>
                     <div class="ss-meta-row">
                         <span class="ss-meta-label">Version</span>
-                        <span class="ss-badge ss-badge-version">v@Model.Version</span>
+                        <span class="ss-badge ss-badge-version">v @Model.Version</span>
                     </div>
                 </div>
 
-                <!-- Actions -->
+                <!-- Action buttons -->
                 <div class="ss-action-btns">
                     <form id="approve-form" asp-action="Step1SummaryApprove"
                           asp-controller="Workflow" method="post">
@@ -442,11 +447,10 @@
                                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                                     <polyline points="20 6 9 17 4 12" />
                                 </svg>
-                                Approve &amp; Go to Step 2
+                                Continue to Step 2 
                             </span>
                         </button>
                     </form>
-
                     <a class="ss-btn ss-btn-edit"
                        asp-controller="Workflow" asp-action="Step1"
                        asp-route-settingsId="@Model.SettingsId">
@@ -471,12 +475,10 @@
             const ICONS={success:'✓',error:'✕',warning:'!',info:'i'};
             const TITLES={success:'Success',error:'Error',warning:'Warning',info:'Info'};
             function show(type,msg,title) {
-                const t=document.createElement('div');
-                t.className=`wf-toast t-${type}`;
+                const t=document.createElement('div'); t.className=`wf-toast t-${type}`;
                 t.innerHTML=`<div class="wf-toast-main"><div class="wf-toast-stripe"></div>
-                    <div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div>
-                    <div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div>
-                    <div class="wf-toast-msg">${msg}</div></div></div>
+                    <div class="wf-toast-body"><div class="wf-toast-title">${title||TITLES[type]}</div>
+                    <div class="wf-toast-msg">${msg}</div></div>
                     <button class="wf-toast-close">×</button></div>
                     <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
                 c.appendChild(t);
@@ -493,36 +495,31 @@
             return{success:(m,t)=>show('success',m,t),error:(m,t)=>show('error',m,t),
                    warning:(m,t)=>show('warning',m,t),info:(m,t)=>show('info',m,t)};
         })();
-
         const WfLoader={
-            show:(msg,hint)=>{
-                document.getElementById('wf-loader-text').textContent=msg||'Loading…';
-                document.getElementById('wf-loader-sub').textContent=hint||'Please wait';
-                document.getElementById('wf-loader').classList.add('active');
-            },
+            show:(m,h)=>{document.getElementById('wf-loader-text').textContent=m||'Loading…';
+                          document.getElementById('wf-loader-sub').textContent=h||'Please wait';
+                          document.getElementById('wf-loader').classList.add('active');},
             hide:()=>document.getElementById('wf-loader').classList.remove('active')
         };
-
         @if (TempData["Error"] != null)
         {
-                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));</text>
+            <text>document.addEventListener('DOMContentLoaded',()=>WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));</text>
         }
         @if (TempData["Success"] != null)
         {
-                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));</text>
+            <text>document.addEventListener('DOMContentLoaded',()=>WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));</text>
         }
-
         document.addEventListener('DOMContentLoaded', () => {
-            const form = document.getElementById('approve-form');
-            const btn  = document.getElementById('approve-btn');
-            if (form && btn && !btn.disabled) {
-                form.addEventListener('submit', () => {
+            const form=document.getElementById('approve-form');
+            const btn=document.getElementById('approve-btn');
+            if(form&&btn&&!btn.disabled){
+                form.addEventListener('submit',()=>{
                     btn.classList.add('loading');
-                    WfLoader.show('Approving configuration…', 'Saving and moving to Step 2');
+                    WfLoader.show('Approving configuration…','Saving and moving to Step 2');
                 });
             }
-            document.querySelectorAll('.ss-btn-edit').forEach(a =>
-                a.addEventListener('click', () => WfLoader.show('Loading editor…', 'Opening Step 1 configuration')));
+            document.querySelectorAll('.ss-btn-edit').forEach(a=>
+                a.addEventListener('click',()=>WfLoader.show('Loading editor…','Opening Step 1 configuration')));
         });
     </script>
 }

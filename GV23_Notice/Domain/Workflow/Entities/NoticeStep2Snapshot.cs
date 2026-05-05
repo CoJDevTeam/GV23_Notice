@@ -30,7 +30,10 @@ namespace GV23_Notice.Domain.Workflow.Entities
         [Column(TypeName = "nvarchar(max)")]
         public string EmailBodyHtmlSnapshot { get; set; } = "";
 
-        // Optional PDF metadata (we snapshot email+template mainly, but these help audit)
+        // PDF snapshot — bytes stored for exact replay at print time
+        [Column(TypeName = "varbinary(max)")]
+        public byte[]? PdfBytes { get; set; }
+
         [MaxLength(255)]
         public string PdfFileName { get; set; } = "";
 

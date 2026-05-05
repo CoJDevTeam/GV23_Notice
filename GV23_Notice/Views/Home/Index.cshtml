@@ -1,346 +1,399 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.HomeIndexVm
 @using GV23_Notice.Domain.Workflow
-@using Microsoft.AspNetCore.Authorization
-@inject IAuthorizationService AuthorizationService
-
 @{
-    ViewData["Title"] = "VNS — Dashboard";
+    ViewData["Title"] = "Dashboard";
     var now = DateTime.Now;
 
-    var canAdmin = (await AuthorizationService.AuthorizeAsync(User, "ValuationAdminCreateApprove")).Succeeded;
-    var canSearch = (await AuthorizationService.AuthorizeAsync(User, "ValuationAdminSearchDownload")).Succeeded;
-    var canStep3 = (await AuthorizationService.AuthorizeAsync(User, "DataTeamCreateBatchPrint")).Succeeded;
+    // Group recent workflows by notice type for tab stats
+    var byNotice = Model.RecentWorkflows
+        .GroupBy(w => w.Notice.ToString())
+        .ToDictionary(g => g.Key, g => g.ToList());
 
-    string PipelineClass(int step)
+    // Notice type definitions
+    var noticeTypes = new[]
     {
-        if (step == 1) return canAdmin ? "pip-accessible" : "pip-locked";
-        if (step == 2) return canAdmin ? "pip-accessible" : "pip-locked";
-        return canStep3 ? "pip-active" : "pip-locked";
-    }
+        ("S49","Section 49","Public Inspection"),
+        ("S51","Section 51","Objection Decision"),
+        ("S52","Section 52","Appeal Notice"),
+        ("S53","Section 53","MVD Decision"),
+        ("DJ", "Dear Johnny","Acknowledgement"),
+        ("IN", "Invalid",   "Invalid Notice"),
+        ("S78","Section 78","Query Notice"),
+    };
+
+    // Chart data — sent count per notice type
+    var chartLabels = string.Join(",", noticeTypes.Select(n =>
+        $"'{n.Item1}'"));
+    var chartSent = string.Join(",", noticeTypes.Select(n =>
+        Model.RecentWorkflows
+             .Where(w => w.Notice.ToString() == n.Item1)
+             .Sum(w => w.SentCount)));
+    var chartBatches = string.Join(",", noticeTypes.Select(n =>
+        Model.RecentWorkflows
+             .Where(w => w.Notice.ToString() == n.Item1)
+             .Sum(w => w.BatchCount)));
 }
+<link href="~/css/home/homeindexcss.css" rel="stylesheet" />
 
-<link href="~/css/homeindexcss1.css" rel="stylesheet" />
+<div class="hm-root">
 
-<div class="vns-root">
-
-    <!-- ══ STATS STRIP ══════════════════════════════════════════════ -->
-    <section class="vns-stats-strip" id="vns-stats">
-        <div class="vns-stat-card" style="--i:0">
-            <div class="vns-stat-icon">⬡</div>
-            <div class="vns-stat-body">
-                <div class="vns-stat-num" data-target="@Model.ActiveRolls">0</div>
-                <div class="vns-stat-lbl">Active Rolls</div>
-            </div>
-        </div>
-        <div class="vns-stat-card" style="--i:1">
-            <div class="vns-stat-icon">⊞</div>
-            <div class="vns-stat-body">
-                <div class="vns-stat-num" data-target="@Model.TotalWorkflows">0</div>
-                <div class="vns-stat-lbl">Total Workflows</div>
-            </div>
-        </div>
-        <div class="vns-stat-card vns-stat-amber" style="--i:2">
-            <div class="vns-stat-icon">◎</div>
-            <div class="vns-stat-body">
-                <div class="vns-stat-num" data-target="@Model.PendingStep2">0</div>
-                <div class="vns-stat-lbl">Pending Step 2</div>
-            </div>
-        </div>
-        <div class="vns-stat-card vns-stat-green" style="--i:3">
-            <div class="vns-stat-icon">✦</div>
-            <div class="vns-stat-body">
-                <div class="vns-stat-num" data-target="@Model.Step2Approved">0</div>
-                <div class="vns-stat-lbl">Step 2 Approved</div>
-            </div>
-        </div>
-        <div class="vns-stat-card vns-stat-blue" style="--i:4">
-            <div class="vns-stat-icon">⬛</div>
-            <div class="vns-stat-body">
-                <div class="vns-stat-num" data-target="@Model.TotalBatches">0</div>
-                <div class="vns-stat-lbl">Total Batches</div>
-            </div>
-        </div>
-        <div class="vns-stat-card vns-stat-gold" style="--i:5">
-            <div class="vns-stat-icon">✉</div>
-            <div class="vns-stat-body">
-                <div class="vns-stat-num" data-target="@Model.TotalSent">0</div>
-                <div class="vns-stat-lbl">Notices Sent</div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ══ MAIN GRID ════════════════════════════════════════════════ -->
-    <main class="vns-main">
-
-        <!-- LEFT COLUMN: Recent Workflows -->
-        <div class="vns-panel vns-panel-wide" style="--pi:0">
-            <div class="vns-panel-header">
-                <div class="vns-panel-title">
-                    <span class="vns-panel-icon">◫</span>
-                    Recent Workflows
+    <!-- ── HERO ──────────────────────────────────────────────────────── -->
+    <div class="hm-hero">
+        <div class="hm-hero-inner">
+            <div class="hm-hero-left">
+                <div class="hm-hero-eyebrow">
+                    <span class="hm-hero-eyebrow-dot"></span>
+                    City of Johannesburg — Valuation Services
                 </div>
-                <div class="vns-chip">@Model.RecentWorkflows.Count</div>
+                <h1 class="hm-hero-title">
+                    Notice Management <em>Dashboard</em>
+                </h1>
+                <p class="hm-hero-sub">
+                    GV23 statutory notice processing — bulk generation, print and dispatch
+                    of Section 49, 51, 52, 53, Dear Johnny, Invalid and S78 notices.
+                </p>
+                <div class="hm-hero-badges">
+                    <span class="hm-badge hm-badge-live">
+                        <span class="hm-pulse"></span> System Active
+                    </span>
+                    <span class="hm-badge hm-badge-cycle">2026 Valuation Period</span>
+                  @*   <span class="hm-badge hm-badge-user">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                        @User.Identity?.Name?.Split('\\').Last()
+                    </span> *@
+                </div>
             </div>
+            <div class="hm-hero-right">
+                <a class="hm-hero-btn hm-btn-gold" asp-controller="Step3" asp-action="Index">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                    Step 3 Processing
+                </a>
+                <a class="hm-hero-btn hm-btn-outline" asp-controller="Workflow" asp-action="Step1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" /></svg>
+                    Step 1 Configure Date
+                </a>
+               @*  <div class="hm-hero-datepill">
+                    @now.ToString("dddd, dd MMMM yyyy") &nbsp;·&nbsp; @now.ToString("HH:mm")
+                </div> *@
+            </div>
+        </div>
+    </div>
 
-            @if (Model.RecentWorkflows.Count == 0)
+    <div class="hm-body">
+
+        <!-- ── STAT STRIP ─────────────────────────────────────────────── -->
+        <div class="hm-stats" style="margin-top:28px">
+            <div class="hm-stat hm-stat-gold">
+                <div class="hm-stat-lbl">Active Rolls</div>
+                <div class="hm-stat-num">@Model.ActiveRolls</div>
+                <div class="hm-stat-sub">Registered in system</div>
+            </div>
+            <div class="hm-stat">
+                <div class="hm-stat-lbl">Total Workflows</div>
+                <div class="hm-stat-num">@Model.TotalWorkflows</div>
+                <div class="hm-stat-sub">@Model.Step1Approved approved Step 1</div>
+            </div>
+            <div class="hm-stat">
+                <div class="hm-stat-lbl">Batches Created</div>
+                <div class="hm-stat-num">@Model.TotalBatches</div>
+                <div class="hm-stat-sub">@Model.TotalPrinted PDFs printed</div>
+            </div>
+            <div class="hm-stat hm-stat-green">
+                <div class="hm-stat-lbl">Notices Sent</div>
+                <div class="hm-stat-num">@Model.TotalSent.ToString("N0")</div>
+                <div class="hm-stat-sub">Email + print dispatched</div>
+            </div>
+            <div class="hm-stat">
+                <div class="hm-stat-lbl">Step 2 Approved</div>
+                <div class="hm-stat-num">@Model.Step2Approved</div>
+                <div class="hm-stat-sub">Ready for Step 3</div>
+            </div>
+        </div>
+
+        <!-- ── NOTICE TABS ────────────────────────────────────────────── -->
+        <div class="hm-sec-head">
+            <div class="hm-sec-bar"></div>
+            <span class="hm-sec-title">Notice Overview by Type</span>
+        </div>
+
+        <!-- Tab buttons -->
+        <div class="hm-tabs">
+            <button class="hm-tab on" onclick="switchTab('all',this)">
+                All Notices
+                <span class="hm-tab-count">@Model.RecentWorkflows.Count</span>
+            </button>
+            @foreach (var nt in noticeTypes)
             {
-                <div class="vns-empty">
-                    <div class="vns-empty-glyph">□</div>
-                    <div>No workflows created yet.</div>
-                    @if (canAdmin)
+                var cnt = Model.RecentWorkflows.Count(w => w.Notice.ToString() == nt.Item1);
+                <button class="hm-tab" onclick="switchTab('@nt.Item1.ToLower()',this)">
+                    @nt.Item1
+                    @if (cnt > 0)
                     {
-                        <a asp-controller="Workflow" asp-action="Step1" class="vns-empty-cta">
-                            Create First Workflow →
-                        </a>
+                        <span class="hm-tab-count">@cnt</span>
                     }
-                </div>
-            }
-            else
-            {
-                <div class="vns-table-wrap">
-                    <table class="vns-table">
-                        <thead>
-                            <tr>
-                                <th>Roll</th>
-                                <th>Notice</th>
-                                <th>Letter Date</th>
-                                <th>Status</th>
-                                <th class="ta-r">Sent</th>
-                                <th class="ta-r">Batches</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var w in Model.RecentWorkflows)
-                            {
-                                <tr class="vns-row">
-                                    <td>
-                                        <div class="vns-roll-name">@w.RollName</div>
-                                        <div class="vns-roll-meta">
-                                            <span class="vns-code-chip">@w.RollShortCode</span>
-                                            <span>v@w.Version</span>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span class="vns-notice-tag vns-notice-@w.Notice.ToString().ToLower()">
-                                            @w.Notice
-                                        </span>
-                                    </td>
-                                    <td class="vns-date-cell">@w.LetterDate.ToString("dd MMM yy")</td>
-                                    <td>
-                                        @if (w.IsStep2Approved && w.HasWorkflowKey)
-                                        {
-                                            <span class="vns-status vns-s-ready">⚡ Step 3 Ready</span>
-                                        }
-                                        else if (w.IsStep2Approved)
-                                        {
-                                            <span class="vns-status vns-s-s2">✓ Step 2 Done</span>
-                                        }
-                                        else if (w.IsApproved)
-                                        {
-                                            <span class="vns-status vns-s-s1">● Step 1 Approved</span>
-                                        }
-                                        else if (w.IsConfirmed)
-                                        {
-                                            <span class="vns-status vns-s-draft">✎ Confirmed</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="vns-status vns-s-draft">Draft</span>
-                                        }
-                                    </td>
-                                    <td class="ta-r vns-num-cell">
-                                        <span class="@(w.SentCount == 0 ? "vns-zero" : "vns-num")">
-                                            @w.SentCount.ToString("N0")
-                                        </span>
-                                    </td>
-                                    <td class="ta-r vns-num-cell">
-                                        <span class="@(w.BatchCount == 0 ? "vns-zero" : "vns-num")">
-                                            @w.BatchCount
-                                        </span>
-                                    </td>
-                                    <td>
-                                        @if (w.IsStep2Approved && w.WorkflowKey.HasValue && canStep3)
-                                        {
-                                            <a class="vns-row-btn vns-row-btn-primary"
-                                               asp-controller="Step3" asp-action="Kickoff"
-                                               asp-route-key="@w.WorkflowKey">Open</a>
-                                        }
-                                        else if (w.IsApproved && canAdmin)
-                                        {
-                                            <a class="vns-row-btn"
-                                               asp-controller="Workflow" asp-action="Step2"
-                                               asp-route-settingsId="@w.Id">Review</a>
-                                        }
-                                        else if (canSearch)
-                                        {
-                                            <a class="vns-row-btn"
-                                               asp-controller="Workflow" asp-action="SettingsLibrary">View</a>
-                                        }
-                                        else
-                                        {
-
-                                            <span class="vns-dash">—</span>
-                                        }
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                </button>
             }
         </div>
 
-        <!-- RIGHT COLUMN -->
-        <div class="vns-right-col">
-
-            <!-- Workflow Pipeline -->
-            <div class="vns-panel" style="--pi:1">
-                <div class="vns-panel-header">
-                    <div class="vns-panel-title">
-                        <span class="vns-panel-icon">⇢</span>
-                        Workflow Pipeline
+        <!-- TAB PANEL: Overview with Chart -->
+        <div class="hm-tab-panel on" id="panel-all">
+            <div class="hm-overview-grid">
+                <div class="hm-chart-area">
+                    <div class="hm-chart-title">Notices Sent by Type</div>
+                    <div class="hm-chart-wrap">
+                        <canvas id="noticeChart"></canvas>
                     </div>
                 </div>
-                <div class="vns-pipeline">
-                    <div class="vns-pip-step @PipelineClass(1)">
-                        <div class="vns-pip-number">01</div>
-                        <div class="vns-pip-content">
-                            <div class="vns-pip-title">Setup & Configuration</div>
-                            <div class="vns-pip-desc">Roll, notice type, dates, signatures</div>
-                        </div>
-                        @if (canAdmin)
-                        {
-                            <a class="vns-pip-btn" asp-controller="Workflow" asp-action="Step1">Go</a>
-                        }
+                <div class="hm-sidebar-stats">
+                    <div class="hm-mini-stat hm-mini-stat-gold">
+                        <div class="hm-mini-stat-lbl">Total Sent</div>
+                        <div class="hm-mini-stat-num">@Model.TotalSent.ToString("N0")</div>
                     </div>
-                    <div class="vns-pip-connector"></div>
-                    <div class="vns-pip-step @PipelineClass(2)">
-                        <div class="vns-pip-number">02</div>
-                        <div class="vns-pip-content">
-                            <div class="vns-pip-title">Review & Approval</div>
-                            <div class="vns-pip-desc">Data check, correction tickets, sign-off</div>
-                        </div>
-                        @if (canAdmin)
-                        {
-                            <a class="vns-pip-btn" asp-controller="Workflow" asp-action="Step2">Go</a>
-                        }
+                    <div class="hm-mini-stat">
+                        <div class="hm-mini-stat-lbl">Workflows</div>
+                        <div class="hm-mini-stat-num">@Model.TotalWorkflows</div>
                     </div>
-                    <div class="vns-pip-connector"></div>
-                    <div class="vns-pip-step @PipelineClass(3)">
-                        <div class="vns-pip-number">03</div>
-                        <div class="vns-pip-content">
-                            <div class="vns-pip-title">Batch Processing</div>
-                            <div class="vns-pip-desc">Create batches, print PDFs, dispatch emails</div>
-                        </div>
-                        @if (canStep3)
-                        {
-                            <a class="vns-pip-btn vns-pip-btn-gold" asp-controller="Step3" asp-action="Index">Go</a>
-                        }
+                    <div class="hm-mini-stat hm-mini-stat-green">
+                        <div class="hm-mini-stat-lbl">Batches</div>
+                        <div class="hm-mini-stat-num">@Model.TotalBatches</div>
+                    </div>
+                    <div class="hm-mini-stat">
+                        <div class="hm-mini-stat-lbl">Printed</div>
+                        <div class="hm-mini-stat-num">@Model.TotalPrinted.ToString("N0")</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Notice Types Grid -->
-            <div class="vns-panel" style="--pi:2">
-                <div class="vns-panel-header">
-                    <div class="vns-panel-title">
-                        <span class="vns-panel-icon">⊡</span>
-                        Notice Types
+            <!-- Full workflow table in All tab -->
+            <div style="border-top:1px solid var(--border)">
+                @if (!Model.RecentWorkflows.Any())
+                {
+                    <div class="hm-empty">
+                        <div class="hm-empty-icon">📭</div>
+                        No workflows yet. Go to Workflow Admin to create one.
+                    </div>
+                }
+                else
+                {
+                    @await Html.PartialAsync("_WorkflowTable", Model.RecentWorkflows)
+                }
+            </div>
+        </div>
+
+        <!-- TAB PANELS: Per notice type -->
+        @foreach (var nt in noticeTypes)
+        {
+            var code = nt.Item1;
+            var rows = Model.RecentWorkflows.Where(w => w.Notice.ToString() == code).ToList();
+            var sentTotal = rows.Sum(w => w.SentCount);
+            <div class="hm-tab-panel" id="panel-@code.ToLower()">
+                <div class="hm-ntable-header">
+                    <div>
+                        <div class="hm-ntable-head-title">@nt.Item2</div>
+                        <div class="hm-ntable-head-desc">@nt.Item3 — @rows.Count workflow@(rows.Count == 1 ? "" : "s")</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <span class="hm-nt-chip hm-chip-@code.ToLower()">@code</span>
+                        @if (sentTotal > 0)
+                        {
+                            <span style="font-size:12px;font-weight:700;color:#16a34a">@sentTotal.ToString("N0") sent</span>
+                        }
                     </div>
                 </div>
-                <div class="vns-notice-grid">
-                    @foreach (var (code, label, desc) in new[]
-                                        {
-                                        ("S49","Section 49","Public inspection & objections"),
-                                        ("S51","Section 51","Objection decision notice"),
-                                        ("S52","Section 52","Appeal decision / review"),
-                                        ("S53","Section 53","Appeal period notice"),
-                                        ("DJ","Dear Johnny","Invalid objector address"),
-                                        ("IN","Invalid","Invalid objection / omission"),
-                                        ("AD","Appeal Dec.","Appeal decision dispatch"),
-                                        })
+                @if (!rows.Any())
+                {
+                    <div class="hm-empty">
+                        <div class="hm-empty-icon">📭</div>
+                        No @nt.Item1 workflows found.
+                    </div>
+                }
+                else
+                {
+                    @await Html.PartialAsync("_WorkflowTable", rows)
+                }
+            </div>
+        }
+
+        <!-- ── BOTTOM ROW ──────────────────────────────────────────────── -->
+        <div class="hm-bottom" style="margin-top:28px">
+
+            <!-- Workflow Phases -->
+            <div class="hm-card">
+                <div class="hm-card-head">
+                    <span class="hm-card-head-title">Workflow Phases</span>
+                </div>
+                <div class="hm-card-body">
+                    <a class="hm-phase done" asp-controller="Workflow" asp-action="Step1">
+                        <div class="hm-phase-num">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                        </div>
+                        <div>
+                            <div class="hm-phase-title">Step 1 — Configure Dates</div>
+                            <div class="hm-phase-desc">Define roll, notice type, letter dates, valuation period and signatures.</div>
+                        </div>
+                        <div class="hm-phase-tag hm-tag-done">Configure</div>
+                    </a>
+                    <a class="hm-phase done" asp-controller="Workflow" asp-action="Step2">
+                        <div class="hm-phase-num">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                        </div>
+                        <div>
+                            <div class="hm-phase-title">Step 2 — Preview &amp; Approve</div>
+                            <div class="hm-phase-desc">Review email and notice previews, then start Step 3 processing.</div>
+                        </div>
+                        <div class="hm-phase-tag hm-tag-done">Preview</div>
+                    </a>
+                    <a class="hm-phase active" asp-controller="Step3" asp-action="Index">
+                        <div class="hm-phase-num">3</div>
+                        <div>
+                            <div class="hm-phase-title">Step 3 — Processing</div>
+                            <div class="hm-phase-desc">3.1 Create Batches → 3.2 Print PDFs → 3.3 Send Notices</div>
+                        </div>
+                        <div class="hm-phase-tag hm-tag-current">Active</div>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Notice types grid -->
+            <div class="hm-card">
+                <div class="hm-card-head">
+                    <span class="hm-card-head-title">Notice Types</span>
+                </div>
+                <div class="hm-card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    @foreach (var nt in noticeTypes)
                     {
-                        <div class="vns-ntype vns-ntype-@code.ToLower()">
-                            <div class="vns-ntype-code">@code</div>
-                            <div class="vns-ntype-label">@label</div>
-                            <div class="vns-ntype-desc">@desc</div>
+                        var cnt2 = Model.RecentWorkflows.Count(w => w.Notice.ToString() == nt.Item1);
+                        <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;cursor:pointer"
+                             onclick="switchTabById('@nt.Item1.ToLower()')">
+                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                                <span class="hm-nt-chip hm-chip-@nt.Item1.ToLower()">@nt.Item1</span>
+                                @if (cnt2 > 0)
+                                {
+                                    <span style="font-size:11px;font-weight:700;color:var(--mu)">@cnt2</span>
+                                }
+                            </div>
+                            <div style="font-size:11.5px;font-weight:600;color:var(--tx)">@nt.Item2</div>
+                            <div style="font-size:10.5px;color:var(--mu)">@nt.Item3</div>
                         </div>
                     }
                 </div>
             </div>
         </div>
-    </main>
 
-    <!-- ══ QUICK ACTIONS ════════════════════════════════════════════ -->
-    <section class="vns-actions-section">
-        <div class="vns-section-title">Quick Access</div>
-        <div class="vns-actions">
-
-            @if (canStep3)
-            {
-                <a class="vns-action vns-action-primary" asp-controller="Step3" asp-action="Index" style="--ai:0">
-                    <div class="vns-action-glyph">▶</div>
-                    <div class="vns-action-body">
-                        <div class="vns-action-title">Step 3 Processing</div>
-                        <div class="vns-action-desc">Create batches, generate PDFs and dispatch notice emails to ratepayers.</div>
-                    </div>
-                    <div class="vns-action-arrow">→</div>
-                </a>
-            }
-
-            @if (canAdmin)
-            {
-                <a class="vns-action" asp-controller="Workflow" asp-action="Step1" style="--ai:1">
-                    <div class="vns-action-glyph">⚙</div>
-                    <div class="vns-action-body">
-                        <div class="vns-action-title">Workflow Administration</div>
-                        <div class="vns-action-desc">Create workflows, assign rolls, notice types, letter dates and approval chain.</div>
-                    </div>
-                    <div class="vns-action-arrow">→</div>
-                </a>
-            }
-
-            @if (canSearch)
-            {
-                <a class="vns-action" asp-controller="NoticeSearch" asp-action="Index" style="--ai:2">
-                    <div class="vns-action-glyph">⌕</div>
-                    <div class="vns-action-body">
-                        <div class="vns-action-title">Notice Search</div>
-                        <div class="vns-action-desc">Search, preview and download generated notice PDFs across all rolls.</div>
-                    </div>
-                    <div class="vns-action-arrow">→</div>
-                </a>
-
-                <a class="vns-action" asp-controller="Workflow" asp-action="SettingsLibrary" style="--ai:3">
-                    <div class="vns-action-glyph">◫</div>
-                    <div class="vns-action-body">
-                        <div class="vns-action-title">Settings Library</div>
-                        <div class="vns-action-desc">Browse all notice configurations, valuation periods and roll registry.</div>
-                    </div>
-                    <div class="vns-action-arrow">→</div>
-                </a>
-            }
+      @*   <!-- ── QUICK ACTIONS ──────────────────────────────────────────── -->
+        <div class="hm-sec-head" style="margin-top:28px">
+            <div class="hm-sec-bar"></div>
+            <span class="hm-sec-title">Quick Access</span>
         </div>
-    </section>
-
+        <div class="hm-actions">
+            <a class="hm-action hm-action-gold" asp-controller="Step3" asp-action="Index">
+                <div class="hm-action-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+                </div>
+                <div class="hm-action-label">Step 3 Processing</div>
+                <div class="hm-action-sub">Create batches, print PDFs, and send notice emails to ratepayers for approved workflows.</div>
+                <div class="hm-action-cta">Go to Step 3 →</div>
+            </a>
+            <a class="hm-action" asp-controller="Workflow" asp-action="Step1">
+                <div class="hm-action-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" /></svg>
+                </div>
+                <div class="hm-action-label">Workflow Admin</div>
+                <div class="hm-action-sub">Create and manage workflows — assign rolls, notice types, letter dates and valuation period settings.</div>
+                <div class="hm-action-cta">Open Admin →</div>
+            </a>
+            <a class="hm-action" asp-controller="Workflow" asp-action="SettingsLibrary">
+                <div class="hm-action-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
+                </div>
+                <div class="hm-action-label">Settings Library</div>
+                <div class="hm-action-sub">View all notice configurations, valuation periods, and roll registry definitions in one place.</div>
+                <div class="hm-action-cta">Open Library →</div>
+            </a>
+        </div>
+ *@
+    </div>
 </div>
 
-<script>
-    // Clock provided by _Layout
-
-    // Animated stat counters
-    document.querySelectorAll('.vns-stat-num[data-target]').forEach(el => {
-        const target = parseInt(el.dataset.target, 10);
-        if (isNaN(target) || target === 0) { el.textContent = '0'; return; }
-        const duration = 900;
-        const start = performance.now();
-        function tick(now) {
-            const pct = Math.min((now - start) / duration, 1);
-            const ease = 1 - Math.pow(1 - pct, 3);
-            el.textContent = Math.round(ease * target).toLocaleString();
-            if (pct < 1) requestAnimationFrame(tick);
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script>
+        // ── Tab switching ──────────────────────────────────────────────────────
+        function switchTab(id, btn) {
+            document.querySelectorAll('.hm-tab').forEach(t => t.classList.remove('on'));
+            document.querySelectorAll('.hm-tab-panel').forEach(p => p.classList.remove('on'));
+            if (btn) btn.classList.add('on');
+            var panel = document.getElementById('panel-' + id);
+            if (panel) panel.classList.add('on');
         }
-        requestAnimationFrame(tick);
-    });
-</script>
+        function switchTabById(id) {
+            var tabs = document.querySelectorAll('.hm-tab');
+            var labels = ['all','s49','s51','s52','s53','dj','in','s78'];
+            var idx = labels.indexOf(id);
+            if (idx >= 0 && tabs[idx]) switchTab(id, tabs[idx]);
+        }
+
+        // ── Chart ──────────────────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', function() {
+            var ctx = document.getElementById('noticeChart');
+            if (!ctx) return;
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [@Html.Raw(chartLabels)],
+                    datasets: [
+                        {
+                            label: 'Notices Sent',
+                            data: [@chartSent],
+                            backgroundColor: 'rgba(230,176,0,0.85)',
+                            borderColor: '#c9980a',
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                        },
+                        {
+                            label: 'Batches',
+                            data: [@chartBatches],
+                            backgroundColor: 'rgba(10,10,10,0.08)',
+                            borderColor: 'rgba(10,10,10,0.2)',
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { family: 'Poppins', size: 11, weight: '600' },
+                                color: '#0a0a0a',
+                                boxWidth: 12, boxHeight: 12,
+                                padding: 16
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#0a0a0a',
+                            titleFont: { family: 'Poppins', size: 12, weight: '700' },
+                            bodyFont:  { family: 'Poppins', size: 11 },
+                            padding: 12, cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { font: { family: 'Poppins', size: 11, weight: '600' }, color: '#0a0a0a' },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { font: { family: 'Poppins', size: 11 }, color: '#7a7a7a' },
+                            grid: { color: 'rgba(0,0,0,0.05)' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+}

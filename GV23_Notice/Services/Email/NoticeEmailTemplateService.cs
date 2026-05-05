@@ -190,7 +190,7 @@ namespace GV23_Notice.Services.Email
             mid.Append(PropertyBlock(req, includeRefs: true));
 
             mid.Append("<p>");
-            mid.Append("Should you wish to lodge an appeal against the Municipal Valuer&apos;s Decision, please login to the City&apos;s online system on the following link: ");
+            mid.Append("Should you wish to lodge an appeal against the Municipal Valuer's Decision, please login to the City's online system on the following link: ");
             mid.Append($"<a href=\"{H(_opt.PortalUrl)}\">{H(_opt.PortalUrl)}</a>");
             mid.Append("</p>");
 

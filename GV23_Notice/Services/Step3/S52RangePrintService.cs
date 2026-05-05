@@ -147,7 +147,9 @@ namespace GV23_Notice.Services.Step3
                 PremiseId = row.PremiseId,
                 RecipientEmail = row.Email,
                 PropertyDesc = row.PropertyDesc,
-                RecipientName = row.Addr1,
+                // Store Appeal_Type in RecipientName (mirrors S53 storing ObjectorType)
+                // so BuildS52PdfAsync and path builder can determine Prop Owner later
+                RecipientName = row.AppealType ?? row.Addr1,
                 Status = RunStatus.Generated,
                 CreatedAtUtc = nowUtc
             }).ToList();
@@ -168,13 +170,20 @@ namespace GV23_Notice.Services.Step3
                 {
                     var pdfBytes = _pdf.BuildNotice(appealRow, ctx);
                     var propertyDesc = row.PropertyDesc ?? row.AppealNo ?? log.Id.ToString();
+                    var isPropOwner = string.Equals(row.AppealType, "Prop Owner",
+                                           StringComparison.OrdinalIgnoreCase);
 
-                    var pdfPath = _paths.BuildS52PdfPath(roll, row.AppealNo ?? "", propertyDesc, isReview);
+                    var pdfPath = _paths.BuildS52PdfPath(roll, row.AppealNo ?? "", propertyDesc,
+                                                         isReview, isPropOwner);
                     SavePdf(pdfPath, pdfBytes);
 
                     log.PdfPath = pdfPath;
                     log.Status = RunStatus.Printed;
                     result.Printed++;
+
+                    _log.LogInformation(
+                        "S52 PDF printed: {AppealNo} AppealType={Type} isPropOwner={PO} → {Path}",
+                        row.AppealNo, row.AppealType ?? "n/a", isPropOwner, pdfPath);
                 }
                 catch (Exception ex)
                 {
@@ -227,6 +236,7 @@ namespace GV23_Notice.Services.Step3
             {
                 list.Add(new S52KickoffRow
                 {
+                    AppealType = Str("Appeal_Type"),
                     AppealNo = Str("Appeal_No"),
                     ObjectionNo = Str("Objection_No"),
                     PremiseId = Str("Premise_iD"),
@@ -252,6 +262,7 @@ namespace GV23_Notice.Services.Step3
                     AppCategory = Str("App_Category"),
                     AppCategory2 = Str("App_Category2"),
                     AppCategory3 = Str("App_Category3"),
+                      // "Prop Owner", "Third_Party", "Representative"
                 });
             }
 
@@ -300,6 +311,7 @@ namespace GV23_Notice.Services.Step3
         // ── Internal DTO ─────────────────────────────────────────────────────
         private sealed class S52KickoffRow
         {
+            public string? AppealType { get; set; }   // "Prop Owner" or null/other
             public string? AppealNo { get; set; }
             public string? ObjectionNo { get; set; }
             public string? PremiseId { get; set; }

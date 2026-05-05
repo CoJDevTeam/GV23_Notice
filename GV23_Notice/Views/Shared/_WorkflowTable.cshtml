@@ -1,0 +1,88 @@
+﻿@using GV23_Notice.Models.Workflow.ViewModels
+@using GV23_Notice.Domain.Workflow
+@model List<RecentWorkflowRow>
+
+<div style="overflow-x:auto">
+    <table class="hm-table">
+        <thead>
+            <tr>
+                <th>Roll / Workflow</th>
+                <th>Notice</th>
+                <th>Letter Date</th>
+                <th>Status</th>
+                <th style="text-align:center">Batches</th>
+                <th style="text-align:center">Sent</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var w in Model)
+            {
+                <tr>
+                    <td>
+                        <div class="hm-wf-name">@w.RollName</div>
+                        <div style="margin-top:3px">
+                            <span class="hm-roll-pill">@w.RollShortCode</span>
+                            <span style="font-size:11px;color:var(--mu);margin-left:5px">v @w.Version</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="hm-nt-chip hm-chip-@w.Notice.ToString().ToLower()">
+                            @w.Notice
+                        </span>
+                    </td>
+                    <td style="font-size:11.5px;color:var(--mu);white-space:nowrap">
+                        @w.LetterDate.ToString("dd MMM yyyy")
+                    </td>
+                    <td>
+                        @if (w.IsStep2Approved && w.HasWorkflowKey)
+                        {
+                            <span class="hm-status-pip hm-pip-s3">Step 3 Ready</span>
+                        }
+                        else if (w.IsStep2Approved)
+                        {
+                            <span class="hm-status-pip hm-pip-s2ok">Step 2 Done</span>
+                        }
+                        else if (w.IsApproved)
+                        {
+                            <span class="hm-status-pip hm-pip-s1ok">Step 1 Approved</span>
+                        }
+                        else if (w.IsConfirmed)
+                        {
+                            <span class="hm-status-pip hm-pip-draft">Step 1 Confirmed</span>
+                        }
+                        else
+                        {
+                            <span class="hm-status-pip hm-pip-draft">Draft</span>
+                        }
+                    </td>
+                    <td style="text-align:center">
+                        <span class="hm-sent-num @(w.BatchCount == 0 ? "zero" : "")">
+                            @w.BatchCount
+                        </span>
+                    </td>
+                    <td style="text-align:center">
+                        <span class="hm-sent-num @(w.SentCount == 0 ? "zero" : "")">
+                            @w.SentCount.ToString("N0")
+                        </span>
+                    </td>
+                    <td>
+                        @if (w.IsStep2Approved && w.WorkflowKey.HasValue)
+                        {
+                            <a class="hm-open-link" asp-controller="Step3" asp-action="Kickoff"
+                               asp-route-key="@w.WorkflowKey">Open →</a>
+                        }
+                        else if (w.IsApproved)
+                        {
+                            <a class="hm-open-link" asp-controller="Workflow" asp-action="Step2">Review</a>
+                        }
+                        else
+                        {
+                            <span style="color:var(--mu);font-size:12px">—</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

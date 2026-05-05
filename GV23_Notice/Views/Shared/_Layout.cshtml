@@ -10,12 +10,11 @@
     var canSearch = (await AuthorizationService.AuthorizeAsync(User, "ValuationAdminSearchDownload")).Succeeded;
     var canStep3 = (await AuthorizationService.AuthorizeAsync(User, "DataTeamCreateBatchPrint")).Succeeded;
 
-    var fullName = User.FindFirst("FullName")?.Value
-                 ?? User.Identity?.Name
-                 ?? "User";
+    var fullName = User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "User";
     var shortName = fullName.Contains("\\") ? fullName.Split("\\").Last() : fullName;
-    var initials = string.Concat(shortName.Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
-                        .Take(2).Select(w => char.ToUpper(w[0])));
+    var initials = string.Concat(
+                        shortName.Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
+                                 .Take(2).Select(w => char.ToUpper(w[0])));
     if (initials.Length == 0) initials = "U";
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
 
@@ -26,6 +25,13 @@
               || string.Equals(action, act, StringComparison.OrdinalIgnoreCase);
         return cm && am ? "vns-nav-item active" : "vns-nav-item";
     }
+
+    // Determine which step is active for group highlighting
+    bool isStep1 = string.Equals(controller, "Workflow", StringComparison.OrdinalIgnoreCase)
+                 && string.Equals(action, "Step1", StringComparison.OrdinalIgnoreCase);
+    bool isStep2 = string.Equals(controller, "Workflow", StringComparison.OrdinalIgnoreCase)
+                 && string.Equals(action, "Step2", StringComparison.OrdinalIgnoreCase);
+    bool isStep3 = string.Equals(controller, "Step3", StringComparison.OrdinalIgnoreCase);
 }
 
 <!DOCTYPE html>
@@ -35,17 +41,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] — VNS</title>
     <script type="importmap"></script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/GV23_Notice.styles.css" asp-append-version="true" />
-    <link href="~/css/LayoutCss1.css" rel="stylesheet" />
+    <link href="~/css/home/layoutpremiumcss1.css" rel="stylesheet" asp-append-version="true" />
 </head>
 <body class="vns-layout">
 
-    <!-- ══ SIDEBAR ══════════════════════════════════════════════════ -->
+    <!-- ══ SIDEBAR ══════════════════════════════════════════════ -->
     <aside class="vns-sidebar" id="vnsSidebar">
 
         <!-- Brand -->
@@ -53,11 +61,11 @@
             <a asp-controller="Home" asp-action="Index" class="vns-brand-link">
                 <div class="vns-brand-mark">VNS</div>
                 <div class="vns-brand-text">
-                    <div class="vns-brand-name">ValuNotice</div>
+                    <div class="vns-brand-name">Valuation Notice</div>
                     <div class="vns-brand-sub">City of Joburg</div>
                 </div>
             </a>
-            <button class="vns-sidebar-toggle" id="sidebarToggle" title="Collapse">
+            <button class="vns-sidebar-toggle" id="sidebarToggle" title="Collapse sidebar">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                     <polyline points="15 18 9 12 15 6" />
@@ -65,10 +73,10 @@
             </button>
         </div>
 
-        <!-- Nav -->
+        <!-- Navigation -->
         <nav class="vns-sidebar-nav">
-            <div class="vns-nav-section-label">Main</div>
 
+            <!-- Dashboard -->
             <a asp-controller="Home" asp-action="Index" class="@Nav("Home", "Index")">
                 <span class="vns-nav-icon">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -79,41 +87,101 @@
                 <span class="vns-nav-label">Dashboard</span>
             </a>
 
+            <div class="vns-nav-divider"></div>
+
+            <!-- ── STEP 1 ── -->
             @if (canAdmin)
             {
-                <div class="vns-nav-section-label">Administration</div>
+                <div class="vns-step-group @(isStep1 ? "step-active" : "")">
+                    <div class="vns-step-group-header">
+                        <div class="vns-step-num">1</div>
+                        <div class="vns-step-group-title">Configure Dates</div>
+                    </div>
+                    <div class="vns-step-group-items">
+                        <a asp-controller="Workflow" asp-action="Step1" class="@Nav("Workflow", "Step1")">
+                            <span class="vns-nav-icon">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" />
+                                    <line x1="16" y1="2" x2="16" y2="6" />
+                                    <line x1="8" y1="2" x2="8" y2="6" />
+                                    <line x1="3" y1="10" x2="21" y2="10" />
+                                </svg>
+                            </span>
+                            <span class="vns-nav-label">Date Configuration</span>
+                        </a>
+                    </div>
+                </div>
 
-                <a asp-controller="Workflow" asp-action="Step1" class="@Nav("Workflow", "Step1")">
-                    <span class="vns-nav-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <circle cx="12" cy="12" r="3" />
-                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
-                        </svg>
-                    </span>
-                    <span class="vns-nav-label">Step 1 — Configure</span>
-                </a>
-
-                <a asp-controller="Workflow" asp-action="Step2" class="@Nav("Workflow", "Step2")">
-                    <span class="vns-nav-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <polyline points="9 11 12 14 22 4" />
-                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-                        </svg>
-                    </span>
-                    <span class="vns-nav-label">Step 2 — Approve</span>
-                </a>
-
-                <a asp-controller="Workflow" asp-action="SettingsLibrary" class="@Nav("Workflow", "SettingsLibrary")">
-                    <span class="vns-nav-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                        </svg>
-                    </span>
-                    <span class="vns-nav-label">Settings Library</span>
-                </a>
+                <!-- ── STEP 2 ── -->
+                <div class="vns-step-group @(isStep2 ? "step-active" : "")">
+                    <div class="vns-step-group-header">
+                        <div class="vns-step-num">2</div>
+                        <div class="vns-step-group-title">Preview &amp; Approve</div>
+                    </div>
+                    <div class="vns-step-group-items">
+                        <a asp-controller="Workflow" asp-action="SettingsLibrary" class="@Nav("Workflow", "Step2")"
+                           title="Select a configuration to preview, then start Step 3">
+                            <span class="vns-nav-icon">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                </svg>
+                            </span>
+                            <span class="vns-nav-label">Preview &amp; Start Step 3</span>
+                        </a>
+                    </div>
+                </div>
             }
 
+            <!-- ── STEP 3 ── -->
+            @if (canStep3)
+            {
+                <div class="vns-step-group @(isStep3 ? "step-active" : "")">
+                    <div class="vns-step-group-header">
+                        <div class="vns-step-num">3</div>
+                        <div class="vns-step-group-title">Processing</div>
+                    </div>
+                    <div class="vns-step-group-items">
+                        <a asp-controller="Step3" asp-action="Index" class="@Nav("Step3", "Index")">
+                            <span class="vns-nav-icon">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <line x1="8" y1="6" x2="21" y2="6" />
+                                    <line x1="8" y1="12" x2="21" y2="12" />
+                                    <line x1="8" y1="18" x2="21" y2="18" />
+                                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                                </svg>
+                            </span>
+                            <span class="vns-nav-label">3.1 Manage Batches</span>
+                        </a>
+                        <a asp-controller="Step3" asp-action="PrintQueue" class="@Nav("Step3", "PrintQueue")">
+                            <span class="vns-nav-icon">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <polyline points="6 9 6 2 18 2 18 9" />
+                                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                                    <rect x="6" y="14" width="12" height="8" />
+                                </svg>
+                            </span>
+                            <span class="vns-nav-label">3.2 Print PDFs</span>
+                        </a>
+                        <a asp-controller="Step3" asp-action="SendQueue" class="@Nav("Step3", "SendQueue")">
+                            <span class="vns-nav-icon">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                    <line x1="22" y1="2" x2="11" y2="13" />
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                </svg>
+                            </span>
+                            <span class="vns-nav-label">3.3 Send Notices</span>
+                            <span class="vns-nav-badge">Active</span>
+                        </a>
+                    </div>
+                </div>
+            }
+
+            <div class="vns-nav-divider"></div>
+
+            <!-- Notice Search -->
             @if (canSearch)
             {
                 <a asp-controller="NoticeSearch" asp-action="Index" class="@Nav("NoticeSearch", "Index")">
@@ -127,20 +195,17 @@
                 </a>
             }
 
-            @if (canStep3)
-            {
-                <div class="vns-nav-section-label">Processing</div>
+            <!-- Settings Library — always visible -->
+            <a asp-controller="Workflow" asp-action="SettingsLibrary" class="@Nav("Workflow", "SettingsLibrary")">
+                <span class="vns-nav-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                    </svg>
+                </span>
+                <span class="vns-nav-label">Settings Library</span>
+            </a>
 
-                <a asp-controller="Step3" asp-action="Index" class="@Nav("Step3", "Index")">
-                    <span class="vns-nav-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                        </svg>
-                    </span>
-                    <span class="vns-nav-label">Step 3 — Processing</span>
-                    <span class="vns-nav-badge">Active</span>
-                </a>
-            }
         </nav>
 
         <!-- User footer -->
@@ -160,87 +225,67 @@
 
     </aside>
 
-    <!-- ══ MAIN AREA ═════════════════════════════════════════════════ -->
+    <!-- ══ MAIN AREA ═════════════════════════════════════════════ -->
     <div class="vns-main-wrap">
 
-        <!-- Top strip -->
         <div class="vns-topstrip">
-            <button class="vns-mobile-toggle" id="mobileToggle" aria-label="Menu">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <button class="vns-mobile-toggle" id="mobileToggle" aria-label="Open menu">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                     <line x1="3" y1="6" x2="21" y2="6" />
                     <line x1="3" y1="12" x2="21" y2="12" />
                     <line x1="3" y1="18" x2="21" y2="18" />
                 </svg>
             </button>
-            <div class="vns-breadcrumb">@(ViewData["Title"]?.ToString()?.Split('—').FirstOrDefault()?.Trim() ?? "")</div>
+            <div class="vns-breadcrumb">
+                @(ViewData["Title"]?.ToString()?.Split('—').FirstOrDefault()?.Trim() ?? "")
+            </div>
             <div class="vns-topstrip-right">
-                <div class="vns-live-dot"><span class="vns-pulse"></span></div>
+                <div class="vns-live-dot" title="System active">
+                    <span class="vns-pulse"></span>
+                </div>
                 <div class="vns-topstrip-clock" id="layoutClock"></div>
             </div>
         </div>
 
-        <!-- Page content -->
-        <main class="vns-page-content">
-            @RenderBody()
-        </main>
+        <main class="vns-page-content">@RenderBody()</main>
 
-        <!-- Footer -->
         <footer class="vns-footer">
-            <span>&copy; 2026 City of Johannesburg — Valuation Services Department</span>
+            <span>&copy; @DateTime.Now.Year City of Johannesburg — Valuation Services</span>
             <a asp-controller="Home" asp-action="Privacy">Privacy Policy</a>
         </footer>
+
     </div>
 
-    <!-- ══ OVERLAY (mobile) ══════════════════════════════════════════ -->
     <div class="vns-overlay" id="vnsOverlay"></div>
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
-
     <script>
-        // Live clock
-        (function clock() {
-            const el = document.getElementById("layoutClock");
-            if (!el) return;
-            function tick() {
-                const d = new Date();
-                const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-                const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-                el.textContent = days[d.getDay()] + " " +
-                    String(d.getDate()).padStart(2,"0") + " " + months[d.getMonth()] + "  " +
-                    String(d.getHours()).padStart(2,"0") + ":" +
-                    String(d.getMinutes()).padStart(2,"0") + ":" +
-                    String(d.getSeconds()).padStart(2,"0");
+        (function(){
+            const el=document.getElementById('layoutClock');
+            if(!el)return;
+            const D=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+            const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            function tick(){
+                const d=new Date();
+                el.textContent=D[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+' '+M[d.getMonth()]
+                    +'  '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')
+                    +':'+String(d.getSeconds()).padStart(2,'0');
             }
-            tick();
-            setInterval(tick, 1000);
+            tick();setInterval(tick,1000);
         })();
-
-        // Sidebar collapse
-        const sidebar  = document.getElementById("vnsSidebar");
-        const toggle   = document.getElementById("sidebarToggle");
-        const mToggle  = document.getElementById("mobileToggle");
-        const overlay  = document.getElementById("vnsOverlay");
-        const COLLAPSED = "collapsed";
-        const MOBILE_OPEN = "mobile-open";
-
-        if (toggle) toggle.addEventListener("click", () => {
-            sidebar.classList.toggle(COLLAPSED);
-            document.body.classList.toggle("sidebar-collapsed");
-        });
-
-        if (mToggle) mToggle.addEventListener("click", () => {
-            sidebar.classList.toggle(MOBILE_OPEN);
-            overlay.classList.toggle("active");
-        });
-
-        if (overlay) overlay.addEventListener("click", () => {
-            sidebar.classList.remove(MOBILE_OPEN);
-            overlay.classList.remove("active");
-        });
+        (function(){
+            const s=document.getElementById('vnsSidebar');
+            const t=document.getElementById('sidebarToggle');
+            const m=document.getElementById('mobileToggle');
+            const o=document.getElementById('vnsOverlay');
+            if(t)t.addEventListener('click',()=>{s.classList.toggle('collapsed');document.body.classList.toggle('sidebar-collapsed');});
+            if(m)m.addEventListener('click',()=>{s.classList.toggle('mobile-open');o.classList.toggle('active');});
+            if(o)o.addEventListener('click',()=>{s.classList.remove('mobile-open');o.classList.remove('active');});
+        })();
     </script>
-
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

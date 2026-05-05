@@ -44,7 +44,8 @@ namespace GV23_Notice.Models.Workflow.ViewModels
             => Step2Approved ? "APPROVED"
              : Step2CorrectionRequested ? "CORRECTION"
              : "PENDING";
+        public Guid ApprovalKey { get;set; }
 
-   
+
     }
 }

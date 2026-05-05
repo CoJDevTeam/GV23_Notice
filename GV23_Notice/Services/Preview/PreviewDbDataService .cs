@@ -1,6 +1,7 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Models;
 using GV23_Notice.Models.DTOs;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -197,11 +198,14 @@ namespace GV23_Notice.Services.Preview
                 PropertyType = row.Str("Property_Type"),
             };
         }
-        public async Task<S52PreviewDbData> S52PreviewDbDataAsync(int rollId, string appealNo, bool isReview, CancellationToken ct)
+        public async Task<S52PreviewDbData> S52PreviewDbDataAsync(
+          int rollId,
+          string appealNo,
+          bool isReview,
+          CancellationToken ct)
         {
-            // appealNo may be empty when coming from date-range preview (Step2 backlog flow)
-            // Use the date-range SPs when appealNo is blank
             string proc;
+
             if (string.IsNullOrWhiteSpace(appealNo))
             {
                 proc = isReview
@@ -215,37 +219,80 @@ namespace GV23_Notice.Services.Preview
                     : "dbo.S52_Preview_SelectAppealTop1";
             }
 
-            var row = await ExecSingleAsync(proc, cmd =>
+            await using var conn = new SqlConnection(_noticeDbConnStr);
+            await using var cmd = new SqlCommand(proc, conn)
             {
-                cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
-                if (string.IsNullOrWhiteSpace(appealNo))
-                {
-                    // Date-range SPs — pass null dates → SP returns top 1 across all dates
-                    cmd.Parameters.Add(new SqlParameter("@FromDate", SqlDbType.Date) { Value = DBNull.Value });
-                    cmd.Parameters.Add(new SqlParameter("@ToDate", SqlDbType.Date) { Value = DBNull.Value });
-                }
-                else
-                {
-                    cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50) { Value = appealNo.Trim() });
-                }
-            }, ct);
+                CommandType = CommandType.StoredProcedure
+            };
 
-            if (row is null)
+            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
+
+            if (string.IsNullOrWhiteSpace(appealNo))
+            {
+                cmd.Parameters.Add(new SqlParameter("@FromDate", SqlDbType.VarChar, 30) { Value = DBNull.Value });
+                cmd.Parameters.Add(new SqlParameter("@ToDate", SqlDbType.VarChar, 30) { Value = DBNull.Value });
+            }
+            else
+            {
+                cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50)
+                {
+                    Value = appealNo.Trim()
+                });
+            }
+
+            await conn.OpenAsync(ct);
+
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
                 throw new InvalidOperationException("S52 preview: no data found.");
-            var s52Addr = BuildPreviewAddress(row);
+
+            // =========================
+            // SAFE ROW MAPPING
+            // =========================
+            var rowMap = Row.FromReader(reader);
+
+            string Get(params string[] names)
+            {
+                foreach (var name in names)
+                {
+                    var val = rowMap.Str(name);
+                    if (!string.IsNullOrWhiteSpace(val))
+                        return val;
+                }
+                return "";
+            }
+
+            decimal? GetDec(params string[] names)
+            {
+                foreach (var name in names)
+                {
+                    var val = rowMap.Dec(name);
+                    if (val.HasValue)
+                        return val;
+                }
+                return null;
+            }
+
+            var s52Addr = BuildPreviewAddress(
+                Get("ADDR1", "Addr1"),
+                Get("ADDR2", "Addr2"),
+                Get("ADDR3", "Addr3"),
+                Get("ADDR4", "Addr4"),
+                Get("ADDR5", "Addr5")
+            );
+
             return new S52PreviewDbData
             {
                 RollId = rollId,
-                AppealNo = row.Str("Appeal_No") ?? appealNo,
-                ObjectionNo = row.Str("Objection_No"),
+                AppealNo = Get("Appeal_No"),
+                ObjectionNo = Get("Objection_No"),
 
-                AUserId = row.Str("A_UserID"),
-                PremiseId = row.Str("Premise_iD"),
-                ValuationKey = row.Str("valuation_Key") ?? row.Str("VALUATIONKEY"),
-                PropertyDesc = row.Str("Property_desc"),
-                Email = SafeEmail(row.Str("Email")),
-
-            
+                AUserId = Get("A_UserID"),
+                PremiseId = Get("Premise_iD", "PremiseId"),
+                ValuationKey = Get("valuation_Key", "VALUATIONKEY"),
+                PropertyDesc = Get("Property_desc", "PropertyDesc"),
+                Email = SafeEmail(Get("Email")),
 
                 Addr1 = s52Addr.Addr1,
                 Addr2 = s52Addr.Addr2,
@@ -253,27 +300,24 @@ namespace GV23_Notice.Services.Preview
                 Addr4 = s52Addr.Addr4,
                 Addr5 = s52Addr.Addr5,
 
-               
+                Town = Get("Town"),
+                Erf = Get("ERF"),
+                Ptn = Get("PTN"),
+                Re = Get("RE"),
 
-                Town = row.Str("Town"),
-                Erf = row.Str("ERF"),
-                Ptn = row.Str("PTN"),
-                Re = row.Str("RE"),
+                AppMarketValue = Get("App_Market_Value"),
+                AppMarketValue2 = Get("App_Market_Value2"),
+                AppMarketValue3 = Get("App_Market_Value3"),
 
-                AppMarketValue = row.Str("App_Market_Value"),
-                AppMarketValue2 = row.Str("App_Market_Value2"),
-                AppMarketValue3 = row.Str("App_Market_Value3"),
+                AppExtent = GetDec("App_Extent"),
+                AppExtent2 = GetDec("App_Extent2"),
+                AppExtent3 = GetDec("App_Extent3"),
 
-                AppExtent = row.Dec("App_Extent"),
-                AppExtent2 = row.Dec("App_Extent2"),
-                AppExtent3 = row.Dec("App_Extent3"),
-
-                AppCategory = row.Str("App_Category"),
-                AppCategory2 = row.Str("App_Category2"),
-                AppCategory3 = row.Str("App_Category3"),
+                AppCategory = Get("App_Category"),
+                AppCategory2 = Get("App_Category2"),
+                AppCategory3 = Get("App_Category3"),
             };
         }
-
         public async Task<S53PreviewDbData> S53PreviewDbDataAsync(int rollId, bool preferMulti, CancellationToken ct)
         {
             var procName = preferMulti

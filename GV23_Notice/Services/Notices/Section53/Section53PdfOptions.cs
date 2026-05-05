@@ -9,7 +9,7 @@
         public string? ContactLine { get; set; } =
             "For any enquiries, please contact us on 011 407 6622 or 011 407 6597, or email valuationenquiries@joburg.org.za";
 
-        public string? MunicipalValuerName { get; set; } = "S. Faiaz";
+        public string? MunicipalValuerName { get; set; } = "Y.Kader";
         public string? MunicipalValuerTitle { get; set; } = "Municipal Valuer";
     }
 }

@@ -1,676 +1,437 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
 @using GV23_Notice.Domain.Workflow
 @{
-    ViewData["Title"] = "Step 3 — Kickoff";
+    ViewData["Title"] = "Step 3 — Batch Dashboard";
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
 
-    string initials = "?";
-    if (!string.IsNullOrWhiteSpace(Model.RecipientName))
-    {
-        var parts = Model.RecipientName.Trim().Split(' ', System.StringSplitOptions.RemoveEmptyEntries);
-        initials = parts.Length >= 2
-            ? $"{parts[0][0]}{parts[^1][0]}".ToUpper()
-            : Model.RecipientName[..1].ToUpper();
-    }
-
-    // Notice label helper
     string noticeLabel = Model.Notice switch
     {
-        NoticeKind.S49 => "Section 49 — Valuation Notice",
-        NoticeKind.S51 => "Section 51 — Third Party Objection",
-        NoticeKind.S52 => Model.IsSection52Review == true ? "Section 52 — Review" : "Section 52 — Appeal Decision",
-        NoticeKind.S53 => "Section 53 — MVD Outcome",
-        NoticeKind.DJ => "Dear Johnny Letter",
+        NoticeKind.S49 => "Section 49 — Public Inspection & Objections",
+        NoticeKind.S51 => "Section 51 — Objection Decision",
+        NoticeKind.S52 => Model.S52IsReview ? "Section 52 — Review" : "Section 52 — Appeal Decision",
+        NoticeKind.S53 => "Section 53 — MVD Decision",
+        NoticeKind.DJ => "Dear Johnny Notice",
         NoticeKind.IN => Model.IsInvalidOmission == true ? "Invalid — Omission" : "Invalid — Objection",
-        NoticeKind.S78 => "Section 78 — Inspection Notice",
+        NoticeKind.S78 => "Section 78 — Review Period",
         _ => Model.Notice.ToString()
     };
+    string noticeCode = Model.Notice.ToString();
+    string noticeChip = Model.Notice switch
+    {
+        NoticeKind.S49 => "chip-s49",
+        NoticeKind.S51 => "chip-s51",
+        NoticeKind.S52 => "chip-s52",
+        NoticeKind.S53 => "chip-s53",
+        NoticeKind.DJ => "chip-dj",
+        NoticeKind.IN => "chip-in",
+        NoticeKind.S78 => "chip-s78",
+        _ => ""
+    };
+    int totalRecords = Model.CreatedBatches.Sum(b => b.NumberOfRecords);
 }
 
-<link href="~/css/step3/step3kickoffcss11.css" rel="stylesheet" />
-<link href="~/css/step3/kickoffcss.css" rel="stylesheet" />
+<link href="~/css/step3/createbatchcss.css" rel="stylesheet" />
 
-<!-- PAGE LOADER -->
-<div id="pageLoader">
-    <div class="ld-logo">GV23 <span>Notices</span></div>
-    <div class="ld-spinner"></div>
-    <div class="ld-bar"><div class="ld-bar-fill"></div></div>
+@* ── FromStep2 welcome modal ── *@
+@if (Model.FromStep2)
+{
+    <div class="s2-overlay" id="s2Modal">
+        <div class="s2-modal">
+            <div class="s2-head">
+                <div class="s2-head-left">
+                    <div class="s2-check">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#e6b000" stroke-width="2.5" stroke-linecap="round">
+                            <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="s2-head-title">Step 2 Approved</div>
+                        <div class="s2-head-sub">Ready to create your first batch</div>
+                    </div>
+                </div>
+                <button class="s2-close" onclick="closeS2Modal()">✕</button>
+            </div>
+            <div class="s2-body">
+                <div class="cb-info">
+                    <div class="cb-info-row"><span class="cb-info-key">Notice</span><span class="cb-info-val">@noticeLabel</span></div>
+                    <div class="cb-info-row"><span class="cb-info-key">Roll</span><span class="cb-info-val">@Model.RollShortCode — @Model.RollName</span></div>
+                    <div class="cb-info-row"><span class="cb-info-key">Letter Date</span><span class="cb-info-val">@Model.LetterDate.ToString("dd MMMM yyyy")</span></div>
+                    @if (Model.AppealCloseDate.HasValue)
+                    {
+                        <div class="cb-info-row"><span class="cb-info-key">Appeal Closes</span><span class="cb-info-val">@Model.AppealCloseDate.Value.ToString("dd MMMM yyyy")</span></div>
+                    }
+                    <div class="cb-info-row"><span class="cb-info-key">First Batch</span><span class="cb-info-val mono">@Model.NextBatchCode</span></div>
+                </div>
+                <p class="s2-note">
+                    ℹ Click <strong>Create First Batch</strong> to open the batch form, or <strong>View Dashboard</strong> to continue later.
+                </p>
+            </div>
+            <div class="s2-foot">
+                <button class="cb-cancel" onclick="closeS2Modal()">View Dashboard</button>
+                <button class="cb-submit" onclick="closeS2AndOpenCreate()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Create First Batch
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Create Batch Modal ── *@
+<div class="cb-overlay" id="cbModal">
+    <div class="cb-modal">
+        <div class="cb-head">
+            <div class="cb-head-left">
+                <div class="cb-head-icon">📦</div>
+                <div>
+                    <div class="cb-head-title">Create New Batch</div>
+                    <div class="cb-head-sub">@noticeLabel</div>
+                </div>
+            </div>
+            <button class="cb-close" onclick="closeCbModal()">✕</button>
+        </div>
+        <div class="cb-body">
+            <div class="cb-info">
+                <div class="cb-info-row"><span class="cb-info-key">Roll</span><span class="cb-info-val">@Model.RollShortCode — @Model.RollName</span></div>
+                <div class="cb-info-row"><span class="cb-info-key">Letter Date</span><span class="cb-info-val">@Model.LetterDate.ToString("dd MMMM yyyy")</span></div>
+                @if (Model.Notice == NoticeKind.S53 && Model.AppealCloseDate.HasValue)
+                {
+                    <div class="cb-info-row"><span class="cb-info-key">Appeal Closes</span><span class="cb-info-val">@Model.AppealCloseDate.Value.ToString("dd MMMM yyyy")</span></div>
+                }
+                @if (Model.Notice == NoticeKind.S49)
+                {
+                    <div class="cb-info-row"><span class="cb-info-key">Objection Period</span><span class="cb-info-val">@(Model.ObjectionStartDate?.ToString("dd MMM") ?? "—") – @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</span></div>
+                }
+                <div class="cb-info-row"><span class="cb-info-key">Batch Code</span><span class="cb-info-val mono">@Model.NextBatchCode</span></div>
+                <div class="cb-info-row"><span class="cb-info-key">Records</span><span class="cb-info-val">Up to 500 per batch</span></div>
+            </div>
+            <form asp-action="Step2CreateBatch" asp-controller="Step3" method="post" id="cbForm">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="key" value="@Model.ApprovalKey" />
+                <div class="cb-field-lbl">Batch Date</div>
+                <input type="date" name="batchDate" id="cbDateInput" class="cb-date-input"
+                       value="@DateTime.Today.ToString("yyyy-MM-dd")" required />
+                <div class="cb-foot" style="padding:16px 0 0; border:none">
+                    <button type="button" class="cb-cancel" onclick="closeCbModal()">Cancel</button>
+                    <button type="submit" class="cb-submit" id="cbSubmitBtn">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        Create Batch
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
-<!-- ════ BATCH SLIDE PANEL OVERLAY ════ -->
-<div class="batch-overlay" id="batchOverlay">
-    <div class="batch-panel" id="batchPanel">
+<div class="dash-page">
 
-        <!-- Header -->
-        <div class="bp-header">
-            <div class="bp-header-left">
-                <div class="bp-header-title">📦 Batch Management</div>
-                <div class="bp-header-sub">@Model.RollShortCode &nbsp;·&nbsp; @Model.Notice &nbsp;·&nbsp; v@Model.Version</div>
-            </div>
-            <button class="bp-close" onclick="closeBatchPanel()" title="Close">✕</button>
-        </div>
-
-        <!-- Notice badge -->
-        <div class="bp-notice-badge">
-            <div class="bp-notice-icon">@Model.Notice.ToString().ToUpper()[..Math.Min(Model.Notice.ToString().Length, 3)]</div>
+    <!-- Hero -->
+    <div class="dash-hero">
+        <div class="dash-hero-left">
+            <div class="dash-vns">VNS</div>
+            <div class="dash-div"></div>
             <div>
-                <div class="bp-notice-name">@noticeLabel</div>
-                <div class="bp-notice-roll">@Model.RollShortCode — @Model.RollName &nbsp;·&nbsp; v@Model.Version</div>
+                <div class="dash-title">Batch Dashboard</div>
+                <div class="dash-sub">Step 3 — @Model.RollShortCode · @Model.RollName</div>
             </div>
-            @if (Model.CreatedBatches.Count > 0)
-            {
-                <span class="s3-badge-blue" style="margin-left:auto;font-size:.65rem;">@Model.CreatedBatches.Count batch@(Model.CreatedBatches.Count == 1 ? "" : "es")</span>
-            }
+        </div>
+        <div class="dash-hero-right">
+            <a class="dash-hero-link" href="@Url.Action("Index", "Step3")">← All Workflows</a>
+            <a class="dash-hero-link" href="@Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = "Default", mode = "single" })">Preview Notice</a>
+        </div>
+    </div>
+
+    <!-- Notice ribbon -->
+    <div class="dash-ribbon">
+        <span class="dash-notice-chip @noticeChip">@noticeCode</span>
+        <span class="dash-ribbon-name">@noticeLabel</span>
+        <span class="dash-ribbon-sep">·</span>
+        <span class="dash-ribbon-item"><strong>Letter Date</strong> @Model.LetterDate.ToString("dd MMM yyyy")</span>
+        @if (Model.AppealCloseDate.HasValue)
+        {
+            <span class="dash-ribbon-sep">·</span>
+            <span class="dash-ribbon-item"><strong>Appeal Closes</strong> @Model.AppealCloseDate.Value.ToString("dd MMM yyyy")</span>
+        }
+        @if (Model.Notice == NoticeKind.S49 && Model.ObjectionStartDate.HasValue)
+        {
+            <span class="dash-ribbon-sep">·</span>
+            <span class="dash-ribbon-item"><strong>Objection</strong> @Model.ObjectionStartDate.Value.ToString("dd MMM") – @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "?")</span>
+        }
+        @if (Model.IsApproved && !string.IsNullOrWhiteSpace(Model.ApprovedBy))
+        {
+            <span class="dash-ribbon-sep">·</span>
+            <span class="dash-ribbon-item"><strong>Approved by</strong> @Model.ApprovedBy</span>
+        }
+    </div>
+
+    <div class="dash-body">
+
+        <!-- Alerts -->
+        @if (TempData["Success"] != null)
+        {
+            <div class="dash-alert dash-alert-ok">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+                @TempData["Success"]
+            </div>
+        }
+        @if (TempData["Error"] != null)
+        {
+            <div class="dash-alert dash-alert-err">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                @TempData["Error"]
+            </div>
+        }
+
+        <!-- Stat strip -->
+        <div class="dash-stats">
+            <div class="dash-stat stat-green">
+                <div class="dash-stat-lbl">Batches Created</div>
+                <div class="dash-stat-num">@Model.CreatedBatches.Count</div>
+                <div class="dash-stat-sub">For this workflow</div>
+            </div>
+            <div class="dash-stat">
+                <div class="dash-stat-lbl">Total Records</div>
+                <div class="dash-stat-num">@totalRecords.ToString("N0")</div>
+                <div class="dash-stat-sub">Across all batches</div>
+            </div>
+            <div class="dash-stat stat-gold">
+                <div class="dash-stat-lbl">Next Batch</div>
+                <div class="dash-stat-num" style="font-size:15px;font-family:monospace!important">@Model.NextBatchCode</div>
+                <div class="dash-stat-sub">Auto-assigned code</div>
+            </div>
+            <div class="dash-stat">
+                <div class="dash-stat-lbl">Records per Batch</div>
+                <div class="dash-stat-num">500</div>
+                <div class="dash-stat-sub">Fixed per run</div>
+            </div>
         </div>
 
-        <!-- Panel tab bar -->
-        <div class="bp-tab-bar">
-            <button class="bp-tab active" id="bpTabCreate" onclick="switchPanelTab('create')">
-                📦 Create Batch
-            </button>
-            <button class="bp-tab" id="bpTabDashboard" onclick="switchPanelTab('dashboard')">
-                📊 Batch Dashboard
+        <!-- Section header with action buttons -->
+        <div class="dash-sec">
+            <div class="dash-sec-left">
+                <div class="dash-sec-bar"></div>
+                <span class="dash-sec-title">Batch History</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
                 @if (Model.CreatedBatches.Count > 0)
                 {
-                    <span class="bp-tab-count">@Model.CreatedBatches.Count</span>
+                    <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
+                       style="font-size:12.5px;font-weight:700;padding:7px 15px;border-radius:8px;
+                                  background:var(--surf);border:1.5px solid var(--bord);color:var(--tx);
+                                  text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .13s"
+                       onmouseover="this.style.borderColor='var(--gold-r)';this.style.background='var(--gold-p)'"
+                       onmouseout="this.style.borderColor='var(--bord)';this.style.background='var(--surf)'">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <polyline points="6 9 6 2 18 2 18 9" />
+                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                            <rect x="6" y="14" width="12" height="8" />
+                        </svg>
+                        Print Dashboard
+                    </a>
+                    <a href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })"
+                       style="font-size:12.5px;font-weight:700;padding:7px 15px;border-radius:8px;
+                                  background:var(--surf);border:1.5px solid var(--bord);color:var(--tx);
+                                  text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .13s"
+                       onmouseover="this.style.borderColor='var(--gold-r)';this.style.background='var(--gold-p)'"
+                       onmouseout="this.style.borderColor='var(--bord)';this.style.background='var(--surf)'">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="22" y1="2" x2="11" y2="13" />
+                            <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                        Send Email
+                    </a>
                 }
-            </button>
+                @if (!Model.IsS52)
+                {
+                    <button class="btn-new-batch" onclick="openCbModal()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        Create New Batch
+                    </button>
+                }
+                @if (Model.IsS52)
+                {
+                    <a class="btn-new-batch" href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <polyline points="6 9 6 2 18 2 18 9" />
+                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                            <rect x="6" y="14" width="12" height="8" />
+                        </svg>
+                        Go to Print (@Model.S52RangeCount.ToString("N0") records)
+                    </a>
+                }
+            </div>
         </div>
 
-        <!-- ── TAB PANE: CREATE BATCH ── -->
-        <div class="bp-body bp-pane active" id="bpPaneCreate">
-
-
-            <!-- Records info -->
-            <div class="bp-records-block">
-                <div class="bp-rec-num">500</div>
-                <div class="bp-rec-label">
-                    <strong>Records per batch</strong>
-                    Notices processed per run
-                </div>
-                <div class="bp-batches-done">
-                    <div class="bp-batches-num">@Model.BatchesAlreadyCreated</div>
-                    <div class="bp-batches-lbl">Batches<br />Created</div>
-                </div>
-            </div>
-
-            <!-- Batch Identity -->
-            <div class="bp-section-label">🏷 Batch Identity</div>
-            <div class="bp-field-group">
-                <div class="bp-field" style="grid-column: span 2;">
-                    <div class="bp-label">Batch Code / Name</div>
-                    <div class="bp-val auto" id="batchCodeDisplay">@Model.NextBatchCode</div>
-                    <input type="hidden" name="batchName" value="@Model.NextBatchCode" />
-                </div>
-                <div class="bp-field" style="grid-column: span 2;">
-                    <div class="bp-label">Batch Date</div>
-                    <input class="bp-input" type="date" id="batchDateInput" name="batchDate"
-                           value="@DateTime.Today.ToString("yyyy-MM-dd")" required />
-                </div>
-            </div>
-
-            <!-- Notice Type -->
-            <div class="bp-section-label">📋 Notice Configuration</div>
-            <div class="bp-field-group">
-                <div class="bp-field">
-                    <div class="bp-label">Notice Type</div>
-                    <div class="bp-val">@Model.Notice</div>
-                </div>
-                <div class="bp-field">
-                    <div class="bp-label">Batch Mode</div>
-                    <div class="bp-val">@Model.Mode</div>
-                </div>
-                <div class="bp-field" style="grid-column: span 2;">
-                    <div class="bp-label">Letter Date</div>
-                    <div class="bp-val">@Model.LetterDate.ToString("dd MMM yyyy")</div>
-                </div>
-            </div>
-
-            <!-- ── NOTICE-SPECIFIC FIELDS ── -->
-            @if (Model.Notice == NoticeKind.S49)
-            {
-                <div class="bp-section-label">📅 Section 49 Dates</div>
-                <div class="bp-field-group">
-                    <div class="bp-field">
-                        <div class="bp-label">Objection Start</div>
-                        <div class="bp-val">@(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">Objection End</div>
-                        <div class="bp-val">@(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                    @if (Model.ExtensionDate.HasValue)
+        <!-- Batch table -->
+        <div class="dash-card">
+            <div class="dash-card-head">
+                <span class="dash-card-title">
+                    @if (Model.CreatedBatches.Count == 0)
                     {
-                        <div class="bp-field">
-                            <div class="bp-label">Extension Date</div>
-                            <div class="bp-val">@Model.ExtensionDate.Value.ToString("dd MMM yyyy")</div>
-                        </div>
+                        <text>No batches created yet</text>
                     }
-                    <div class="bp-field">
-                        <div class="bp-label">Signature</div>
-                        <div class="bp-val">
-                            @if (hasSignature)
-                            {
-                                <span class="bp-badge bp-badge-ok">✓ Uploaded</span>
-                            }
-                            else
-                            {
-                                <span class="bp-badge bp-badge-warn">⚠ Missing</span>
-                            }
-                        </div>
-                    </div>
-                    @if (!string.IsNullOrWhiteSpace(Model.FinancialYearsText))
+                    else
                     {
-                        <div class="bp-field" style="grid-column: span 2;">
-                            <div class="bp-label">Financial Years</div>
-                            <div class="bp-val">@Model.FinancialYearsText</div>
-                        </div>
+
+                        <text>@Model.CreatedBatches.Count batch@(Model.CreatedBatches.Count == 1 ? "" : "es") created</text>
                     }
-                </div>
-            }
-
-            @if (Model.Notice == NoticeKind.S51)
-            {
-                <div class="bp-section-label">📅 Section 51 Dates</div>
-                <div class="bp-field-group">
-                    <div class="bp-field" style="grid-column: span 2;">
-                        <div class="bp-label">Evidence Close Date</div>
-                        <div class="bp-val">@(Model.EvidenceCloseDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                </div>
-            }
-
-            @if (Model.Notice == NoticeKind.S52)
-            {
-                <div class="bp-section-label">📅 Section 52 Range</div>
-                <div class="bp-field-group">
-                    <div class="bp-field">
-                        <div class="bp-label">Type</div>
-                        <div class="bp-val">@(Model.IsSection52Review == true ? "Review" : "Appeal Decision")</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">Bulk From</div>
-                        <div class="bp-val">@(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">Bulk To</div>
-                        <div class="bp-val">@(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                </div>
-            }
-
-            @if (Model.Notice == NoticeKind.S53)
-            {
-                <div class="bp-section-label">📅 Section 53 Dates</div>
-                <div class="bp-field-group">
-                    <div class="bp-field">
-                        <div class="bp-label">Batch Date</div>
-                        <div class="bp-val">@(Model.S53BatchDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">Appeal Close Date</div>
-                        <div class="bp-val">@(Model.AppealCloseDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                </div>
-            }
-
-            @if (Model.Notice == NoticeKind.DJ)
-            {
-                <div class="bp-section-label">📅 Dear Johnny</div>
-                <div class="bp-field-group">
-                    <div class="bp-field" style="grid-column: span 2;">
-                        <div class="bp-label">Source Status</div>
-                        <div class="bp-val">Pending-Dear Johnny</div>
-                    </div>
-                </div>
-            }
-
-            @if (Model.Notice == NoticeKind.IN)
-            {
-                <div class="bp-section-label">📅 Invalidity Notice</div>
-                <div class="bp-field-group">
-                    <div class="bp-field" style="grid-column: span 2;">
-                        <div class="bp-label">Notice Sub-Type</div>
-                        <div class="bp-val">@(Model.IsInvalidOmission == true ? "Invalid Omission" : "Invalid Objection")</div>
-                    </div>
-                </div>
-            }
-
-            @if (Model.Notice == NoticeKind.S78)
-            {
-                <div class="bp-section-label">📅 Section 78 Dates</div>
-                <div class="bp-field-group">
-                    <div class="bp-field">
-                        <div class="bp-label">Extraction Date</div>
-                        <div class="bp-val">@(Model.ExtractionDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">Extract Period</div>
-                        <div class="bp-val">@(Model.ExtractPeriodDays?.ToString() ?? "—") days</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">Review Open</div>
-                        <div class="bp-val">@(Model.ReviewOpenDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                    <div class="bp-field">
-                        <div class="bp-label">Review Close</div>
-                        <div class="bp-val">@(Model.ReviewCloseDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                    </div>
-                </div>
-            }
-
-            <!-- Warning -->
-            <div class="bp-warn-note">
-                <span>🔒</span>
-                <span>This batch is locked to the approved configuration. Once created, <strong>500 records</strong> will be assigned and this action cannot be undone.</span>
+                </span>
+                <span style="font-size:11.5px;color:var(--mu)">v@Model.Version · @Model.RollShortCode</span>
             </div>
 
-
-        </div><!-- /bpPaneCreate -->
-        <!-- ── TAB PANE: BATCH DASHBOARD ── -->
-        <div class="bp-body bp-pane" id="bpPaneDashboard" style="padding:0;flex-direction:column;">
-
-            <!-- Success / Error alerts -->
-            @if (TempData["Success"] != null)
-            {
-                <div class="s3-alert-ok" style="margin:14px 16px 0;">✅ @TempData["Success"]</div>
-            }
-            @if (TempData["Error"] != null)
-            {
-                <div class="s3-alert-ok" style="margin:14px 16px 0;background:#7a1a1a;color:#fff;border-color:#c0392b;">⚠️ Batch creation failed: @TempData["Error"]</div>
-            }
-
-            <!-- Stats row -->
-            <div class="bp-dash-stats">
-                <div class="bp-dash-stat">
-                    <div class="bp-ds-num">@Model.CreatedBatches.Count</div>
-                    <div class="bp-ds-lbl">Batches Created</div>
-                </div>
-                <div class="bp-dash-stat">
-                    <div class="bp-ds-num">@Model.CreatedBatches.Sum(b => b.NumberOfRecords).ToString("N0")</div>
-                    <div class="bp-ds-lbl">Total Records</div>
-                </div>
-                <div class="bp-dash-stat">
-                    <div class="bp-ds-num gold">@Model.NextBatchCode</div>
-                    <div class="bp-ds-lbl">Next Batch Code</div>
-                </div>
-            </div>
-
-            <!-- Batch table or empty state -->
             @if (Model.CreatedBatches.Count == 0)
             {
-                <div class="bp-dash-empty">
-                    <div style="font-size:2.5rem;opacity:.3;margin-bottom:12px;">📦</div>
-                    <div style="font-size:.85rem;font-weight:800;color:#1a1a1a;margin-bottom:6px;">No Batches Yet</div>
-                    <div style="font-size:.73rem;color:#9a9a9a;line-height:1.6;max-width:240px;">Switch to the <strong>Create Batch</strong> tab to create the first batch for this notice.</div>
-                    <button class="bp-dash-create-btn" onclick="switchPanelTab('create')">
-                        📦 Go to Create Batch
-                    </button>
+                <div class="dash-empty">
+                    <div class="dash-empty-icon">📦</div>
+                    <div class="dash-empty-title">No Batches Yet</div>
+                    <div class="dash-empty-sub">
+                        Click <strong>Create New Batch</strong> above to create the first batch for<br />
+                        @noticeLabel on roll @Model.RollShortCode.
+                    </div>
+                    @if (!Model.IsS52)
+                    {
+                        <button class="btn-new-batch" onclick="openCbModal()" style="font-size:14px;padding:11px 24px">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            Create First Batch
+                        </button>
+                    }
                 </div>
             }
             else
             {
-                <div class="bp-dash-table-wrap">
-                    <table class="bp-dash-table">
+                <div style="overflow-x:auto">
+                    <table class="dash-table">
                         <thead>
                             <tr>
                                 <th>#</th>
                                 <th>Batch Code</th>
-                                <th>Date</th>
+                                <th>Batch Date</th>
                                 <th>Records</th>
+                                <th>Created By</th>
+                                <th>Created At</th>
                                 <th>Status</th>
-                                <th>Action</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             @{
-                                int rowNum = 0;
+                                int bn = 0;
                             }
                             @foreach (var b in Model.CreatedBatches)
                             {
-                                rowNum++;
+                                bn++;
                                 <tr>
-                                    <td class="bp-dt-num">@rowNum</td>
+                                    <td style="color:var(--mu);font-size:11px;font-weight:600">@bn</td>
                                     <td>
-                                        <span class="bp-dt-code">@b.BatchName</span>
-                                        <div class="bp-dt-meta">@b.CreatedBy · @b.CreatedAtUtc.ToString("dd MMM HH:mm")</div>
+                                        <div class="batch-code">@b.BatchName</div>
                                     </td>
-                                    <td class="bp-dt-date">@b.BatchDate.ToString("dd MMM yyyy")</td>
-                                    <td>
-                                        <span class="bp-dt-records">@b.NumberOfRecords.ToString("N0")</span>
-                                    </td>
+                                    <td style="font-size:12.5px;color:var(--mu)">@b.BatchDate.ToString("dd MMM yyyy")</td>
+                                    <td><span class="batch-records">@b.NumberOfRecords.ToString("N0")</span></td>
+                                    <td style="font-size:12px;color:var(--mu)">@b.CreatedBy</td>
+                                    <td style="font-size:12px;color:var(--mu);white-space:nowrap">@b.CreatedAtUtc.ToString("dd MMM HH:mm")</td>
                                     <td>
                                         @if (b.IsApproved)
                                         {
-                                            <span class="s3-badge-ok">✓ Done</span>
+                                            <span class="k-badge k-badge-ok">✓ Done</span>
                                         }
                                         else
                                         {
-                                            <span class="s3-badge-warn">Pending</span>
+
+                                            <span class="k-badge k-badge-pend">Pending</span>
                                         }
                                     </td>
                                     <td>
-                                        <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
-                                           class="bp-dt-print-btn" title="Go to print dashboard for this batch">
-                                            🖨 Print
-                                        </a>
+                                        <div class="tbl-actions">
+                                            <a class="tbl-btn tbl-btn-print"
+                                               href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                                    <polyline points="6 9 6 2 18 2 18 9" />
+                                                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                                                    <rect x="6" y="14" width="12" height="8" />
+                                                </svg>
+                                                Print
+                                            </a>
+                                            <a class="tbl-btn tbl-btn-send"
+                                               href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                                    <line x1="22" y1="2" x2="11" y2="13" />
+                                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                                </svg>
+                                                Send
+                                            </a>
+                                        </div>
                                     </td>
                                 </tr>
                             }
                         </tbody>
                     </table>
                 </div>
-
-                <!-- Go straight to Print Dashboard -->
-                <div style="padding:14px 16px;border-top:1px solid #ebebeb;">
-                    <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
-                       class="bp-goto-print-btn">
-                        🖨 Go to Print Dashboard →
-                    </a>
-                </div>
             }
-        </div><!-- /bpPaneDashboard -->
-        <!-- Footer — shown only on Create tab -->
-        <div class="bp-footer" id="bpFooter">
-            <form asp-action="Step2CreateBatch" asp-controller="Step3" method="post" id="batchForm">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="key" value="@Model.ApprovalKey" />
-                <input type="hidden" name="batchDate" id="batchDateHidden" value="@DateTime.Today.ToString("yyyy-MM-dd")" />
-                <button type="submit" class="btn-create-batch" id="createBatchBtn">
-                    <span>📦</span> Create Batch — @Model.NextBatchCode
-                </button>
-            </form>
-            <button class="btn-cancel-batch" onclick="closeBatchPanel()">Cancel</button>
         </div>
 
     </div>
 </div>
 
-<!-- ════════════════════════════════════════════════════════════
-     FULL-SCREEN SHELL
-════════════════════════════════════════════════════════════ -->
-<div class="s3-fullscreen">
-
-    <!-- META BAR -->
-    <div class="s3-meta-bar">
-        <div class="meta-chip"><span class="meta-chip-label">Roll</span><span class="meta-chip-val">@Model.RollShortCode — @Model.RollName</span></div>
-        <div class="meta-chip"><span class="meta-chip-label">Notice</span><span class="meta-chip-val">@Model.Notice</span></div>
-        <div class="meta-chip"><span class="meta-chip-label">Version</span><span class="meta-chip-val">v@Model.Version</span></div>
-        <div class="meta-chip"><span class="meta-chip-label">Next Batch</span><span class="meta-chip-val">@Model.NextBatchCode</span></div>
-        <div class="meta-chip"><span class="meta-chip-label">Batches Done</span><span class="meta-chip-val">@Model.BatchesAlreadyCreated</span></div>
-    </div>
-
-    <!-- STATUS / BREADCRUMB BAR -->
-    <div class="s3-status-banner">
-        <div class="s3-step-trail">
-            <div class="s3-bc done"><div class="s3-bc-dot">✓</div>Configure</div>
-            <div class="s3-bc-arrow">›</div>
-            <div class="s3-bc done"><div class="s3-bc-dot">✓</div>Preview</div>
-            <div class="s3-bc-arrow">›</div>
-            <div class="s3-bc active"><div class="s3-bc-dot">3</div>Kickoff</div>
-        </div>
-        <div class="s3-lock-badge">🔒 Read-only — Locked to approved configuration</div>
-    </div>
-
-    <!-- BODY: PDF left | Sidebar right -->
-    <div class="s3-body">
-
-        <!-- ── LEFT: PDF PANEL (pure, no tabs) ──────────────── -->
-        <div class="s3-pdf-panel">
-            <div class="s3-pdf-header">
-                <div class="s3-pdf-title">
-                    <div class="s3-pdf-icon">📄</div>
-                    PDF Preview — @noticeLabel
-                </div>
-                <a class="btn-new-tab" href="@Model.PdfUrl" target="_blank">↗ Open in new tab</a>
-            </div>
-            <iframe class="s3-pdf-frame" src="@Model.PdfUrl" title="Approved notice PDF preview"></iframe>
-            <div class="s3-pdf-footer">
-                Approved configuration — preview is locked and read-only
-            </div>
-        </div>
-
-        <!-- ── RIGHT: SIDEBAR ────────────────────────────── -->
-        <div class="s3-sidebar">
-
-            <!-- APPROVED SUMMARY -->
-            <div class="s3-card">
-                <div class="s3-card-header">
-                    <span class="s3-card-icon">✅</span>
-                    <h4>Approved Summary</h4>
-                </div>
-                <div class="s3-card-body">
-                    <div class="s3-approval-grid">
-                        <div>
-                            <div class="s3-af-label">Status</div>
-                            <div class="s3-af-val">
-                                @if (Model.IsApproved)
-                                {
-                                    <span class="s3-badge-ok">✓ Approved</span>
-                                }
-                                else
-                                {
-
-                                    <span class="s3-badge-warn">⚠ Not Approved</span>
-                                }
-                            </div>
-                        </div>
-                        <div>
-                            <div class="s3-af-label">Approved By</div>
-                            <div class="s3-af-val @(string.IsNullOrWhiteSpace(Model.ApprovedBy) ? "empty" : "")">
-                                @(Model.ApprovedBy ?? "—")
-                            </div>
-                        </div>
-                        <div style="grid-column: span 2;">
-                            <div class="s3-af-label">Approved At (UTC)</div>
-                            <div class="s3-af-val @(Model.ApprovedAtUtc == null ? "empty" : "")">
-                                @(Model.ApprovedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr class="s3-divider" />
-
-                    <div class="s3-approval-grid">
-                        <div style="grid-column: span 2;">
-                            <div class="s3-af-label">Letter Date</div>
-                            <div class="s3-af-val">@Model.LetterDate.ToString("dd MMM yyyy")</div>
-                        </div>
-                        @if (Model.Notice == NoticeKind.S49)
-                        {
-                            <div>
-                                <div class="s3-af-label">Objection Start</div>
-                                <div class="s3-af-val @(Model.ObjectionStartDate == null ? "empty" : "")">@(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                            </div>
-                            <div>
-                                <div class="s3-af-label">Objection End</div>
-                                <div class="s3-af-val @(Model.ObjectionEndDate == null ? "empty" : "")">@(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                            </div>
-                            <div>
-                                <div class="s3-af-label">Extension Date</div>
-                                <div class="s3-af-val @(Model.ExtensionDate == null ? "empty" : "")">@(Model.ExtensionDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                            </div>
-                            <div>
-                                <div class="s3-af-label">Signature</div>
-                                <div class="s3-af-val">
-                                    @if (hasSignature)
-                                    {
-                                        <span class="s3-badge-ok">✓ Uploaded</span>
-                                    }
-                                    else
-                                    {
-
-                                        <span class="s3-badge-warn">⚠ Not Uploaded</span>
-                                    }
-                                </div>
-                            </div>
-                        }
-                        @if (Model.Notice == NoticeKind.S52)
-                        {
-                            <div>
-                                <div class="s3-af-label">From Date</div>
-                                <div class="s3-af-val">@(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                            </div>
-                            <div>
-                                <div class="s3-af-label">To Date</div>
-                                <div class="s3-af-val">@(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                            </div>
-                        }
-                        @if (Model.Notice == NoticeKind.S53)
-                        {
-                            <div>
-                                <div class="s3-af-label">Appeal Close</div>
-                                <div class="s3-af-val">@(Model.AppealCloseDate?.ToString("dd MMM yyyy") ?? "—")</div>
-                            </div>
-                        }
-                        <div style="grid-column: span 2;">
-                            <div class="s3-af-label">Financial Years</div>
-                            <div class="s3-af-val @(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "empty" : "")">
-                                @(Model.FinancialYearsText ?? "—")
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- RECIPIENT -->
-            <div class="s3-card">
-                <div class="s3-card-header">
-                    <span class="s3-card-icon">👤</span>
-                    <h4>Recipient (Sample Preview)</h4>
-                </div>
-                <div class="s3-card-body">
-                    <div class="s3-recipient-row">
-                        <div class="s3-avatar">@initials</div>
-                        <div>
-                            <div class="s3-recip-name">@Model.RecipientName</div>
-                            <div class="s3-recip-email">@Model.RecipientEmail</div>
-                        </div>
-                        <span class="s3-badge-blue" style="margin-left:auto;">Sample</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- EMAIL PREVIEW -->
-            <div class="s3-card">
-                <div class="s3-card-header">
-                    <span class="s3-card-icon">✉️</span>
-                    <h4>Email Preview</h4>
-                </div>
-                <div class="s3-card-body">
-                    <div class="s3-email-subject">
-                        <span>Subject</span>@Model.EmailSubject
-                    </div>
-                    <div class="s3-email-body">@Html.Raw(Model.EmailBodyHtml)</div>
-                </div>
-            </div>
-
-            <div class="s3-sidebar-spacer"></div>
-
-            <!-- BATCH ACTION (sticky bottom) — opens panel -->
-            <div class="s3-batch-card">
-                <div class="s3-batch-label">Batch Action</div>
-
-                <div class="s3-batch-info">
-                    <div class="s3-batch-count">500</div>
-                    <div class="s3-batch-count-label">
-                        <strong>Records per batch</strong>
-                        Next: <span style="color:#E6B000;font-weight:800;">@Model.NextBatchCode</span>
-                    </div>
-                    @if (Model.BatchesAlreadyCreated > 0)
-                    {
-                        <span class="s3-badge-blue" style="margin-left:auto;">@Model.BatchesAlreadyCreated done</span>
-                    }
-                </div>
-
-                <div class="s3-lock-note">
-                    <span>📋</span>
-                    <span>Review all fields before creating. The batch code is auto-assigned.</span>
-                </div>
-
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button type="button" class="btn-open-batch-panel" onclick="openBatchPanel('create')" style="flex:1;">
-                        📦 Start Batch
-                    </button>
-                    <button type="button" class="btn-view-batches" onclick="openBatchPanel('dashboard')">
-                        📊 @Model.CreatedBatches.Count
-                    </button>
-                </div>
-
-                @if (Model.CreatedBatches.Count > 0)
-                {
-                    <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
-                       class="btn-goto-print-sidebar">
-                        🖨 Go to Print Dashboard
-                    </a>
-                }
-            </div>
-
-        </div><!-- /s3-sidebar -->
-    </div><!-- /s3-body -->
-</div><!-- /s3-fullscreen -->
 @section Scripts {
     <script>
-        // ── Page loader ─────────────────────────────────────────
-        (function () {
-            function dismiss() {
-                var el = document.getElementById('pageLoader');
-                if (el) el.classList.add('hidden');
-            }
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function () { setTimeout(dismiss, 350); });
-            } else {
-                setTimeout(dismiss, 350);
-            }
-            setTimeout(dismiss, 2000);
-        })();
-
-        // ── Panel tab switching ──────────────────────────────────
-        function switchPanelTab(tab) {
-            // Tabs
-            document.querySelectorAll('.bp-tab').forEach(t => t.classList.remove('active'));
-            document.getElementById(tab === 'create' ? 'bpTabCreate' : 'bpTabDashboard').classList.add('active');
-            // Panes
-            document.querySelectorAll('.bp-pane').forEach(p => p.classList.remove('active'));
-            document.getElementById(tab === 'create' ? 'bpPaneCreate' : 'bpPaneDashboard').classList.add('active');
-            // Footer: only show on create tab
-            document.getElementById('bpFooter').style.display = tab === 'create' ? '' : 'none';
-        }
-
-        // ── Open batch panel ────────────────────────────────────
-        function openBatchPanel(tab) {
-            document.getElementById('batchOverlay').classList.add('open');
+        /* Create Batch modal */
+        function openCbModal() {
+            document.getElementById('cbModal').classList.add('open');
             document.body.style.overflow = 'hidden';
-            switchPanelTab(tab || 'create');
+            document.getElementById('cbDateInput').focus();
         }
-
-        function closeBatchPanel() {
-            document.getElementById('batchOverlay').classList.remove('open');
+        function closeCbModal() {
+            document.getElementById('cbModal').classList.remove('open');
             document.body.style.overflow = '';
         }
-
-        // Close on overlay click (outside panel)
-        document.getElementById('batchOverlay').addEventListener('click', function (e) {
-            if (e.target === this) closeBatchPanel();
+        document.getElementById('cbModal').addEventListener('click', function(e) {
+            if (e.target === this) closeCbModal();
         });
-
-        // Sync date picker → hidden form input
-        document.getElementById('batchDateInput').addEventListener('change', function () {
-            document.getElementById('batchDateHidden').value = this.value;
-        });
-
-        // Prevent double-submit
-        document.getElementById('batchForm').addEventListener('submit', function () {
-            var btn = document.getElementById('createBatchBtn');
+        document.getElementById('cbForm').addEventListener('submit', function() {
+            var btn = document.getElementById('cbSubmitBtn');
             btn.disabled = true;
-            btn.innerHTML = '<span style="display:inline-block;width:16px;height:16px;border:2px solid #0d0d0d;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;"></span> Creating…';
+            btn.innerHTML = '<span style="display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:cbspin .7s linear infinite"></span> Creating…';
         });
 
-        // Auto-open dashboard tab after successful batch creation
-        @if (Model.ShowBatchTab)
+        @if (Model.FromStep2)
         {
-                <text>openBatchPanel('dashboard');</text>
+                <text>
+            /* FromStep2 welcome modal */
+            function closeS2Modal() {
+                document.getElementById('s2Modal').classList.remove('open');
+                document.body.style.overflow = '';
+            }
+            function closeS2AndOpenCreate() {
+                closeS2Modal();
+                setTimeout(openCbModal, 160);
+            }
+            document.addEventListener('DOMContentLoaded', function() {
+                var m = document.getElementById('s2Modal');
+                if (m) { m.classList.add('open'); document.body.style.overflow = 'hidden'; }
+            });
+            document.getElementById('s2Modal').addEventListener('click', function(e) {
+                if (e.target === this) closeS2Modal();
+            });
+                </text>
         }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') { closeCbModal(); @(Model.FromStep2 ? "closeS2Modal();" : "") }
+        });
     </script>
-   
+    <style>
+     
+    </style>
 }

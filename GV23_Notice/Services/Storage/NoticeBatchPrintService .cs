@@ -1,23 +1,20 @@
 ﻿using GV23_Notice.Data;
-using GV23_Notice.Domain.Workflow;
-using GV23_Notice.Domain.Workflow.Entities;
-using GV23_Notice.Models.DTOs;
-using GV23_Notice.Services.Notices.DearJohnny;
-using GV23_Notice.Services.Notices.Invalidity;
-using GV23_Notice.Services.Notices.Section49;
 using GV23_Notice.Services.Notices.Section51;
 using GV23_Notice.Services.Notices.Section52;
-using GV23_Notice.Services.Notices.Section53;
-using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using System.Data;
+using GV23_Notice.Domain.Workflow;
+using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Services.Notices.Section49;
 using GV23_Notice.Services.Rolls;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json.Linq;
-using System.Data;
 using System.Globalization;
+// ── S53 additions ──
+using GV23_Notice.Services.Notices.Section53;
+using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
 
 namespace GV23_Notice.Services.Storage
 {
@@ -29,12 +26,10 @@ namespace GV23_Notice.Services.Storage
         private readonly ISection49PdfBuilder _s49Builder;
         private readonly ISection51PdfBuilder _s51Builder;
         private readonly Section52PdfService _s52Builder;
+        private readonly ISection53PdfService _s53Builder;   // ← S53 added
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<NoticeBatchPrintService> _log;
         private readonly IConfiguration _config;
-        private readonly ISection53PdfService _s53Builder;
-        private readonly IDearJonnyPdfService _djBuilder;
-        private readonly IInvalidNoticePdfService _inBuilder;
 
         public NoticeBatchPrintService(
             AppDbContext db,
@@ -43,11 +38,10 @@ namespace GV23_Notice.Services.Storage
             ISection49PdfBuilder s49Builder,
             ISection51PdfBuilder s51Builder,
             Section52PdfService s52Builder,
-            ISection53PdfService s53Builder,
+            ISection53PdfService s53Builder,             // ← S53 added
             IWebHostEnvironment env,
             ILogger<NoticeBatchPrintService> log,
-            IConfiguration config, IDearJonnyPdfService djBuilder,
-            IInvalidNoticePdfService inBuilder)
+            IConfiguration config)
         {
             _db = db;
             _paths = paths;
@@ -55,13 +49,10 @@ namespace GV23_Notice.Services.Storage
             _s49Builder = s49Builder;
             _s51Builder = s51Builder;
             _s52Builder = s52Builder;
-            _s53Builder = s53Builder;
+            _s53Builder = s53Builder;                    // ← S53 added
             _env = env;
             _log = log;
             _config = config;
-            _djBuilder = djBuilder;
-            _inBuilder = inBuilder;
-
         }
 
         // ── Print a single batch ────────────────────────────────────────────
@@ -80,15 +71,12 @@ namespace GV23_Notice.Services.Storage
                            .FirstOrDefaultAsync(r => r.RollId == batch.RollId, ct)
                        ?? throw new InvalidOperationException("Roll not found.");
 
-            // Include Failed rows so re-printing a batch retries them.
-            // Only skip rows already Printed or Sent.
             var runLogs = await _db.NoticeRunLogs
                 .Where(x => x.NoticeBatchId == batch.Id
                          && (x.Status == RunStatus.Generated || x.Status == RunStatus.Failed))
                 .OrderBy(x => x.Id)
                 .ToListAsync(ct);
 
-            // Reset failed rows back to Generated so the loop below treats them uniformly
             foreach (var rl in runLogs.Where(x => x.Status == RunStatus.Failed))
                 rl.Status = RunStatus.Generated;
 
@@ -112,20 +100,6 @@ namespace GV23_Notice.Services.Storage
                     log.ErrorMessage = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
                     result.Failed++;
                     await _db.SaveChangesAsync(ct);
-                }
-            }
-
-            // ── S53 post-print: flip Printing-Pending → Email-Pending ─────────
-            if (settings.Notice == NoticeKind.S53 && result.Printed > 0)
-            {
-                try
-                {
-                    await SetS53EmailPendingAsync(roll.RollId, batch.BatchName, ct);
-                }
-                catch (Exception ex)
-                {
-                    _log.LogError(ex, "S53 SetEmailPending failed for batch {BatchName}", batch.BatchName);
-                    // Non-fatal — PDFs are saved, status update can be retried
                 }
             }
 
@@ -167,39 +141,7 @@ namespace GV23_Notice.Services.Storage
             switch (settings.Notice)
             {
                 case NoticeKind.S49:
-                    // Mark 'P' on the roll table before attempting PDF generation.
-                    // This ensures re-runs skip premises currently being processed
-                    // and prevents double-printing if the process restarts.
-                    if (!string.IsNullOrWhiteSpace(log.PremiseId))
-                    {
-                        try { await _s49Repo.MarkPrintingAsync(roll.RollId, log.PremiseId, ct); }
-                        catch (Exception markEx)
-                        {
-                            _log.LogWarning(markEx,
-                                "S49 MarkPrinting failed for PremiseId={PremiseId} — continuing anyway",
-                                log.PremiseId);
-                        }
-                    }
-                    try
-                    {
-                        (pdfBytes, propertyDesc) = await BuildS49PdfAsync(settings, roll, batch, log, ct);
-                    }
-                    catch
-                    {
-                        // Mark 'NP' so batch reports correctly and the premise isn't skipped
-                        // permanently — a manual re-run can reset it.
-                        if (!string.IsNullOrWhiteSpace(log.PremiseId))
-                        {
-                            try { await _s49Repo.MarkPrintFailedAsync(roll.RollId, log.PremiseId, ct); }
-                            catch (Exception npEx)
-                            {
-                                _log.LogWarning(npEx,
-                                    "S49 MarkPrintFailed failed for PremiseId={PremiseId}",
-                                    log.PremiseId);
-                            }
-                        }
-                        throw;
-                    }
+                    (pdfBytes, propertyDesc) = await BuildS49PdfAsync(settings, roll, batch, log, ct);
                     break;
 
                 case NoticeKind.S51:
@@ -210,29 +152,19 @@ namespace GV23_Notice.Services.Storage
                     (pdfBytes, propertyDesc) = await BuildS52PdfAsync(settings, roll, log, ct);
                     break;
 
-                case NoticeKind.S53:
-                    await PrintOneS53Async(settings, roll, batch, log, ct);
-                    return;   // S53 handles its own path + save + status update
+                case NoticeKind.S53:                     // ← S53 added
+                    (pdfBytes, propertyDesc) = await BuildS53PdfAsync(settings, roll, batch, log, ct);
+                    break;
 
-                case NoticeKind.DJ:
-                    await PrintOneDjAsync(settings, roll, batch, log, ct);
-                    return;   // DJ handles its own path + save + status update
-
-                case NoticeKind.IN:
-                    await PrintOneInAsync(settings, roll, batch, log, ct);
-                    return;   // IN handles its own path + save + status update
-
-                // For other notice types: fall back to snapshot-based print
+                // DJ, IN, S78 — fall back to Step 2 approved snapshot
                 default:
                     (pdfBytes, propertyDesc) = await BuildFromSnapshotAsync(settings, log, ct);
                     break;
             }
 
-            // Build save path
-            // S51: {root}\{ObjectionNo}\Section 51 Notice\...
-            // S52: {root}\{Appeal_No}\Section 52 Review\ or \Appeal Decision\...
-            // Others: batch folder
+            // ── Build save path ─────────────────────────────────────────────
             string pdfPath;
+
             if (settings.Notice == NoticeKind.S51)
             {
                 pdfPath = _paths.BuildPdfPath(
@@ -245,11 +177,27 @@ namespace GV23_Notice.Services.Storage
             else if (settings.Notice == NoticeKind.S52)
             {
                 var isReview = settings.IsSection52Review == true;
+                var isPropOwner = string.Equals(log.RecipientName, "Prop Owner",
+                                      StringComparison.OrdinalIgnoreCase);
                 pdfPath = _paths.BuildS52PdfPath(
                     roll: roll,
                     appealNo: log.AppealNo ?? "",
                     propertyDesc: propertyDesc,
-                    isReview: isReview);
+                    isReview: isReview,
+                    isPropOwner: isPropOwner);
+            }
+            else if (settings.Notice == NoticeKind.S53)  // ← S53 path added
+            {
+                // RecipientName stores ObjectorType for S53 (Owner/Representative/Third_Party/Owner_Rep/Owner_Third_Party)
+                var objectorType = string.IsNullOrWhiteSpace(log.RecipientName)
+                    ? "Owner"
+                    : log.RecipientName.Trim();
+
+                pdfPath = _paths.BuildS53PdfPath(
+                    roll: roll,
+                    objectionNo: log.ObjectionNo ?? propertyDesc,
+                    propertyDesc: propertyDesc,
+                    objectorType: objectorType);
             }
             else
             {
@@ -268,7 +216,7 @@ namespace GV23_Notice.Services.Storage
             await _db.SaveChangesAsync(ct);
         }
 
-        // ── S49: load roll data → build PDF ─────────────────────────────────
+        // ── S49 ─────────────────────────────────────────────────────────────
         private async Task<(byte[] pdfBytes, string propertyDesc)> BuildS49PdfAsync(
             NoticeSettings settings,
             Domain.Rolls.RollRegistry roll,
@@ -279,7 +227,6 @@ namespace GV23_Notice.Services.Storage
             if (string.IsNullOrWhiteSpace(log.PremiseId))
                 throw new InvalidOperationException($"RunLog {log.Id} has no PremiseId.");
 
-            // Load roll rows + sap contact for this premise
             var (rows, contact) = await _s49Repo.LoadPremiseAsync(roll.RollId, log.PremiseId, ct);
 
             if (rows.Count == 0)
@@ -294,9 +241,8 @@ namespace GV23_Notice.Services.Storage
 
             var firstRow = rows[0];
             var propertyDesc = firstRow.PropertyDesc ?? log.PremiseId;
-
-            // Build property rows — if multiple rows force 4, else single
             var forceFour = rows.Count > 1;
+
             var propRows = rows.Select(r => new Section49PropertyRow
             {
                 Category = r.CatDesc ?? "",
@@ -336,16 +282,14 @@ namespace GV23_Notice.Services.Storage
                 FinancialYearsText = settings.FinancialYearsText,
                 SignaturePath = settings.SignaturePath,
                 ForceFourRows = forceFour,
-                PropertyRows = propRows,
-                RollHeaderText = settings.RollName ?? roll.Name ?? roll.ShortCode ?? "Valuation Roll"
+                PropertyRows = propRows
             };
 
             var pdfBytes = _s49Builder.BuildNotice(pdfData, ctx);
             return (pdfBytes, propertyDesc);
         }
 
-
-        // ── S51: load from Section51Table via SP → build PDF ────────────────
+        // ── S51 ─────────────────────────────────────────────────────────────
         private async Task<(byte[] pdfBytes, string propertyDesc)> BuildS51PdfAsync(
             NoticeSettings settings,
             Domain.Rolls.RollRegistry roll,
@@ -354,13 +298,10 @@ namespace GV23_Notice.Services.Storage
             CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.ObjectionNo))
-                throw new InvalidOperationException(
-                    $"RunLog {log.Id} has no ObjectionNo for S51 print.");
+                throw new InvalidOperationException($"RunLog {log.Id} has no ObjectionNo for S51 print.");
 
-            // Use the same DefaultConnection — Notice_DB is the default catalog
             var cs = _config.GetConnectionString("DefaultConnection")
-                     ?? throw new InvalidOperationException(
-                         "DefaultConnection is not configured in appsettings.");
+                     ?? throw new InvalidOperationException("DefaultConnection is not configured.");
 
             Section51NoticeData data;
             DateTime closingDate;
@@ -380,11 +321,8 @@ namespace GV23_Notice.Services.Storage
 
             if (!await reader.ReadAsync(ct))
                 throw new InvalidOperationException(
-                    $"S51_GetNoticeRow returned no row for RollId={batch.RollId}, " +
-                    $"ObjectionNo={log.ObjectionNo}. " +
-                    "Check that the batch was created successfully.");
+                    $"S51_GetNoticeRow returned no row for RollId={batch.RollId}, ObjectionNo={log.ObjectionNo}.");
 
-            // Helper: safely read nullable string from DBNull-safe column
             static string? Str(SqlDataReader r, string col)
             {
                 var v = r[col];
@@ -405,14 +343,11 @@ namespace GV23_Notice.Services.Storage
                 Section51Pin = Str(reader, "Section51Pin"),
                 Email = Str(reader, "RecipientEmail"),
                 RollName = roll.Name ?? roll.ShortCode,
-
-                // PostalAddress is stored as one string in the table
-                Addr1 = Str(reader, "PostalAddress") ?? "",
-                Addr2 = "",
-                Addr3 = "",
-                Addr4 = "",
-                Addr5 = "",
-
+                Addr1 = Str(reader, "ADDR1") ?? "",
+                Addr2 = Str(reader, "ADDR2") ?? "",
+                Addr3 = Str(reader, "ADDR3") ?? "",
+                Addr4 = Str(reader, "ADDR4") ?? "",
+                Addr5 = Str(reader, "ADDR5") ?? "",
                 Section6 = new Section6Row
                 {
                     Old_Category = Str(reader, "OldCategory"),
@@ -421,25 +356,22 @@ namespace GV23_Notice.Services.Storage
                     New_Category = Str(reader, "NewCategory"),
                     New2_Category = Str(reader, "NewCategory1"),
                     New3_Category = Str(reader, "NewCategory2"),
-
                     Old_Market_Value = Str(reader, "OldMarketValue"),
                     Old2_Market_Value = Str(reader, "OldMarketValue1"),
                     Old3_Market_Value = Str(reader, "OldMarketValue2"),
                     New_Market_Value = Str(reader, "NewMarketValue"),
                     New2_Market_Value = Str(reader, "NewMarketValue1"),
                     New3_Market_Value = Str(reader, "NewMarketValue2"),
-
                     Old_Extent = Str(reader, "OldExtent"),
                     Old2_Extent = Str(reader, "OldExtent1"),
                     Old3_Extent = Str(reader, "OldExtent2"),
                     New_Extent = Str(reader, "NewExtent"),
                     New2_Extent = Str(reader, "NewExtent1"),
                     New3_Extent = Str(reader, "NewExtent2"),
+                    WithEffectDate = Str(reader, "WEFDATE")
                 }
             };
 
-            // Detect multi/split property: any of the _1/_2 columns have a value
-            // OR the property_Type == 'Multi' (stored in OldCategory1 if source set it)
             var s6 = data.Section6!;
             data.IsMulti =
                 !string.IsNullOrWhiteSpace(s6.Old2_Category) ||
@@ -456,18 +388,16 @@ namespace GV23_Notice.Services.Storage
                 HeaderImagePath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG"),
                 LetterDate = settings.LetterDate,
                 SubmissionsCloseDate = closingDate,
-                PortalUrl = settings.PortalUrl
-                                       ?? "https://objections.joburg.org.za",
+                PortalUrl = settings.PortalUrl ?? "https://objections.joburg.org.za",
                 EnquiriesLine = settings.EnquiriesLine
-                                       ?? "For any enquiries, please contact us on 011 407 6622 " +
-                                          "or valuationenquiries@joburg.org.za",
+                                   ?? "For any enquiries, please contact us on 011 407 6622 or valuationenquiries@joburg.org.za",
             };
 
             var pdfBytes = _s51Builder.BuildNotice(data, ctx);
             return (pdfBytes, propertyDesc);
         }
 
-        // ── S52: load from Appeal_Decision by AppealNo → build PDF ──────────
+        // ── S52 ─────────────────────────────────────────────────────────────
         private async Task<(byte[] pdfBytes, string propertyDesc)> BuildS52PdfAsync(
             NoticeSettings settings,
             Domain.Rolls.RollRegistry roll,
@@ -485,6 +415,8 @@ namespace GV23_Notice.Services.Storage
                 ? "dbo.S52_Preview_SelectReviewTop1"
                 : "dbo.S52_Preview_SelectAppealTop1";
 
+            var appealType = string.IsNullOrWhiteSpace(log.RecipientName) ? null : log.RecipientName.Trim();
+
             AppealDecisionRow? row = null;
 
             await using var cn = new SqlConnection(connStr);
@@ -495,6 +427,8 @@ namespace GV23_Notice.Services.Storage
             cmd.CommandTimeout = 60;
             cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = roll.RollId });
             cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50) { Value = log.AppealNo.Trim() });
+            if (appealType != null)
+                cmd.Parameters.Add(new SqlParameter("@AppealType", SqlDbType.NVarChar, 50) { Value = appealType });
 
             await using var rd = await cmd.ExecuteReaderAsync(ct);
 
@@ -546,29 +480,19 @@ namespace GV23_Notice.Services.Storage
                 throw new InvalidOperationException(
                     $"S52 print: no data found for AppealNo={log.AppealNo} in RollId={roll.RollId}.");
 
-            var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
             var ctx = new Section52PdfContext
             {
-                HeaderImagePath = headerPath,
+                HeaderImagePath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG"),
                 LetterDate = DateOnly.FromDateTime(settings.LetterDate)
             };
 
             var pdfBytes = _s52Builder.BuildNotice(row, ctx);
             var propertyDesc = row.Property_desc ?? log.AppealNo ?? log.Id.ToString();
-
             return (pdfBytes, propertyDesc);
         }
 
-        // ── S53: print PDFs from Objection_MVD ────────────────────────────
-        //
-        //  ObjectorType rules (stored in RunLog.RecipientName):
-        //    Owner             → 1 PDF  (this RunLog)
-        //    Representative    → 2 PDFs (Representative + Owner_Rep both printed by THIS RunLog)
-        //    Owner_Rep         → already printed by the Representative RunLog; just mark Printed
-        //    Third_Party       → 2 PDFs (Third_Party + Owner_Third_Party both printed by THIS RunLog)
-        //    Owner_Third_Party → already printed by the Third_Party RunLog; just mark Printed
-        //
-        private async Task PrintOneS53Async(
+        // ── S53 ─────────────────────────────────────────────────────────────
+        private async Task<(byte[] pdfBytes, string propertyDesc)> BuildS53PdfAsync(
             NoticeSettings settings,
             Domain.Rolls.RollRegistry roll,
             NoticeBatch batch,
@@ -576,57 +500,49 @@ namespace GV23_Notice.Services.Storage
             CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.ObjectionNo))
-                throw new InvalidOperationException(
-                    $"RunLog {log.Id} has no ObjectionNo for S53 print.");
+                throw new InvalidOperationException($"RunLog {log.Id} has no ObjectionNo for S53 print.");
 
             var cs = _config.GetConnectionString("DefaultConnection")
                      ?? throw new InvalidOperationException("DefaultConnection not configured.");
 
-            // ── Resolve ObjectorType ─────────────────────────────────────────
-            var objectorType = !string.IsNullOrWhiteSpace(log.RecipientName)
-                ? log.RecipientName
-                : await LookupObjectorTypeAsync(cs, batch, log, ct);
+            // RecipientName stores ObjectorType (set during batch creation)
+            var objectorType = string.IsNullOrWhiteSpace(log.RecipientName)
+                ? "Owner"
+                : log.RecipientName.Trim();
 
-            // ── Secondary RunLogs: primary already printed their file ─────────
-            // Owner_Rep is the paired copy for Representative.
-            // Owner_Third_Party is the paired copy for Third_Party.
-            // When we hit these RunLogs, the primary RunLog (Representative /
-            // Third_Party) already wrote both PDFs — we just need to record
-            // the correct path and mark this RunLog Printed.
+            // Secondary rows (Owner_Rep / Owner_Third_Party) — the primary row
+            // (Representative / Third_Party) already saved this PDF. Just record path.
             if (objectorType == "Owner_Rep" || objectorType == "Owner_Third_Party")
             {
-                // Fetch the row just to get PropertyDesc for the path
-                var secRow = await FetchMvdRowAsync(cs, batch, log.ObjectionNo, batch.BatchName, objectorType, ct);
-                var secPropDesc = secRow?.PropertyDesc ?? log.ObjectionNo ?? "Property";
-                var secPdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, secPropDesc, objectorType);
-                var secEmlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, secPropDesc, objectorType);
+                var secRow = await FetchMvdRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, objectorType, ct);
+                if (secRow == null)
+                    throw new InvalidOperationException(
+                        $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, " +
+                        $"ObjectorType={objectorType}, BatchName={batch.BatchName}.");
 
-                log.PdfPath = secPdfPath;
-                log.EmlPath = secEmlPath;
-                log.PropertyDesc = secPropDesc;
-                log.Status = RunStatus.Printed;
-                await _db.SaveChangesAsync(ct);
-                return;
+                // Set RollName from registry — SP does not return it
+                secRow.RollName = roll.Name ?? roll.ShortCode ?? "Valuation Roll";
+
+                var secDesc = secRow.PropertyDesc ?? log.ObjectionNo ?? "Property";
+                var secBytes = _s53Builder.BuildNoticePdf(secRow, DateOnly.FromDateTime(settings.LetterDate));
+                return (secBytes, secDesc);
             }
 
-            // ── Primary RunLog: fetch this row and print its PDF ─────────────
-            var mvdRow = await FetchMvdRowAsync(cs, batch, log.ObjectionNo, batch.BatchName, objectorType, ct)
+            // Primary row — fetch from Objection_MVD and build PDF
+            var mvdRow = await FetchMvdRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, objectorType, ct)
                          ?? throw new InvalidOperationException(
                              $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, " +
                              $"BatchName={batch.BatchName}, ObjectorType={objectorType}.");
 
-            var propertyDesc = mvdRow.PropertyDesc ?? log.ObjectionNo ?? log.PremiseId ?? "Property";
+            // Set RollName from registry — SP doesn't return it
+            mvdRow.RollName = roll.Name ?? roll.ShortCode ?? "Valuation Roll";
+
+            var propertyDesc = mvdRow.PropertyDesc ?? log.ObjectionNo ?? "Property";
             var letterDate = DateOnly.FromDateTime(settings.LetterDate);
 
-            // Print primary PDF
             var pdfBytes = _s53Builder.BuildNoticePdf(mvdRow, letterDate);
-            var pdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
-            var emlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, propertyDesc, objectorType);
-            SavePdf(pdfPath, pdfBytes);
 
-            // ── For Representative and Third_Party: also print the paired row ─
-            //    Representative  → also print Owner_Rep
-            //    Third_Party     → also print Owner_Third_Party
+            // Also build the paired owner copy (Representative→Owner_Rep, Third_Party→Owner_Third_Party)
             var pairedType = objectorType switch
             {
                 "Representative" => "Owner_Rep",
@@ -636,37 +552,25 @@ namespace GV23_Notice.Services.Storage
 
             if (pairedType != null)
             {
-                var pairedRow = await FetchMvdRowAsync(cs, batch, log.ObjectionNo, batch.BatchName, pairedType, ct);
+                var pairedRow = await FetchMvdRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, pairedType, ct);
                 if (pairedRow != null)
                 {
                     var pairedDesc = pairedRow.PropertyDesc ?? propertyDesc;
                     var pairedBytes = _s53Builder.BuildNoticePdf(pairedRow, letterDate);
-                    var pairedPdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, pairedDesc, pairedType);
-                    SavePdf(pairedPdfPath, pairedBytes);
-
-                    _log.LogInformation(
-                        "S53 paired PDF printed: {ObjectionNo} {PairedType} → {Path}",
-                        log.ObjectionNo, pairedType, pairedPdfPath);
-                }
-                else
-                {
-                    _log.LogWarning(
-                        "S53 paired row not found: ObjectionNo={ObjectionNo} PairedType={PairedType} Batch={Batch}",
-                        log.ObjectionNo, pairedType, batch.BatchName);
+                    var pairedPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, pairedDesc, pairedType);
+                    SavePdf(pairedPath, pairedBytes);
+                    _log.LogInformation("S53 paired PDF saved: {ObjectionNo} {Type} → {Path}",
+                        log.ObjectionNo, pairedType, pairedPath);
                 }
             }
 
-            log.PdfPath = pdfPath;
-            log.EmlPath = emlPath;
-            log.PropertyDesc = propertyDesc;
-            log.Status = RunStatus.Printed;
-            await _db.SaveChangesAsync(ct);
+            return (pdfBytes, propertyDesc);
         }
 
-        // ── Fetch one Objection_MVD row via S53_GetMvdRow SP ────────────────
+        // ── S53 helper: fetch one Objection_MVD row ──────────────────────────
         private async Task<Section53MvdRow?> FetchMvdRowAsync(
             string cs,
-            NoticeBatch batch,
+            int rollId,
             string objectionNo,
             string batchName,
             string objectorType,
@@ -678,7 +582,7 @@ namespace GV23_Notice.Services.Storage
                 CommandType = CommandType.StoredProcedure,
                 CommandTimeout = 60
             };
-            cmd.Parameters.AddWithValue("@RollId", batch.RollId);
+            cmd.Parameters.AddWithValue("@RollId", rollId);
             cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
             cmd.Parameters.AddWithValue("@BatchName", batchName);
             cmd.Parameters.AddWithValue("@ObjectorType", objectorType);
@@ -688,399 +592,89 @@ namespace GV23_Notice.Services.Storage
 
             if (!await reader.ReadAsync(ct)) return null;
 
-            static string? Str(SqlDataReader r, string col)
-            {
-                var v = r[col];
-                return v == DBNull.Value ? null : v?.ToString();
-            }
+            // Column map — safe: any column the SP does not return gives null
+            var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < reader.FieldCount; i++) colMap[reader.GetName(i)] = i;
 
-            var appealCloseRaw = reader["AppealCloseDate"];
-            DateTime? appealClose = appealCloseRaw == DBNull.Value
-                ? null
-                : Convert.ToDateTime(appealCloseRaw);
+            string? Str(string col) =>
+                colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
+                    ? reader.GetValue(o)?.ToString() : null;
+
+            DateTime? DateVal(string col)
+            {
+                if (!colMap.TryGetValue(col, out var o) || reader.IsDBNull(o)) return null;
+                var v = reader.GetValue(o);
+                return v is DateTime dt ? dt : Convert.ToDateTime(v);
+            }
 
             return new Section53MvdRow
             {
-                ObjectionNo = Str(reader, "Objection_No") ?? objectionNo,
-                ValuationKey = Str(reader, "ValuationKey"),
-                PropertyDesc = Str(reader, "PropertyDesc"),
-                Email = Str(reader, "Email"),
-                Addr1 = Str(reader, "ADDR1"),
-                Addr2 = Str(reader, "ADDR2"),
-                Addr3 = Str(reader, "ADDR3"),
-                Addr4 = Str(reader, "ADDR4"),
-                Addr5 = Str(reader, "ADDR5"),
-                AppealCloseDate = appealClose,
-                Section52Review = Str(reader, "Section52Review"),
+                ObjectionNo = Str("Objection_No") ?? objectionNo,
+                ValuationKey = Str("ValuationKey"),
+                PropertyDesc = Str("PropertyDesc"),
+                Email = Str("Email"),
+                Addr1 = Str("ADDR1"),
+                Addr2 = Str("ADDR2"),
+                Addr3 = Str("ADDR3"),
+                Addr4 = Str("ADDR4"),
+                Addr5 = Str("ADDR5"),
+                AppealCloseDate = DateVal("AppealCloseDate"),
+                Section52Review = Str("Section52Review"),
+                RollName = null,   // SP doesn't return RollName — set from roll.Name in caller
 
-                Gv_Category = Str(reader, "GV_Category"),
-                Gv_Category2 = Str(reader, "GV_Category2"),
-                Gv_Category3 = Str(reader, "GV_Category3"),
-                Gv_Market_Value = Str(reader, "GV_Market_Value"),
-                Gv_Market_Value2 = Str(reader, "GV_Market_Value2"),
-                Gv_Market_Value3 = Str(reader, "GV_Market_Value3"),
-                Gv_Extent = Str(reader, "GV_Extent"),
-                Gv_Extent2 = Str(reader, "GV_EXtent2"),
-                Gv_Extent3 = Str(reader, "GV_Extent3"),
+                Gv_Category = Str("GV_Category"),
+                Gv_Category2 = Str("GV_Category2"),
+                Gv_Category3 = Str("GV_Category3"),
+                Gv_Market_Value = Str("GV_Market_Value"),
+                Gv_Market_Value2 = Str("GV_Market_Value2"),
+                Gv_Market_Value3 = Str("GV_Market_Value3"),
+                Gv_Extent = Str("GV_Extent"),
+                Gv_Extent2 = Str("GV_EXtent2"),
+                Gv_Extent3 = Str("GV_Extent3"),
 
-                Mvd_Category = Str(reader, "MVD_Category"),
-                Mvd_Category2 = Str(reader, "MVD_Category2"),
-                Mvd_Category3 = Str(reader, "MVD_Category3"),
-                Mvd_Market_Value = Str(reader, "MVD_Market_Value"),
-                Mvd_Market_Value2 = Str(reader, "MVD_Market_Value2"),
-                Mvd_Market_Value3 = Str(reader, "MVD_Market_Value3"),
-                Mvd_Extent = Str(reader, "MVD_Extent"),
-                Mvd_Extent2 = Str(reader, "MVD_Extent2"),
-                Mvd_Extent3 = Str(reader, "MVD_Extent3"),
+                Mvd_Category = Str("MVD_Category"),
+                Mvd_Category2 = Str("MVD_Category2"),
+                Mvd_Category3 = Str("MVD_Category3"),
+                Mvd_Market_Value = Str("MVD_Market_Value"),
+                Mvd_Market_Value2 = Str("MVD_Market_Value2"),
+                Mvd_Market_Value3 = Str("MVD_Market_Value3"),
+                Mvd_Extent = Str("MVD_Extent"),
+                Mvd_Extent2 = Str("MVD_Extent2"),
+                Mvd_Extent3 = Str("MVD_Extent3"),
+                WEFMVD= Str("wefDateMVD"),
             };
         }
 
-        // ── Legacy ObjectorType lookup (RecipientName not populated) ─────────
-        private async Task<string> LookupObjectorTypeAsync(
-            string cs,
-            NoticeBatch batch,
-            NoticeRunLog log,
-            CancellationToken ct)
-        {
-            // Count siblings with lower Id to get 1-based rank
-            var safeObjNo = log.ObjectionNo!.Replace("'", "''");
-            var rankSql = $@"
-                SELECT COUNT(*) + 1
-                FROM   dbo.NoticeRunLogs
-                WHERE  NoticeBatchId = {log.NoticeBatchId}
-                  AND  ObjectionNo   = N'{safeObjNo}'
-                  AND  Id            < {log.Id};";
-
-            await using var rankConn = new SqlConnection(cs);
-            await rankConn.OpenAsync(ct);
-            await using var rankCmd = new SqlCommand(rankSql, rankConn) { CommandTimeout = 30 };
-            var rankRaw = await rankCmd.ExecuteScalarAsync(ct);
-            var rank = Convert.ToInt32(rankRaw ?? 1);
-
-            // Pick the Nth ObjectorType alphabetically from Objection_MVD
-            var safeBatch = batch.BatchName.Replace("'", "''");
-            var lookupSql = $@"
-                DECLARE @src    NVARCHAR(200);
-                DECLARE @dynSql NVARCHAR(MAX);
-                SELECT @src = SourceDb FROM dbo.RollRegistry WHERE RollId = {batch.RollId};
-                SET @dynSql = N'
-                    SELECT Objector_Type
-                    FROM (
-                        SELECT Objector_Type,
-                               ROW_NUMBER() OVER (ORDER BY Objector_Type) AS rn
-                        FROM   [' + @src + N'].[dbo].[Objection_MVD]
-                        WHERE  Objection_No = @o
-                          AND  Batch_Name   = @b
-                    ) ranked
-                    WHERE rn = @rank';
-                EXEC sp_executesql @dynSql,
-                    N'@o NVARCHAR(80), @b NVARCHAR(100), @rank INT',
-                    @o    = N'{safeObjNo}',
-                    @b    = N'{safeBatch}',
-                    @rank = {rank};";
-
-            await using var lookupConn = new SqlConnection(cs);
-            await lookupConn.OpenAsync(ct);
-            await using var lookupCmd = new SqlCommand(lookupSql, lookupConn) { CommandTimeout = 30 };
-            var rawType = await lookupCmd.ExecuteScalarAsync(ct);
-            return rawType?.ToString() ?? "Owner";
-        }
-
-        // ── S53: flip Printing-Pending → Email-Pending after batch print ─────
-        private async Task SetS53EmailPendingAsync(
-            int rollId, string batchName, CancellationToken ct)
-        {
-            var cs = _config.GetConnectionString("DefaultConnection")
-                     ?? throw new InvalidOperationException("DefaultConnection not configured.");
-
-            await using var conn = new SqlConnection(cs);
-            await using var cmd = new SqlCommand("dbo.S53_Step3_SetEmailPending", conn)
-            {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 60
-            };
-            cmd.Parameters.AddWithValue("@RollId", rollId);
-            cmd.Parameters.AddWithValue("@BatchName", batchName);
-
-            await conn.OpenAsync(ct);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-
-        // ── Snapshot fallback for non-S49 notice types ──────────────────────
+        // ── Snapshot fallback (DJ, IN, S78) ─────────────────────────────────
         private async Task<(byte[] pdfBytes, string propertyDesc)> BuildFromSnapshotAsync(
             NoticeSettings settings,
             NoticeRunLog log,
             CancellationToken ct)
         {
-            var snap = await _db.NoticePreviewSnapshots
-                           .FirstOrDefaultAsync(x => x.NoticeRunLogId == log.Id, ct);
+            // Read from NoticeStep2Snapshots — saved during Step2Approve
+            var snap = await _db.NoticeStep2Snapshots
+                           .Where(x => x.NoticeSettingsId == settings.Id)
+                           .OrderByDescending(x => x.Id)
+                           .FirstOrDefaultAsync(ct);
 
             if (snap?.PdfBytes is null || snap.PdfBytes.Length == 0)
                 throw new InvalidOperationException(
-                    $"No snapshot PDF found for RunLogId={log.Id} (notice {settings.Notice}). " +
-                    "Snapshots must be generated before printing.");
+                    $"No snapshot PDF found for SettingsId={settings.Id} (notice {settings.Notice}). " +
+                    "Complete Step 2 approval first — the snapshot is saved at that point.");
 
-            var propertyDesc = snap.PropertyDesc
-                               ?? snap.PdfFileName
-                               ?? (log.ObjectionNo ?? log.PremiseId ?? "Property");
+            var propertyDesc = !string.IsNullOrWhiteSpace(snap.PdfFileName)
+                ? Path.GetFileNameWithoutExtension(snap.PdfFileName)
+                : (log.ObjectionNo ?? log.PremiseId ?? $"{settings.Notice}_{settings.Id}");
 
             return (snap.PdfBytes, propertyDesc);
         }
 
-        private async Task PrintOneDjAsync(
-      NoticeSettings settings,
-      Domain.Rolls.RollRegistry roll,
-      NoticeBatch batch,
-      NoticeRunLog log,
-      CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(log.ObjectionNo))
-                throw new InvalidOperationException(
-                    $"RunLog {log.Id} has no ObjectionNo for DJ print.");
-
-            var cs = _config.GetConnectionString("DefaultConnection")
-                     ?? throw new InvalidOperationException("DefaultConnection not configured.");
-
-            var row = await FetchDjRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, ct)
-                      ?? throw new InvalidOperationException(
-                          $"DJ row not found for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
-
-            var propertyDesc = !string.IsNullOrWhiteSpace(row.PropertyDesc)
-                ? row.PropertyDesc
-                : log.PropertyDesc ?? log.ObjectionNo ?? "Property";
-
-            var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
-
-            var pdfData = new DearJonnyPdfData
-            {
-                RollName = roll.ShortCode ?? "",
-                ObjectionNo = log.ObjectionNo,
-                RecipientName = row.RecipientName ?? "",
-                PropertyDescription = propertyDesc,
-                ValuationKey = row.ValuationKey ?? "",
-                Addr1 = row.Addr1 ?? "",
-                Addr2 = row.Addr2 ?? "",
-                Addr3 = row.Addr3 ?? "",
-                Addr4 = row.Addr4 ?? "",
-                Addr5 = row.Addr5 ?? ""
-            };
-
-            var pdfCtx = new DearJonnyPdfContext
-            {
-                HeaderImagePath = headerPath,
-                LetterDate = settings.LetterDate
-            };
-
-            var pdfBytes = _djBuilder.BuildNotice(pdfData, pdfCtx);
-
-            var pdfPath = _paths.BuildDjPdfPath(roll, log.ObjectionNo, propertyDesc);
-            var emlPath = _paths.BuildDjEmlPath(roll, log.ObjectionNo, propertyDesc);
-
-            SavePdf(pdfPath, pdfBytes);
-
-            log.PdfPath = pdfPath;
-            log.EmlPath = emlPath;
-            log.PropertyDesc = propertyDesc;
-            log.RecipientEmail = row.Email;
-            log.Status = RunStatus.Printed;
-
-            await _db.SaveChangesAsync(ct);
-
-            _log.LogInformation("DJ printed: {ObjectionNo} → {Path}", log.ObjectionNo, pdfPath);
-        }
-
-
-        private async Task PrintOneInAsync(
-     NoticeSettings settings,
-     Domain.Rolls.RollRegistry roll,
-     NoticeBatch batch,
-     NoticeRunLog log,
-     CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(log.ObjectionNo))
-                throw new InvalidOperationException(
-                    $"RunLog {log.Id} has no ObjectionNo for IN print.");
-
-            var cs = _config.GetConnectionString("DefaultConnection")
-                     ?? throw new InvalidOperationException("DefaultConnection not configured.");
-
-            var row = await FetchInRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, ct)
-                      ?? throw new InvalidOperationException(
-                          $"IN row not found for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
-
-            var noticeKind = !string.IsNullOrWhiteSpace(row.NoticeKind)
-                ? row.NoticeKind
-                : (log.RecipientName ?? "Invalid Objection");
-
-            var isOmission = noticeKind.Equals("Invalid Omission", StringComparison.OrdinalIgnoreCase);
-
-            var propertyDesc = !string.IsNullOrWhiteSpace(row.PropertyDesc)
-                ? row.PropertyDesc
-                : log.PropertyDesc ?? log.ObjectionNo ?? "Property";
-
-            var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
-
-            var addrBlock = string.Join("\n",
-                new[] { row.Addr1, row.Addr2, row.Addr3, row.Addr4, row.Addr5 }
-                    .Where(x => !string.IsNullOrWhiteSpace(x))
-                    .Select(x => x!.Trim()));
-
-            var pdfData = new InvalidNoticePdfData
-            {
-                Kind = isOmission
-                    ? InvalidNoticeKind.InvalidOmission
-                    : InvalidNoticeKind.InvalidObjection,
-                ObjectionNo = log.ObjectionNo,
-                PropertyDescription = propertyDesc,
-                RecipientName = row.RecipientName ?? "Sir/Madam",
-                RecipientAddress = addrBlock,
-                ValuationKey = row.ValuationKey ?? ""
-            };
-
-            var pdfCtx = new InvalidNoticePdfContext
-            {
-                HeaderImagePath = headerPath,
-                LetterDate = settings.LetterDate
-            };
-
-            var pdfBytes = _inBuilder.BuildNotice(pdfData, pdfCtx);
-
-            var pdfPath = _paths.BuildInPdfPath(roll, log.ObjectionNo, propertyDesc, isOmission);
-            var emlPath = _paths.BuildInEmlPath(roll, log.ObjectionNo, propertyDesc, isOmission);
-
-            SavePdf(pdfPath, pdfBytes);
-
-            log.PdfPath = pdfPath;
-            log.EmlPath = emlPath;
-            log.PropertyDesc = propertyDesc;
-            log.RecipientEmail = row.Email;
-            log.RecipientName = noticeKind; // keep exact value from table
-            log.Status = RunStatus.Printed;
-
-            await _db.SaveChangesAsync(ct);
-
-            _log.LogInformation("IN printed: {ObjectionNo} ({NoticeKind}) → {Path}",
-                log.ObjectionNo, noticeKind, pdfPath);
-        }
-        private static async Task<InRow?> FetchInRowAsync(
-        string cs,
-        int rollId,
-        string objectionNo,
-        string batchName,
-        CancellationToken ct)
-        {
-            await using var conn = new SqlConnection(cs);
-            await conn.OpenAsync(ct);
-
-            await using var cmd = new SqlCommand(
-                "EXEC dbo.IN_Print_GetRow @RollId, @ObjectionNo, @BatchName",
-                conn)
-            {
-                CommandTimeout = 300
-            };
-
-            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int)
-            {
-                Value = rollId
-            });
-            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", SqlDbType.NVarChar, 100)
-            {
-                Value = objectionNo
-            });
-            cmd.Parameters.Add(new SqlParameter("@BatchName", SqlDbType.NVarChar, 100)
-            {
-                Value = batchName
-            });
-
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct))
-                return null;
-
-            static string? S(SqlDataReader r, string col)
-            {
-                var ordinal = r.GetOrdinal(col);
-                return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
-            }
-
-            return new InRow
-            {
-                ObjectionNo = S(reader, "ObjectionNo"),
-                PremiseId = S(reader, "PremiseId"),
-                PropertyDesc = S(reader, "PropertyDesc"),
-                NoticeKind = S(reader, "NoticeKind"),
-                RecipientName = S(reader, "RecipientName"),
-                ValuationKey = S(reader, "ValuationKey"),
-                Addr1 = S(reader, "Addr1"),
-                Addr2 = S(reader, "Addr2"),
-                Addr3 = S(reader, "Addr3"),
-                Addr4 = S(reader, "Addr4"),
-                Addr5 = S(reader, "Addr5"),
-                Email = S(reader, "RecipientEmail")
-            };
-        }
-
-        private static async Task<DjRow?> FetchDjRowAsync(
-     string cs,
-     int rollId,
-     string objectionNo,
-     string batchName,
-     CancellationToken ct)
-        {
-            await using var conn = new SqlConnection(cs);
-            await conn.OpenAsync(ct);
-
-            await using var cmd = new SqlCommand(
-                "EXEC dbo.DJ_Print_GetRow @RollId, @ObjectionNo, @BatchName",
-                conn)
-            {
-                CommandTimeout = 300
-            };
-
-            cmd.Parameters.Add(new SqlParameter("@RollId", System.Data.SqlDbType.Int)
-            {
-                Value = rollId
-            });
-            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", System.Data.SqlDbType.NVarChar, 100)
-            {
-                Value = objectionNo
-            });
-            cmd.Parameters.Add(new SqlParameter("@BatchName", System.Data.SqlDbType.NVarChar, 100)
-            {
-                Value = batchName
-            });
-
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-            if (!await reader.ReadAsync(ct))
-                return null;
-
-            static string? S(SqlDataReader r, string col)
-            {
-                var ordinal = r.GetOrdinal(col);
-                return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
-            }
-
-            return new DjRow
-            {
-                ObjectionNo = S(reader, "ObjectionNo"),
-                PremiseId = S(reader, "PremiseId"),
-                ValuationKey = S(reader, "ValuationKey"),
-                PropertyDesc = S(reader, "PropertyDesc"),
-                RecipientName = S(reader, "RecipientName"),
-                Addr1 = S(reader, "Addr1"),
-                Addr2 = S(reader, "Addr2"),
-                Addr3 = S(reader, "Addr3"),
-                Addr4 = S(reader, "Addr4"),
-                Addr5 = S(reader, "Addr5"),
-                Email = S(reader, "RecipientEmail")
-            };
-        }
         // ── Save bytes to disk ───────────────────────────────────────────────
         private static void SavePdf(string path, byte[] bytes)
         {
             var dir = Path.GetDirectoryName(path);
             if (string.IsNullOrWhiteSpace(dir))
                 throw new InvalidOperationException($"Invalid PDF path: {path}");
-
             Directory.CreateDirectory(dir);
             File.WriteAllBytes(path, bytes);
         }

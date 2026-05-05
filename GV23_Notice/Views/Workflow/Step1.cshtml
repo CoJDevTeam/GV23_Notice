@@ -7,8 +7,8 @@
 }
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
-<link href="~/css/AdminCss/Step1Css11.css" rel="stylesheet" />
+<link href="~/css/step1/step1css.css" rel="stylesheet" />
+
 
 <div id="wf-loader" role="status">
     <div class="wf-spinner"></div>
@@ -29,13 +29,13 @@
             <div class="s1-topbar-divider"></div>
             <div>
                 <div class="s1-page-title">Notice Configuration</div>
-                <div class="s1-page-sub">Step 1 of 4 — Admin Setup</div>
+                <div class="s1-page-sub">Step 1 — Date Configuration</div>
             </div>
         </div>
         <div class="s1-topbar-right">
-            <a class="s1-topbar-link" asp-controller="Workflow" asp-action="SettingsLibrary">
+          @*   <a class="s1-topbar-link" asp-controller="Workflow" asp-action="SettingsLibrary">
                 ← Settings Library
-            </a>
+            </a> *@
             @if (isEdit)
             {
                 <a class="s1-topbar-link s1-topbar-link-gold"
@@ -51,22 +51,17 @@
     <div class="s1-stepper">
         <div class="s1-step s1-step-active">
             <div class="s1-step-num">1</div>
-            <div class="s1-step-label">Configure</div>
+            <div class="s1-step-label">Configure Dates</div>
         </div>
         <div class="s1-step-line"></div>
         <div class="s1-step">
             <div class="s1-step-num">2</div>
-            <div class="s1-step-label">Summary</div>
+            <div class="s1-step-label">Preview</div>
         </div>
         <div class="s1-step-line"></div>
         <div class="s1-step">
             <div class="s1-step-num">3</div>
-            <div class="s1-step-label">Approve</div>
-        </div>
-        <div class="s1-step-line"></div>
-        <div class="s1-step">
-            <div class="s1-step-num">4</div>
-            <div class="s1-step-label">Generate</div>
+            <div class="s1-step-label">Start Step 3</div>
         </div>
     </div>
 

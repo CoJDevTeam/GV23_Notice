@@ -252,7 +252,6 @@ namespace GV23_Notice.Services.Step3
                 case NoticeKind.IN:
                     {
                         var isOmission = s.IsInvalidOmission ?? false;
-
                         var connStr = _db.Database.GetConnectionString()
                                       ?? throw new InvalidOperationException("Connection string not found.");
 
@@ -262,41 +261,55 @@ namespace GV23_Notice.Services.Step3
                         {
                             await spConn.OpenAsync(ct);
 
+                            // Use CommandType.StoredProcedure — avoids the EXEC text syntax
+                            // which can cause ADO.NET to land on the wrong result set when the
+                            // SP uses sp_executesql internally.
                             using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
-                                "EXEC dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable @RollId, @IsOmission, @BatchName, @BatchDate, @LetterDate",
-                                spConn)
-                            { CommandTimeout = 300 };
+                                "dbo.IN_Step3_InsertTop500IntoInvalidNoticeTable", spConn)
+                            {
+                                CommandType = System.Data.CommandType.StoredProcedure,
+                                CommandTimeout = 300
+                            };
 
-                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@RollId", System.Data.SqlDbType.Int)
-                            {
-                                Value = s.RollId
-                            });
-                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@IsOmission", System.Data.SqlDbType.Bit)
-                            {
-                                Value = isOmission
-                            });
-                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@BatchName", System.Data.SqlDbType.NVarChar, 100)
-                            {
-                                Value = batchName
-                            });
-                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@BatchDate", System.Data.SqlDbType.DateTime2)
-                            {
-                                Value = batchDateUtc
-                            });
-                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter("@LetterDate", System.Data.SqlDbType.DateTime2)
-                            {
-                                Value = s.LetterDate.Date
-                            });
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter(
+                                "@RollId", System.Data.SqlDbType.Int)
+                            { Value = s.RollId });
+
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter(
+                                "@IsOmission", System.Data.SqlDbType.Bit)
+                            { Value = isOmission });
+
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter(
+                                "@BatchName", System.Data.SqlDbType.NVarChar, 100)
+                            { Value = batchName });
+
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter(
+                                "@BatchDate", System.Data.SqlDbType.DateTime2)
+                            { Value = batchDateUtc });
+
+                            cmd.Parameters.Add(new Microsoft.Data.SqlClient.SqlParameter(
+                                "@LetterDate", System.Data.SqlDbType.DateTime2)
+                            { Value = s.LetterDate.Date });
 
                             using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                            // Advance through any empty/metadata result sets that sp_executesql
+                            // may produce (e.g. row-count messages from inner INSERT) until we
+                            // find a result set that has actual columns we can read.
+                            while (reader.FieldCount == 0 || reader.GetName(0) != "ObjectionNo")
+                            {
+                                if (!await reader.NextResultAsync(ct))
+                                    break; // no more result sets — nothing was inserted
+                            }
+
+                            static string? S(Microsoft.Data.SqlClient.SqlDataReader r, string col)
+                            {
+                                var ordinal = r.GetOrdinal(col);
+                                return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
+                            }
+
                             while (await reader.ReadAsync(ct))
                             {
-                                static string? S(Microsoft.Data.SqlClient.SqlDataReader r, string col)
-                                {
-                                    var ordinal = r.GetOrdinal(col);
-                                    return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
-                                }
-
                                 inRows.Add(new InBatchPickRow
                                 {
                                     ObjectionNo = S(reader, "ObjectionNo"),
@@ -317,7 +330,7 @@ namespace GV23_Notice.Services.Step3
                                 PremiseId = x.PremiseId,
                                 RecipientEmail = x.RecipientEmail,
                                 PropertyDesc = x.PropertyDesc,
-                                RecipientName = x.Kind,   // stores "Invalid Omission" / "Invalid Objection"
+                                RecipientName = x.Kind,   // "Invalid Omission" / "Invalid Objection"
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
                             })

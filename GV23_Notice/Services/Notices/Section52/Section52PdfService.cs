@@ -93,7 +93,7 @@ namespace GV23_Notice.Services.Notices.Section52
             var recipient = Safe(model.ADDR1);
             var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear: {recipient}";
 
-            var sigName = "VALUATION APPEAL BOARD SECRETARY";
+            var sigName = "SECRETARY:VALUATION APPEAL BOARD ";
             var sigOrg = "CITY OF JOHANNESBURG";
 
             var valuationKey = Safe(model.valuation_Key);
@@ -235,13 +235,11 @@ namespace GV23_Notice.Services.Notices.Section52
                             points.Item().Text("Please note the following:")
                                 .FontFamily("Arial").FontSize(9).SemiBold();
 
-                            Bullet(points, "The decision will be adjusted accordingly to the implementation date being 1 July 2023.");
+                            Bullet(points, "The decision will be implemented on the Land Information System within 30 days.");
                             Bullet(points,
-                                "The decision will reflect on your account within 30 days. Any adjustments to the account, if applicable, " +
-                                "will be made by the Rates and Taxes Department in due course.");
+                                "Should you require written reasons for the decision,a request must be submitted within 30 days from the date of this letter to valuationEnquiries@joburg.org.za.");
                             Bullet(points,
-                                "If you feel aggrieved by the above decision, you are entitled to take the matter on review to the " +
-                                "High Court of South Africa at your own cost.");
+                                "If you feel aggrieved by the above decision, you are well within your rights to take the matter on review to the High Court Of South Africa at your own cost.");
 
                             points.Item().PaddingTop(12).Text("Regards,")
                                 .FontFamily("Arial").FontSize(9).SemiBold();

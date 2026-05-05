@@ -34,9 +34,21 @@ namespace GV23_Notice.Services.SnapShotStep2
             if (!settings.IsApproved)
                 throw new InvalidOperationException("Step1 must be approved before Step2 approval.");
 
-            // lock if already approved
+            // ── Idempotent: if already approved return existing snapshot ──
+            // This happens when a user comes back to preview an already-approved
+            // workflow and clicks "Start Step 3" again. We don't re-save the
+            // snapshot — we just return the existing snapshot ID so the caller
+            // can redirect to Step 3 Kickoff without hitting an exception.
             if (settings.Step2Approved)
-                throw new InvalidOperationException("Step2 already approved.");
+            {
+                var existing = await _db.NoticeStep2Snapshots
+                    .AsNoTracking()
+                    .Where(x => x.NoticeSettingsId == settingsId)
+                    .OrderByDescending(x => x.Id)
+                    .Select(x => x.Id)
+                    .FirstOrDefaultAsync(ct);
+                return existing;   // 0 if somehow no snapshot row, caller ignores return value
+            }
 
             var roll = await _db.RollRegistry.AsNoTracking().FirstOrDefaultAsync(r => r.RollId == settings.RollId, ct);
             if (roll is null) throw new InvalidOperationException("RollRegistry not found.");
@@ -51,6 +63,8 @@ namespace GV23_Notice.Services.SnapShotStep2
                 Version = settings.Version.ToString(),
                 EmailSubjectSnapshot = emailSubject ?? "",
                 EmailBodyHtmlSnapshot = emailBodyHtml ?? "",
+                // Store PDF bytes so BuildFromSnapshotAsync can replay the exact PDF at print time
+                PdfBytes = pdfBytes is { Length: > 0 } ? pdfBytes : null,
                 PdfFileName = pdfFileName ?? "",
                 PdfSha256 = Sha256Hex(pdfBytes),
                 CreatedBy = approvedBy ?? "",

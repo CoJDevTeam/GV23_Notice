@@ -4,11 +4,9 @@ using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Storage;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Data;
 using System.Net.Mail;
 using System.Text;
 
@@ -22,7 +20,6 @@ namespace GV23_Notice.Services.Email
         private readonly INoticePathService _paths;
         private readonly IS49RollRepository _s49Repo;
         private readonly ILogger<NoticeBatchEmailService> _log;
-        private readonly IConfiguration _config;
 
         private const int HardMaxEmails = 2000;
 
@@ -32,8 +29,7 @@ namespace GV23_Notice.Services.Email
             INoticeEmailTemplateService templates,
             INoticePathService paths,
             IS49RollRepository s49Repo,
-            ILogger<NoticeBatchEmailService> log,
-            IConfiguration config)
+            ILogger<NoticeBatchEmailService> log)
         {
             _db = db;
             _emailOpt = emailOpt.Value;
@@ -41,21 +37,21 @@ namespace GV23_Notice.Services.Email
             _paths = paths;
             _s49Repo = s49Repo;
             _log = log;
-            _config = config;
         }
 
         // ── Count ready-to-send records ──────────────────────────────────────
         public async Task<int> CountSelectedRecordsAsync(
-     IEnumerable<int> batchIds, CancellationToken ct)
+            IEnumerable<int> batchIds, CancellationToken ct)
         {
             var ids = batchIds.Distinct().ToList();
-
             return await _db.NoticeRunLogs
                 .Where(r => ids.Contains(r.NoticeBatchId)
                          && r.Status == RunStatus.Printed
-                         && r.PdfPath != null)
+                         && r.RecipientEmail != null
+                         && r.RecipientEmail != "")
                 .CountAsync(ct);
         }
+
         // ── Send emails for selected batches ─────────────────────────────────
         public async Task<SendBatchEmailResult> SendBatchEmailsAsync(
             IEnumerable<int> batchIds,
@@ -101,8 +97,6 @@ namespace GV23_Notice.Services.Email
             }
 
             var delay = Math.Max(0, _emailOpt.Limits?.DelayMsBetweenSends ?? 0);
-            var connStr = _config.GetConnectionString("DefaultConnection")
-             ?? throw new InvalidOperationException("DefaultConnection not configured.");
 
             foreach (var log in runLogs)
             {
@@ -116,177 +110,6 @@ namespace GV23_Notice.Services.Email
                     var req = BuildEmailRequest(settings, roll, log);
                     var (subject, bodyHtml) = _templates.Build(req);
 
-
-
-                    // ── S53: paired email logic ───────────────────────────────────────
-                    if (settings.Notice == NoticeKind.S53)
-                    {
-                        var objectorType = log.RecipientName ?? "Owner";
-
-                        if (objectorType == "Owner_Rep" || objectorType == "Owner_Third_Party")
-                        {
-                            log.Status = RunStatus.Sent;
-                            log.SentAtUtc = DateTime.UtcNow;
-                            result.Sent++;
-                            await _db.SaveChangesAsync(ct);
-                            continue;
-                        }
-
-                        var cs53 = _config.GetConnectionString("DefaultConnection")
-                                   ?? throw new InvalidOperationException("DefaultConnection not configured.");
-
-                        var primaryPdfPath = log.PdfPath
-                            ?? throw new FileNotFoundException(
-                                $"S53 RunLog {log.Id} has no PdfPath — was it printed?");
-                        var primaryEmlPath = log.EmlPath
-                            ?? _paths.BuildS53EmlPath(roll, log.ObjectionNo!, log.PropertyDesc ?? "", objectorType);
-
-                        await SaveEmlAsync(primaryEmlPath, log.RecipientEmail!, subject, bodyHtml, primaryPdfPath, ct);
-                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
-                        log.EmlPath = primaryEmlPath;
-
-                        var pairedType = objectorType == "Representative" ? "Owner_Rep" : "Owner_Third_Party";
-                        var pairedRow = await FetchS53MvdEmailRowAsync(cs53, batch!, log.ObjectionNo!, batch!.BatchName, pairedType, ct);
-
-                        if (pairedRow.email != null)
-                        {
-                            var pairedPdfPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, log.PropertyDesc ?? "", pairedType);
-                            var pairedEmlPath = _paths.BuildS53EmlPath(roll, log.ObjectionNo!, log.PropertyDesc ?? "", pairedType);
-
-                            if (File.Exists(pairedPdfPath))
-                            {
-                                var pairedReq = BuildEmailRequest(settings, roll, log);
-                                pairedReq.RecipientEmail = pairedRow.email;
-                                var (pairedSubject, pairedBody) = _templates.Build(pairedReq);
-                                await SaveEmlAsync(pairedEmlPath, pairedRow.email, pairedSubject, pairedBody, pairedPdfPath, ct);
-
-                                var pairedSmtpLog = new NoticeRunLog
-                                {
-                                    NoticeBatchId = log.NoticeBatchId,
-                                    ObjectionNo = log.ObjectionNo,
-                                    PremiseId = log.PremiseId,
-                                    RecipientEmail = pairedRow.email,
-                                    RecipientName = pairedType,
-                                    PropertyDesc = log.PropertyDesc,
-                                    PdfPath = pairedPdfPath,
-                                    EmlPath = pairedEmlPath
-                                };
-                                await SendOneEmailAsync(pairedSubject, pairedBody, pairedSmtpLog, ct);
-                                _log.LogInformation("S53 paired email sent: {ObjectionNo} {PairedType}", log.ObjectionNo, pairedType);
-                            }
-                            else
-                            {
-                                _log.LogWarning("S53 paired PDF not found, skipping paired email: {Path}", pairedPdfPath);
-                            }
-                        }
-                        else
-                        {
-                            _log.LogWarning("S53 paired row has no email, skipping: {ObjectionNo} {PairedType}", log.ObjectionNo, pairedType);
-                        }
-
-                        log.Status = RunStatus.Sent;
-                        log.SentAtUtc = DateTime.UtcNow;
-                        result.Sent++;
-                        await _db.SaveChangesAsync(ct);
-                        continue;
-                    }
-                    // ── END S53 ──────────────────────────────────────────────────────
-                    if (settings.Notice == NoticeKind.DJ)
-                    {
-                        var pdfPath = log.PdfPath
-                            ?? throw new FileNotFoundException(
-                                $"DJ RunLog {log.Id} has no PdfPath — was it printed?");
-
-                        if (batch == null)
-                            throw new InvalidOperationException($"Batch not found for RunLog {log.Id}.");
-
-                        if (string.IsNullOrWhiteSpace(log.ObjectionNo))
-                            throw new InvalidOperationException($"DJ RunLog {log.Id} has no ObjectionNo.");
-
-                        var djRow = await FetchDjEmailRowAsync(
-                            connStr,
-                            batch.RollId,
-                            log.ObjectionNo,
-                            batch.BatchName,
-                            ct);
-
-                        if (djRow == null)
-                            throw new InvalidOperationException(
-                                $"No DearJohnnyTable row found for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
-
-                        var recipientEmail = djRow.RecipientEmail;
-                        if (string.IsNullOrWhiteSpace(recipientEmail))
-                            throw new InvalidOperationException(
-                                $"No DJ email found in DearJohnnyTable for ObjectionNo={log.ObjectionNo}, Batch={batch.BatchName}.");
-
-                        var propertyDesc = !string.IsNullOrWhiteSpace(djRow.PropertyDesc)
-                            ? djRow.PropertyDesc
-                            : (log.PropertyDesc ?? "");
-
-                        var djEmlPath = log.EmlPath
-                            ?? _paths.BuildDjEmlPath(
-                                roll,
-                                log.ObjectionNo,
-                                propertyDesc);
-
-                        log.RecipientEmail = recipientEmail;
-                        log.PropertyDesc = propertyDesc;
-
-                        await SaveEmlAsync(djEmlPath, recipientEmail, subject, bodyHtml, pdfPath, ct);
-
-                        log.EmlPath = djEmlPath;
-                        await _db.SaveChangesAsync(ct);
-
-                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
-
-                        log.Status = RunStatus.Sent;
-                        log.SentAtUtc = DateTime.UtcNow;
-                        result.Sent++;
-
-                        await SetDjNoticeSentAsync(
-                            connStr,
-                            batch.RollId,
-                            log.ObjectionNo,
-                            batch.BatchName,
-                            log.SentAtUtc.Value,
-                            ct);
-
-                        await _db.SaveChangesAsync(ct);
-
-                        if (delay > 0)
-                            await Task.Delay(delay, ct);
-
-                        continue;
-                    }
-
-                    // ── IN: email with attached PDF ───────────────────────────────────
-                    if (settings.Notice == NoticeKind.IN)
-                    {
-                        var isOmission = (log.RecipientName ?? "")
-                            .Equals("InvalidOmission", StringComparison.OrdinalIgnoreCase);
-
-                        var pdfPath = log.PdfPath
-                            ?? throw new FileNotFoundException(
-                                $"IN RunLog {log.Id} has no PdfPath — was it printed?");
-
-                        var inEmlPath = log.EmlPath
-                            ?? _paths.BuildInEmlPath(roll,
-                                log.ObjectionNo ?? log.Id.ToString(),
-                                log.PropertyDesc ?? "",
-                                isOmission);
-
-                        await SaveEmlAsync(inEmlPath, log.RecipientEmail!, subject, bodyHtml, pdfPath, ct);
-                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
-
-                        log.EmlPath = inEmlPath;
-                        log.Status = RunStatus.Sent;
-                        log.SentAtUtc = DateTime.UtcNow;
-                        result.Sent++;
-                        await _db.SaveChangesAsync(ct);
-                        if (delay > 0) await Task.Delay(delay, ct);
-                        continue;
-                    }
-
                     string emlPath;
                     if (settings.Notice == NoticeKind.S51)
                     {
@@ -299,7 +122,12 @@ namespace GV23_Notice.Services.Email
                         var isReview = settings.IsSection52Review == true;
                         var emlKey = log.AppealNo ?? log.Id.ToString();
                         var emlDesc = log.PropertyDesc ?? emlKey;
-                        emlPath = _paths.BuildS52EmlPath(roll, emlKey, emlDesc, isReview);
+                        // RecipientName stores "Prop_Owner" for companion rows
+                        var isPropOwner = string.Equals(log.RecipientName, "Prop_Owner",
+                                              StringComparison.OrdinalIgnoreCase)
+                                       || (log.PdfPath != null && log.PdfPath.Contains("_Prop_Owner",
+                                              StringComparison.OrdinalIgnoreCase));
+                        emlPath = _paths.BuildS52EmlPath(roll, emlKey, emlDesc, isReview, isPropOwner);
                     }
                     else
                     {
@@ -329,18 +157,6 @@ namespace GV23_Notice.Services.Email
                     log.Status = RunStatus.Failed;
                     log.ErrorMessage = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
                     result.Failed++;
-
-                    // ADDED: Mark 'N' (email failed) on the roll table for S49
-                    if (settings.Notice == NoticeKind.S49 && !string.IsNullOrWhiteSpace(log.PremiseId))
-                    {
-                        try { await _s49Repo.MarkEmailFailedAsync(roll.RollId, log.PremiseId, ct); }
-                        catch (Exception nEx)
-                        {
-                            _log.LogWarning(nEx,
-                                "S49 MarkEmailFailed failed for PremiseId={PremiseId}",
-                                log.PremiseId);
-                        }
-                    }
                 }
 
                 await _db.SaveChangesAsync(ct);
@@ -367,55 +183,7 @@ namespace GV23_Notice.Services.Email
 
             return result;
         }
-        // ── S53: fetch email + address from Objection_MVD for paired row ───
-        private static async Task<(string? email, string? addr1)> FetchS53MvdEmailRowAsync(
-            string cs,
-            NoticeBatch batch,
-            string objectionNo,
-            string batchName,
-            string objectorType,
-            CancellationToken ct)
-        {
-            await using var conn = new SqlConnection(cs);
-            await using var cmd = new SqlCommand("dbo.S53_GetMvdRow", conn)
-            {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 60
-            };
-            cmd.Parameters.AddWithValue("@RollId", batch.RollId);
-            cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
-            cmd.Parameters.AddWithValue("@BatchName", batchName);
-            cmd.Parameters.AddWithValue("@ObjectorType", objectorType);
 
-            await conn.OpenAsync(ct);
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-
-            if (!await reader.ReadAsync(ct)) return (null, null);
-
-            string? Str(string col)
-            {
-                var v = reader[col];
-                return v == DBNull.Value ? null : v?.ToString();
-            }
-
-            return (Str("Email"), Str("ADDR1"));
-        }
-
-        // ── S53: flip Email-Pending → Notice-Sent ────────────────────────────
-        private static async Task SetS53NoticeSentAsync(
-            string cs, int rollId, string batchName, CancellationToken ct)
-        {
-            await using var conn = new SqlConnection(cs);
-            await using var cmd = new SqlCommand("dbo.S53_Step3_SetNoticeSent", conn)
-            {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 60
-            };
-            cmd.Parameters.AddWithValue("@RollId", rollId);
-            cmd.Parameters.AddWithValue("@BatchName", batchName);
-            await conn.OpenAsync(ct);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
         // ── Build NoticeEmailRequest from settings + run log ─────────────────
         private static NoticeEmailRequest BuildEmailRequest(
             NoticeSettings s,
@@ -426,14 +194,12 @@ namespace GV23_Notice.Services.Email
             {
                 Notice = s.Notice,
                 RollShortCode = roll.ShortCode ?? "",
-                RollName = s.RollName ?? roll.Name ?? "",  // ADDED: prefer settings.RollName
+                RollName = roll.Name ?? "",
                 RecipientName = log.RecipientName ?? "",
                 RecipientEmail = log.RecipientEmail ?? "",
                 FinancialYearsText = s.FinancialYearsText,
                 IsSection52Review = s.IsSection52Review,
-                // ADDED: read Kind from log.RecipientName (set by SP) not IsInvalidOmission
-                InvalidKind = (log.RecipientName ?? "")
-                                .Equals("InvalidOmission", StringComparison.OrdinalIgnoreCase)
+                InvalidKind = s.IsInvalidOmission == true
                                      ? InvalidNoticeKind.InvalidOmission
                                      : InvalidNoticeKind.InvalidObjection,
                 Items = new List<NoticeEmailPropertyItem>
@@ -463,12 +229,12 @@ namespace GV23_Notice.Services.Email
 
         // ── Save .eml file (RFC 2822 MIME with HTML body + PDF attachment) ───
         private static async Task SaveEmlAsync(
-     string emlPath,
-     string toEmail,
-     string subject,
-     string bodyHtml,
-     string pdfPath,
-     CancellationToken ct)
+            string emlPath,
+            string toEmail,
+            string subject,
+            string bodyHtml,
+            string pdfPath,
+            CancellationToken ct)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(emlPath)!);
 
@@ -482,6 +248,7 @@ namespace GV23_Notice.Services.Email
             var sb = new StringBuilder();
             sb.AppendLine($"Date: {now}");
             sb.AppendLine($"To: {toEmail}");
+            sb.AppendLine("Cc: ValuationEnquiries@joburg.org.za");
             sb.AppendLine($"Subject: {subject}");
             sb.AppendLine("MIME-Version: 1.0");
             sb.AppendLine($"Content-Type: multipart/mixed; boundary=\"{boundary}\"");
@@ -513,10 +280,10 @@ namespace GV23_Notice.Services.Email
 
         // ── Send one email via SMTP ──────────────────────────────────────────
         private async Task SendOneEmailAsync(
-            string subject,
-            string bodyHtml,
-            NoticeRunLog log,
-            CancellationToken ct)
+         string subject,
+         string bodyHtml,
+         NoticeRunLog log,
+         CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.PdfPath) || !File.Exists(log.PdfPath))
                 throw new FileNotFoundException($"PDF not found: {log.PdfPath}");
@@ -534,6 +301,11 @@ namespace GV23_Notice.Services.Email
 
             msg.To.Add(new MailAddress(log.RecipientEmail!.Trim()));
 
+            // CC from appsettings → Email:CcAddress (all notice types S49–IN)
+            if (!string.IsNullOrWhiteSpace(_emailOpt.CcAddress))
+                msg.CC.Add(new MailAddress(_emailOpt.CcAddress.Trim(),
+                    string.IsNullOrWhiteSpace(_emailOpt.CcName) ? "" : _emailOpt.CcName.Trim()));
+
             var pdfBytes = await File.ReadAllBytesAsync(log.PdfPath, ct);
             var attachment = new Attachment(new MemoryStream(pdfBytes), Path.GetFileName(log.PdfPath), "application/pdf");
             msg.Attachments.Add(attachment);
@@ -547,103 +319,6 @@ namespace GV23_Notice.Services.Email
             };
 
             await Task.Run(() => smtp.Send(msg), ct);
-        }
-        private static async Task<DjEmailRow?> FetchDjEmailRowAsync(
-    string cs,
-    int rollId,
-    string objectionNo,
-    string batchName,
-    CancellationToken ct)
-        {
-            await using var conn = new SqlConnection(cs);
-            await using var cmd = new SqlCommand("dbo.DJ_GetEmailRow", conn)
-            {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 60
-            };
-
-            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int)
-            {
-                Value = rollId
-            });
-            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", SqlDbType.NVarChar, 100)
-            {
-                Value = objectionNo
-            });
-            cmd.Parameters.Add(new SqlParameter("@BatchName", SqlDbType.NVarChar, 100)
-            {
-                Value = batchName
-            });
-
-            await conn.OpenAsync(ct);
-            await using var reader = await cmd.ExecuteReaderAsync(ct);
-
-            if (!await reader.ReadAsync(ct))
-                return null;
-
-            static string? S(SqlDataReader r, string col)
-            {
-                var ordinal = r.GetOrdinal(col);
-                return r.IsDBNull(ordinal) ? null : r.GetValue(ordinal)?.ToString()?.Trim();
-            }
-
-            return new DjEmailRow
-            {
-                ObjectionNo = S(reader, "ObjectionNo"),
-                PremiseId = S(reader, "PremiseId"),
-                PropertyDesc = S(reader, "PropertyDesc"),
-                OwnerEmail = S(reader, "OwnerEmail"),
-                ObjectorEmail = S(reader, "ObjectorEmail"),
-                RepEmail = S(reader, "RepEmail"),
-                RecipientEmail = S(reader, "RecipientEmail")
-            };
-        }
-
-
-        private static async Task SetDjNoticeSentAsync(
-    string cs,
-    int rollId,
-    string objectionNo,
-    string batchName,
-    DateTime sentDateUtc,
-    CancellationToken ct)
-        {
-            await using var conn = new SqlConnection(cs);
-            await using var cmd = new SqlCommand("dbo.DJ_Step3_SetNoticeSent", conn)
-            {
-                CommandType = CommandType.StoredProcedure,
-                CommandTimeout = 60
-            };
-
-            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int)
-            {
-                Value = rollId
-            });
-            cmd.Parameters.Add(new SqlParameter("@ObjectionNo", SqlDbType.NVarChar, 100)
-            {
-                Value = objectionNo
-            });
-            cmd.Parameters.Add(new SqlParameter("@BatchName", SqlDbType.NVarChar, 100)
-            {
-                Value = batchName
-            });
-            cmd.Parameters.Add(new SqlParameter("@SentDate", SqlDbType.DateTime2)
-            {
-                Value = sentDateUtc
-            });
-
-            await conn.OpenAsync(ct);
-            await cmd.ExecuteNonQueryAsync(ct);
-        }
-        private sealed class DjEmailRow
-        {
-            public string? ObjectionNo { get; set; }
-            public string? PremiseId { get; set; }
-            public string? PropertyDesc { get; set; }
-            public string? OwnerEmail { get; set; }
-            public string? ObjectorEmail { get; set; }
-            public string? RepEmail { get; set; }
-            public string? RecipientEmail { get; set; }
         }
     }
 }

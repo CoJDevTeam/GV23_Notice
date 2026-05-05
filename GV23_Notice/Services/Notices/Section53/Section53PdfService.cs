@@ -46,7 +46,7 @@ namespace GV23_Notice.Services.Notices.Section53
             var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
             var red7b = TextStyle.Default.FontFamily("Arial").FontSize(7).SemiBold().FontColor(Colors.Red.Medium);
             var recipient = Safe(model.Addr1);
-            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Sir/Madam" : $"Dear {recipient}";
+            var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Client" : $"Dear Client";
             return Document.Create(container =>
             {
                 container.Page(page =>
@@ -258,6 +258,9 @@ namespace GV23_Notice.Services.Notices.Section53
             var mvdCategory = SafeText(m.Mvd_Category);
             var mvdCategory1 = SafeText(m.Mvd_Category2);
             var mvdCategory2 = SafeText(m.Mvd_Category3);
+            var wefMvd = m.WEFMVD;
+            var wefMvd2 = SafeText(m.WEFMVD2);
+            var wefMvd3 = SafeText(m.WEFMVD3);
 
             container.Table(t =>
             {
@@ -271,7 +274,7 @@ namespace GV23_Notice.Services.Notices.Section53
                 t.Header(h =>
                 {
                     h.Cell().Element(BlueHeaderCell).Text("");
-                    h.Cell().Element(BlueHeaderCell).Text($"Entry in {m.RollName}")
+                    h.Cell().Element(BlueHeaderCell).Text($"Entry in {m.RollName} (GVR2023).")
      .FontFamily("Arial").FontSize(9).SemiBold().FontColor(Colors.White);
                     h.Cell().Element(BlueHeaderCell).Text("Municipal Valuer’s Decision (MVD)")
                         .FontFamily("Arial").FontSize(9).SemiBold().FontColor(Colors.White);
@@ -282,7 +285,7 @@ namespace GV23_Notice.Services.Notices.Section53
                     DataRow(t, "Category", gvCategory, mvdCategory);
                     DataRow(t, "Extent", gvExtent, mvdExtent);
                     DataRow(t, "Market Value", gvValue, mvdValue);
-                    DataRow(t, "With Effective Date", "", "");
+                    DataRow(t, "With Effective Date", "", wefMvd);
 
                 }
                 else
@@ -290,7 +293,7 @@ namespace GV23_Notice.Services.Notices.Section53
                     DataRow(t, "Category", gvCategory, mvdCategory);
                     DataRow(t, "Extent", gvExtent, mvdExtent);
                     DataRow(t, "Market Value", gvValue, mvdValue);
-                    DataRow(t, "With Effective Date", "", "");
+                    DataRow(t, "With Effective Date", "", wefMvd);
 
 
 
@@ -300,14 +303,14 @@ namespace GV23_Notice.Services.Notices.Section53
                     DataRow(t, "Category Split 1", gvCategory1, mvdCategory1);
                     DataRow(t, "Extent Split 1", gvExtent1, mvdExtent1);
                     DataRow(t, "Market Value Split 1", gvValue1, mvdValue1);
-                    DataRow(t, "With Effective Date", "", "");
+                    DataRow(t, "With Effective Date", "", wefMvd);
 
                     DataRow(t, "", "", "");
 
                     DataRow(t, "Category Split 2", gvCategory2, mvdCategory2);
                     DataRow(t, "Extent Split 2", gvExtent2, mvdExtent2);
                     DataRow(t, "Market Value Split 2", gvValue2, mvdValue2);
-                    DataRow(t, "With Effective Date", "", "");
+                    DataRow(t, "With Effective Date", "", wefMvd);
 
 
 
@@ -379,7 +382,7 @@ namespace GV23_Notice.Services.Notices.Section53
              .PaddingVertical(4)
              .PaddingHorizontal(6);
 
-    
+
 
         private sealed record Model(IReadOnlyList<Section53MvdRow> Rows, DateOnly LetterDate, Section53PdfOptions Opt, IWebHostEnvironment Env)
         {
@@ -434,6 +437,12 @@ namespace GV23_Notice.Services.Notices.Section53
             public string Mvd_Category => First.Mvd_Category ?? "";
             public string Mvd_Category2 => First.Mvd_Category2 ?? "";
             public string Mvd_Category3 => First.Mvd_Category3 ?? "";
+
+            public string WEFMVD => First.WEFMVD ?? "";
+
+            public string WEFMVD2 => First.WEFMVD2 ?? "";
+
+            public string WEFMVD3 => First.WEFMVD3 ?? "";
         }
 
         private static string ResolveWwwRootPath(IWebHostEnvironment env, string? relativePath)

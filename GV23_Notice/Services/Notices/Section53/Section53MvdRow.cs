@@ -60,6 +60,10 @@
             public string? Mvd_Category3 { get; set; }
 
             public string? rollName { get; set; }
+
+            public string? WEFMVD { get; set; }
+            public string? WEFMVD2 { get; set; }
+            public string? WEFMVD3 { get; set; }
         }
     }
 }

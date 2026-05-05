@@ -154,8 +154,8 @@ namespace GV23_Notice.Services.Notices.Section51
 
                         col.Item().AlignCenter().Text(t =>
                         {
-                            t.Span("NOTICE – OBJECTION NUMBER ").Style(title12);
-                            t.Span(Safe(data.ObjectionNo)).Style(title12);
+                            t.Span("SECTION 51 NOTICE  ").Style(title12);
+                            //t.Span(Safe(data.ObjectionNo.ToUpper())).Style(title12);
                         });
 
                         col.Item().AlignCenter().Text(
@@ -165,7 +165,7 @@ namespace GV23_Notice.Services.Notices.Section51
                         col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor(Colors.Grey.Darken2);
                         col.Item().PaddingTop(0);
 
-                        col.Item().Text($"Dear {GetRecipientName(data)},").Style(body9b);
+                        col.Item().Text($"Dear Property Owner,").Style(body9b);
                         col.Item().PaddingTop(0);
 
                         col.Item().Text(t =>
@@ -174,7 +174,7 @@ namespace GV23_Notice.Services.Notices.Section51
                             t.Span("omitted/printed").Style(body9b);
                             t.Span(" in the ").Style(body9);
                             t.Span(Safe(data.RollName)).Style(body9b);
-                            t.Span(".").Style(body9);
+                            t.Span(" (GVR2023).").Style(body9);
                         });
 
                         col.Item().PaddingTop(1);
@@ -236,10 +236,11 @@ namespace GV23_Notice.Services.Notices.Section51
 
                         col.Item().PaddingTop(1);
 
-                        col.Item().Text("Kind Regards,").Style(body91);
-                     
+                        col.Item().Text("Municipal Valuer").Style(body91);
+                        col.Item().Text("S.Faiaz").Style(body91);
+
                         col.Item().Text(Safe(ctx.SignOffTitle)).Style(body91);
-                        col.Item().Text(Safe(ctx.SignOffName)).Style(body91);
+                       
                     });
                 });
             }).GeneratePdf();
@@ -265,9 +266,7 @@ namespace GV23_Notice.Services.Notices.Section51
             static string Area(string? v, bool omitted) =>
                 omitted ? "Omitted" : FormatExtent(v);
 
-            var effectiveDateText = data.EffectiveDate.HasValue
-                ? data.EffectiveDate.Value.ToString("dd MMMM yyyy", CultureInfo.GetCultureInfo("en-ZA"))
-                : "";
+            var effectiveDateText = s6?.WithEffectDate;
 
             var gvCategory = Txt(s6?.Old_Category, isOmission);
             var objCategory = Txt(s6?.New_Category, false);
@@ -313,7 +312,7 @@ namespace GV23_Notice.Services.Notices.Section51
 
                     h.Cell().Element(HeaderCell).Text("");
 
-                    h.Cell().Element(HeaderCell).Text($"{rollTitle} Entry")
+                    h.Cell().Element(HeaderCell).Text($"{rollTitle} (GVR2023)")
                         .FontFamily("Arial")
                         .FontSize(9)
                         .SemiBold()
@@ -330,28 +329,28 @@ namespace GV23_Notice.Services.Notices.Section51
                     DataRow(t, "Category", gvCategory, objCategory);
                     DataRow(t, "Area m²", gvArea, objArea);
                     DataRow(t, "Market Value", gvValue, objValue);
-                    DataRow(t, "With Effective Date", effectiveDateText, effectiveDateText);
+                    DataRow(t, "With Effective Date", effectiveDateText,"");
                 }
                 else
                 {
                     DataRow(t, "Category", gvCategory, objCategory);
                     DataRow(t, "Area m²", gvArea, objArea);
                     DataRow(t, "Market Value", gvValue, objValue);
-                    DataRow(t, "With Effective Date", effectiveDateText, effectiveDateText);
+                    DataRow(t, "With Effective Date", effectiveDateText, "");
 
                     DataRow(t, "", "","");
 
                     DataRow(t, "Category Split 1", gvCategory1, objCategory1);
                     DataRow(t, "Area m² Split 1", gvArea1, objArea1);
                     DataRow(t, "Market Value Split 1", gvValue1, objValue1);
-                    DataRow(t, "With Effective Date", effectiveDateText, effectiveDateText);
+                    DataRow(t, "With Effective Date", effectiveDateText, "");
 
                     DataRow(t, "", "", "");
 
                     DataRow(t, "Category Split 2", gvCategory2, objCategory2);
                     DataRow(t, "Area m² Split 2", gvArea2, objArea2);
                     DataRow(t, "Market Value Split 2", gvValue2, objValue2);
-                    DataRow(t, "With Effective Date", effectiveDateText, effectiveDateText);
+                    DataRow(t, "With Effective Date", effectiveDateText, "");
 
 
                 }

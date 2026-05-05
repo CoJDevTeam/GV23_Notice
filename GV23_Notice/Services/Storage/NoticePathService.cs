@@ -119,10 +119,11 @@ namespace GV23_Notice.Services.Storage
         // root\{Appeal_No}\Appeal Decision\{Appeal_No}_{PropertyDesc}_AD.pdf
 
         public string BuildS52PdfPath(
-            RollRegistry roll,
-            string appealNo,
-            string propertyDesc,
-            bool isReview)
+               RollRegistry roll,
+               string appealNo,
+               string propertyDesc,
+               bool isReview,
+               bool isPropOwner = false)
         {
             var root = GetRootPath(roll, NoticeKind.S52);
             var safeAppeal = SafeName(appealNo.Trim());
@@ -132,16 +133,20 @@ namespace GV23_Notice.Services.Storage
             var subFolder = isReview ? "Section 52 Review" : "Appeal Decision";
             var fileSuffix = isReview ? "S52" : "AD";
             var propPart = safeProp.Length > 0 ? safeProp : "Property";
-            var fileName = $"{appealFolder}_{propPart}_{fileSuffix}.pdf";
+
+            // Prop Owner copy gets _Prop_Owner suffix so it sits alongside the primary file
+            var ownerSuffix = isPropOwner ? "_Prop_Owner" : "";
+            var fileName = $"{appealFolder}_{propPart}_{fileSuffix}{ownerSuffix}.pdf";
 
             return Path.Combine(root, appealFolder, subFolder, fileName);
         }
 
         public string BuildS52EmlPath(
-            RollRegistry roll,
-            string appealNo,
-            string propertyDesc,
-            bool isReview)
+                  RollRegistry roll,
+                  string appealNo,
+                  string propertyDesc,
+                  bool isReview,
+                  bool isPropOwner = false)
         {
             var root = GetRootPath(roll, NoticeKind.S52);
             var safeAppeal = SafeName(appealNo.Trim());
@@ -151,10 +156,13 @@ namespace GV23_Notice.Services.Storage
             var subFolder = isReview ? "Section 52 Review" : "Appeal Decision";
             var fileSuffix = isReview ? "S52" : "AD";
             var propPart = safeProp.Length > 0 ? safeProp : "Property";
-            var fileName = $"{appealFolder}_{propPart}_{fileSuffix}.eml";
+
+            var ownerSuffix = isPropOwner ? "_Prop_Owner" : "";
+            var fileName = $"{appealFolder}_{propPart}_{fileSuffix}{ownerSuffix}.eml";
 
             return Path.Combine(root, appealFolder, subFolder, fileName);
         }
+
 
         public string BuildBatchPdfPath(
             RollRegistry roll,

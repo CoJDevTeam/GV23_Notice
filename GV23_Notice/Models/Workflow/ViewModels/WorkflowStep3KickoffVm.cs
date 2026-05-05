@@ -20,7 +20,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string? ApprovedBy { get; set; }
         public DateTime? ApprovedAtUtc { get; set; }
 
-        // Step1 snapshot (read-only display)
+        // Step 1 snapshot (read-only display)
         public DateTime LetterDate { get; set; }
         public DateTime? ObjectionStartDate { get; set; }
         public DateTime? ObjectionEndDate { get; set; }
@@ -41,12 +41,12 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public DateTime? ReviewCloseDate { get; set; }         // S78
         public bool? IsInvalidOmission { get; set; }           // IN
 
-        // ── Batch panel: auto-computed server side ──────────────
+        // Batch panel — auto-computed server side
         /// <summary>Pre-computed next batch code e.g. S49_GV23_0003</summary>
         public string NextBatchCode { get; set; } = "";
-        /// <summary>Total pending records available for batching (from SP or count query)</summary>
+        /// <summary>Total pending records available for batching</summary>
         public int TotalPendingRecords { get; set; }
-        /// <summary>How many batches already created for this workflow</summary>
+        /// <summary>How many STEP3 batches already created for this workflow</summary>
         public int BatchesAlreadyCreated { get; set; }
 
         // Preview fields
@@ -60,6 +60,14 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string SelectedMode { get; set; } = "single";
         public string? AppealNo { get; set; }
 
+        // S52 range-print specific
+        /// <summary>True when the kickoff is for a Section 52 notice (no batch creation UI).</summary>
+        public bool IsS52 { get; set; }
+        /// <summary>True = Review sub-type, False = Appeal Decision sub-type.</summary>
+        public bool S52IsReview { get; set; }
+        /// <summary>Total records in the configured date range for the selected sub-type.</summary>
+        public int S52RangeCount { get; set; }
+
         // Real DB preview sample
         public string? SamplePremiseId { get; set; }
         public string? SampleEmail { get; set; }
@@ -69,17 +77,18 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string PdfPreviewUrl { get; set; } = "";
         public string EmailPreviewHtml { get; set; } = "";
 
-        // ── S52 range-print fields ──────────────────────────────────
-        public bool IsS52 { get; set; }
-        public bool S52IsReview { get; set; }
-        public int S52RangeCount { get; set; }
-
-        // ── Batch dashboard ─────────────────────────────────────────
+        // Batch dashboard
         /// <summary>All batches already created for this workflow, newest first.</summary>
         public List<KickoffBatchRowVm> CreatedBatches { get; set; } = new();
 
-        /// <summary>When true the view auto-switches to the Batch tab on load.</summary>
+        /// <summary>When true the view auto-switches to the Batch Dashboard tab on load.</summary>
         public bool ShowBatchTab { get; set; }
+
+        /// <summary>
+        /// True when the user arrived directly from Step 2 Approve.
+        /// Triggers the confirmation modal to auto-open on page load.
+        /// </summary>
+        public bool FromStep2 { get; set; }
     }
 
     public sealed class KickoffBatchRowVm

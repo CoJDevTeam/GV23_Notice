@@ -1,505 +1,457 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep2Vm
 @using GV23_Notice.Domain.Workflow
-
 @{
-    ViewData["Title"] = "Step 2 (Preview)";
+    ViewData["Title"] = "Step 2 — Preview";
 
     bool isInvalid = Model.Notice == NoticeKind.IN;
     bool isS52 = Model.Notice == NoticeKind.S52;
-    bool isS53 = Model.Notice == NoticeKind.S53;
-
     bool supportsSingleEmailMulti =
-        Model.Notice == NoticeKind.S49 ||
-        Model.Notice == NoticeKind.S51 ||
-        Model.Notice == NoticeKind.S53 ||
-        Model.Notice == NoticeKind.S78 ||
-        Model.Notice == NoticeKind.S52;
+        Model.Notice is NoticeKind.S49 or NoticeKind.S51 or NoticeKind.S53
+                     or NoticeKind.S78 or NoticeKind.S52;
 
     string selectedMode = string.IsNullOrWhiteSpace(Model.SelectedMode)
         ? "single"
         : Model.SelectedMode.Trim().ToLowerInvariant();
-
     if (selectedMode == "multi") selectedMode = "emailmulti";
 
     string selectedVariant = string.IsNullOrWhiteSpace(Model.SelectedVariant)
         ? "Default"
         : Model.SelectedVariant.Trim();
 
-    string Step2Link(string variant, string mode)
-     => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = variant, mode = mode, appealNo = Model.AppealNo }) ?? "#";
+    string S2Link(string variant, string mode)
+        => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant, mode, appealNo = Model.AppealNo }) ?? "#";
 
-    string Step2LinkKeepVariant(string mode)
-        => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = selectedVariant, mode = mode, appealNo = Model.AppealNo }) ?? "#";
+    string S2LinkKeep(string mode)
+        => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = selectedVariant, mode, appealNo = Model.AppealNo }) ?? "#";
 
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
     bool isDJ = Model.Notice == NoticeKind.DJ;
     bool allowSplitPdf = !isInvalid && !isDJ;
+
+    string NoticeName(NoticeKind n) => n switch
+    {
+        NoticeKind.S49 => "Section 49 — Public Inspection & Objections",
+        NoticeKind.S51 => "Section 51 — Objection Decision",
+        NoticeKind.S52 => "Section 52 — Appeal Notices",
+        NoticeKind.S53 => "Section 53 — MVD Decision",
+        NoticeKind.DJ => "Dear Johnny Notice",
+        NoticeKind.IN => "Invalid Notice",
+        NoticeKind.S78 => "Section 78 — Review Period",
+        _ => n.ToString()
+    };
 }
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-   @*  <link href="~/css/step2css.css" rel="stylesheet" /> *@
-    <link href="~/css/admincss/step2css1.css" rel="stylesheet" />
-</head>
-<body>
+@* <link href="~/css/admincss/step2css.css" rel="stylesheet" asp-append-version="true" /> *@
+<link href="~/css/step2/step2css.css" rel="stylesheet" />
+<div class="s2-root">
 
-    <!-- ═══════════════════════════════════════════
-         PAGE HEADER
-    ═══════════════════════════════════════════ -->
-    <header class="page-header">
-        <div class="brand">
-            <span class="brand-badge">VNS</span>
-            <span class="brand-title">Notice System</span>
-        </div>
-
-        <div class="step-indicator">
-            <span style="font-size:11px;color:#888;margin-right:6px;font-weight:600;">STEP</span>
-            <div class="step-pip done"></div>
-            <div class="step-pip active"></div>
-            <div class="step-pip"></div>
-            <span style="font-size:11px;color:var(--gold);font-weight:700;margin-left:6px;">2 of 3 — Preview & Approve</span>
-        </div>
-    </header>
-
-    <!-- ═══════════════════════════════════════════
-         MAIN CONTENT
-    ═══════════════════════════════════════════ -->
-    <div class="main-wrap">
-
-        <!-- ALERTS -->
-        @if (TempData["Success"] != null)
-        {
-            <div class="alert alert-success">✓ @TempData["Success"]</div>
-        }
-        @if (TempData["Error"] != null)
-        {
-            <div class="alert alert-danger">⚠ @TempData["Error"]</div>
-        }
-
-        <!-- META BAR -->
-        <div class="meta-bar">
-            <h2>Step 2 — Preview &amp; Approval</h2>
-            <div class="meta-pills">
-                <div class="meta-pill"><strong>Roll:</strong> @Model.RollShortCode — @Model.RollName</div>
-                <div class="meta-pill"><strong>Notice:</strong> @Model.Notice</div>
-                <div class="meta-pill"><strong>Recipient:</strong> @Model.RecipientName (@Model.RecipientEmail)</div>
-                <div class="meta-pill"><strong>Variant:</strong> @selectedVariant &nbsp;|&nbsp; <strong>Mode:</strong> @selectedMode</div>
+    <!-- Top bar -->
+    <div class="s2-topbar">
+        <div class="s2-topbar-left">
+            <div class="s2-logo-mark">VNS</div>
+            <div class="s2-topbar-div"></div>
+            <div>
+                <div class="s2-page-title">Notice Preview</div>
+                <div class="s2-page-sub">Step 2 — Review the notice and email, then start Step 3</div>
             </div>
         </div>
-
-        <!-- ──────────────── VARIANT / MODE TABS ──────────────── -->
-        @if (isInvalid)
-        {
-            <div class="tab-row">
-                <span class="tab-label">Variant</span>
-                <a class="tab-btn @(selectedVariant == "InvalidOmission" ? "active" : "")"
-                   href="@Step2Link("InvalidOmission", "single")">Invalid Omission</a>
-                <a class="tab-btn @((selectedVariant == "InvalidObjection" || selectedVariant == "Default") ? "active" : "")"
-                   href="@Step2Link("InvalidObjection", "single")">Invalid Objection</a>
-            </div>
-        }
-        else if (isS52)
-        {
-            bool canReview = Model.S52CanShowReview;
-            bool canAppeal = Model.S52CanShowAppealDecision;
-            <div class="tab-row">
-                <span class="tab-label">Variant</span>
-                @if (canAppeal)
-                {
-                    <a class="tab-btn @((selectedVariant == "S52Appeal" || selectedVariant == "Default") ? "active" : "")"
-                       href="@Step2Link("S52Appeal", selectedMode)">Appeal Decision</a>
-                }
-                else
-                {
-                    <span class="tab-btn tab-disabled" title="Not selected on Step 1 — change Sub-Type to include Appeal Decision">Appeal Decision</span>
-                }
-                @if (canReview)
-                {
-                    <a class="tab-btn @(selectedVariant == "S52Review" ? "active" : "")"
-                       href="@Step2Link("S52Review", selectedMode)">Section 52 Review</a>
-                }
-                else
-                {
-                    <span class="tab-btn tab-disabled" title="Not selected on Step 1 — change Sub-Type to include Section 52 Review">Section 52 Review</span>
-                }
-                <div class="tab-divider"></div>
-                <span class="tab-label">Mode</span>
-                <a class="tab-btn @(selectedMode == "single" ? "active" : "")" href="@Step2LinkKeepVariant("single")">Single</a>
-                <a class="tab-btn @(selectedMode == "emailmulti" ? "active" : "")" href="@Step2LinkKeepVariant("emailmulti")">Email Multi</a>
-            </div>
-            @if (canReview && canAppeal)
-            {
-                <div class="tab-info-banner" style="background:#fffbe6;border:1px solid #e6b000;border-radius:6px;padding:8px 14px;font-size:12px;color:#555;margin:8px 0 0;">
-                    ✅ <strong>Both</strong> sub-types selected — review each tab before approving.
-                </div>
-            }
-        }
-        else if (supportsSingleEmailMulti && !isInvalid)
-        {
-            <div class="tab-row">
-                <span class="tab-label">Mode</span>
-                <a class="tab-btn @(selectedMode == "single" ? "active" : "")" href="@Step2LinkKeepVariant("single")">Single</a>
-                <a class="tab-btn @(selectedMode == "emailmulti" ? "active" : "")" href="@Step2LinkKeepVariant("emailmulti")">Email Multi</a>
-                @if (allowSplitPdf)
-                {
-                    <a class="tab-btn @(selectedMode == "splitpdf" ? "active" : "")" href="@Step2LinkKeepVariant("splitpdf")">Split PDF</a>
-                }
-            </div>
-        }
-
-        <!-- ──────────────── MAIN GRID ──────────────── -->
-        <div class="content-grid">
-
-            <!-- LEFT: PDF PREVIEW -->
-            <div class="card pdf-card">
-                <div class="card-header">
-                    <div class="header-title">
-                        <div class="header-accent"></div>
-                        PDF Preview
-                    </div>
-                    <a class="btn-open-pdf" href="@Model.PdfUrl" target="_blank">
-                        ↗ Open in New Tab
-                    </a>
-                </div>
-                <div class="card-body">
-                    <iframe src="@Model.PdfUrl" title="Notice PDF Preview"></iframe>
-                </div>
-                <div class="card-footer">
-                    <b>Single</b> = Standard notice preview &nbsp;·&nbsp;
-                    <b>Email Multi</b> = Recipient holds multiple properties (email grouping) &nbsp;·&nbsp;
-                    <b>Split PDF</b> = Rows split by category (S53 Multipurpose)
-                </div>
-            </div>
-
-            <!-- RIGHT: SIDE PANEL -->
-            <div class="side-panel">
-
-                <!-- STEP 1 SNAPSHOT -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="header-title">
-                            <div class="header-accent"></div>
-                            Step 1 Snapshot — Dates &amp; Signature
-                        </div>
-                        <div>
-                            @if (Model.IsConfirmed)
-                            {
-                                <span class="badge badge-gold">✓ Confirmed</span>
-                            }
-                            else
-                            {
-                                <span class="badge badge-muted">Not Confirmed</span>
-                            }
-                            @if (Model.IsApproved)
-                            {
-                                <span class="badge badge-success">✓ Approved</span>
-                            }
-                            else
-                            {
-                                <span class="badge badge-muted">Not Approved</span>
-                            }
-                        </div>
-                    </div>
-
-                    <div class="card-body">
-                        <div class="snapshot-grid">
-                            <div class="snap-item">
-                                <span class="snap-label">Letter Date</span>
-                                <span class="snap-value">@Model.LetterDate.ToString("yyyy-MM-dd")</span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">City Manager Sign</span>
-                                <span class="snap-value @(Model.CityManagerSignDate == null ? "empty" : "")">
-                                    @(Model.CityManagerSignDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-
-                            <div class="snap-item">
-                                <span class="snap-label">Objection Start</span>
-                                <span class="snap-value @(Model.ObjectionStartDate == null ? "empty" : "")">
-                                    @(Model.ObjectionStartDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Objection End</span>
-                                <span class="snap-value @(Model.ObjectionEndDate == null ? "empty" : "")">
-                                    @(Model.ObjectionEndDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-
-                            <div class="snap-item">
-                                <span class="snap-label">Extension Date</span>
-                                <span class="snap-value @(Model.ExtensionDate == null ? "empty" : "")">
-                                    @(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Evidence Close</span>
-                                <span class="snap-value @(Model.EvidenceCloseDate == null ? "empty" : "")">
-                                    @(Model.EvidenceCloseDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-
-                            <div class="snap-item">
-                                <span class="snap-label">Bulk From</span>
-                                <span class="snap-value @(Model.BulkFromDate == null ? "empty" : "")">
-                                    @(Model.BulkFromDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Bulk To</span>
-                                <span class="snap-value @(Model.BulkToDate == null ? "empty" : "")">
-                                    @(Model.BulkToDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-
-                            <div class="snap-item">
-                                <span class="snap-label">Batch Date</span>
-                                <span class="snap-value @(Model.BatchDate == null ? "empty" : "")">
-                                    @(Model.BatchDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Appeal Close</span>
-                                <span class="snap-value @(Model.AppealCloseDate == null ? "empty" : "")">
-                                    @(Model.AppealCloseDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-
-                            <div class="snap-item">
-                                <span class="snap-label">Extraction Date</span>
-                                <span class="snap-value @(Model.ExtractionDate == null ? "empty" : "")">
-                                    @(Model.ExtractionDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Extract Days</span>
-                                <span class="snap-value @(Model.ExtractPeriodDays == null ? "empty" : "")">
-                                    @(Model.ExtractPeriodDays?.ToString() ?? "—")
-                                </span>
-                            </div>
-
-                            <div class="snap-item">
-                                <span class="snap-label">Review Open</span>
-                                <span class="snap-value @(Model.ReviewOpenDate == null ? "empty" : "")">
-                                    @(Model.ReviewOpenDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                            <div class="snap-item">
-                                <span class="snap-label">Review Close</span>
-                                <span class="snap-value @(Model.ReviewCloseDate == null ? "empty" : "")">
-                                    @(Model.ReviewCloseDate?.ToString("yyyy-MM-dd") ?? "—")
-                                </span>
-                            </div>
-                        </div>
-
-                        <!-- SIGNATURE ROW -->
-                        <div class="sig-row" style="margin-top: 14px;">
-                            <span class="sig-label">Signature</span>
-                            @if (hasSignature)
-                            {
-                                <span class="badge badge-success">✓ Uploaded</span>
-                                <span class="sig-path" title="@Model.SignaturePath">@Model.SignaturePath</span>
-                            }
-                            else
-                            {
-                                <span class="badge badge-warn">⚠ Not Uploaded</span>
-                            }
-                        </div>
-                    </div>
-                </div>
-
-                <!-- EMAIL PREVIEW -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="header-title">
-                            <div class="header-accent"></div>
-                            Email Preview
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="email-subject">
-                            <span class="subj-label">Subject</span>
-                            @Model.EmailSubject
-                        </div>
-                        <div class="email-body-wrap">
-                            @Html.Raw(Model.EmailBodyHtml)
-                        </div>
-                    </div>
-
-                    <!-- ACTION BUTTONS -->
-                    <div class="action-bar">
-                        <button class="btn btn-approve" type="button" onclick="openModal('approveModal')">
-                            ✓ Approve
-                        </button>
-                        <button class="btn btn-correct" type="button" onclick="openModal('corrModal')">
-                            ✎ Request Correction
-                        </button>
-                        <a class="btn btn-back" href="@Url.Action("Step1", "Workflow", new { settingsId = Model.SettingsId })">
-                            ← Back to Step 1
-                        </a>
-                    </div>
-                </div>
-
-            </div><!-- /side-panel -->
-        </div><!-- /content-grid -->
-    </div><!-- /main-wrap -->
-    <!-- ═══════════════════════════════════════════
-         APPROVE MODAL
-    ═══════════════════════════════════════════ -->
-    <div class="modal-overlay" id="approveModal">
-        <div class="modal-box">
-            <form asp-action="Step2Approve" asp-controller="Workflow" method="post">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                <input type="hidden" name="variant"    value="@selectedVariant" />
-                <input type="hidden" name="mode"       value="@selectedMode" />
-
-                <div class="modal-head">
-                    <h5>Approve — Generate Handover Email</h5>
-                    <button type="button" class="modal-close" onclick="closeModal('approveModal')">✕</button>
-                </div>
-
-                <div class="modal-body">
-                    <p>
-                        You are about to <strong>approve</strong> the Step 1 settings. The system will generate an official approval
-                        email with the secure kickoff link and save it to:<br />
-                        <code>Notice Email approval_Request\Approval\@Model.Version</code>
-                    </p>
-
-                    <div class="modal-summary">
-                        <div class="ms-row"><span class="ms-key">Roll</span><span class="ms-val">@Model.RollShortCode — @Model.RollName</span></div>
-                        <div class="ms-row"><span class="ms-key">Notice</span><span class="ms-val">@Model.Notice</span></div>
-                        <div class="ms-row"><span class="ms-key">Variant</span><span class="ms-val">@selectedVariant</span></div>
-                        <div class="ms-row">
-                            <span class="ms-key">Approval Mode</span>
-                            <span class="ms-val">
-                                @if (allowSplitPdf)
-                                {
-                                    <strong>Single PDF</strong> @:&nbsp;+&nbsp;<strong>Split PDF</strong>
-                                    <small style="display:block;color:#888;font-size:11px;margin-top:2px;">
-                                        The kickoff email will include links for both Single and Split PDF modes.
-                                    </small>
-                                }
-                                else
-                                {
-                                    @selectedMode
-                                }
-                            </span>
-                        </div>
-                        <div class="ms-row"><span class="ms-key">Letter Date</span><span class="ms-val">@Model.LetterDate.ToString("yyyy-MM-dd")</span></div>
-
-                        @if (Model.Notice == NoticeKind.S49)
-                        {
-                            <div class="ms-row"><span class="ms-key">Objection Period</span><span class="ms-val">@(Model.ObjectionStartDate?.ToString("yyyy-MM-dd") ?? "—") → @(Model.ObjectionEndDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                            <div class="ms-row"><span class="ms-key">Extension</span><span class="ms-val">@(Model.ExtensionDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                            <div class="ms-row"><span class="ms-key">Signature</span><span class="ms-val">@(hasSignature ? "✓ Uploaded" : "⚠ NOT UPLOADED")</span></div>
-                        }
-                        @if (Model.Notice == NoticeKind.S51)
-                        {
-                            <div class="ms-row"><span class="ms-key">Evidence Close</span><span class="ms-val">@(Model.EvidenceCloseDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                        }
-                        @if (Model.Notice == NoticeKind.S52)
-                        {
-                            <div class="ms-row"><span class="ms-key">Bulk Range</span><span class="ms-val">@(Model.BulkFromDate?.ToString("yyyy-MM-dd") ?? "—") → @(Model.BulkToDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                        }
-                        @if (Model.Notice == NoticeKind.S53)
-                        {
-                            <div class="ms-row"><span class="ms-key">Batch Date</span><span class="ms-val">@(Model.BatchDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                            <div class="ms-row"><span class="ms-key">Appeal Close</span><span class="ms-val">@(Model.AppealCloseDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                        }
-                        @if (Model.Notice == NoticeKind.S78)
-                        {
-                            <div class="ms-row"><span class="ms-key">Extraction Date</span><span class="ms-val">@(Model.ExtractionDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                            <div class="ms-row"><span class="ms-key">Review Period</span><span class="ms-val">@(Model.ReviewOpenDate?.ToString("yyyy-MM-dd") ?? "—") → @(Model.ReviewCloseDate?.ToString("yyyy-MM-dd") ?? "—")</span></div>
-                        }
-                    </div>
-
-                    <div class="modal-note">
-                        ℹ Approval does not send emails to clients. Step 3 (Data Team) will batch, print PDFs and send to clients.
-                    </div>
-                </div>
-
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-back" onclick="closeModal('approveModal')">Cancel</button>
-                    <button type="submit" class="btn btn-approve">✓ Confirm Approval</button>
-                </div>
-            </form>
+        <div class="s2-topbar-right">
+            <a class="s2-topbar-link" asp-controller="Workflow" asp-action="SettingsLibrary">
+                ← Settings Library
+            </a>
+            <a class="s2-topbar-link" asp-controller="Workflow" asp-action="Step1"
+               asp-route-settingsId="@Model.SettingsId">
+                Edit Step 1
+            </a>
         </div>
     </div>
 
+    <!-- Stepper -->
+    <div class="s2-stepper">
+        <div class="s2-step done">
+            <div class="s2-step-num">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+            </div>
+            <div class="s2-step-label">Configure Dates</div>
+        </div>
+        <div class="s2-step-line"></div>
+        <div class="s2-step active">
+            <div class="s2-step-num">2</div>
+            <div class="s2-step-label">Preview</div>
+        </div>
+        <div class="s2-step-line"></div>
+        <div class="s2-step">
+            <div class="s2-step-num">3</div>
+            <div class="s2-step-label">Start Step 3</div>
+        </div>
+    </div>
 
-    <!-- ═══════════════════════════════════════════
-         CORRECTION MODAL
-    ═══════════════════════════════════════════ -->
-    <div class="modal-overlay" id="corrModal">
-        <div class="modal-box">
-            <form asp-action="Step2RequestCorrection" asp-controller="Workflow" method="post">
+    <!-- Alerts -->
+    @if (TempData["Success"] != null)
+    {
+        <div class="s2-alert s2-alert-ok">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
+            @TempData["Success"]
+        </div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="s2-alert s2-alert-err">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+            @TempData["Error"]
+        </div>
+    }
+
+    <!-- Meta pills -->
+    <div class="s2-meta-bar">
+        <span class="s2-meta-pill s2-notice-pill">@NoticeName(Model.Notice)</span>
+        <span class="s2-meta-pill"><strong>Roll:</strong> @Model.RollShortCode — @Model.RollName</span>
+        <span class="s2-meta-pill"><strong>Letter Date:</strong> @Model.LetterDate.ToString("dd MMM yyyy")</span>
+        <span class="s2-meta-pill"><strong>Recipient:</strong> @Model.RecipientName</span>
+        <span class="s2-meta-pill"><strong>Mode:</strong> @selectedMode &nbsp;|&nbsp; <strong>Variant:</strong> @selectedVariant</span>
+    </div>
+
+    <!-- Variant / Mode tabs -->
+    @if (isInvalid)
+    {
+        <div class="s2-tabs">
+            <span class="s2-tab-label">Variant</span>
+            <a class="s2-tab @(selectedVariant == "InvalidOmission" ? "active" : "")"
+               href="@S2Link("InvalidOmission", "single")">Invalid Omission</a>
+            <a class="s2-tab @((selectedVariant == "InvalidObjection" || selectedVariant == "Default") ? "active" : "")"
+               href="@S2Link("InvalidObjection", "single")">Invalid Objection</a>
+        </div>
+    }
+    else if (isS52)
+    {
+        bool canReview = Model.S52CanShowReview;
+        bool canAppeal = Model.S52CanShowAppealDecision;
+        <div class="s2-tabs">
+            <span class="s2-tab-label">Variant</span>
+            @if (canAppeal)
+            {
+                <a class="s2-tab @((selectedVariant == "S52Appeal" || selectedVariant == "Default") ? "active" : "")"
+                     href="@S2Link("S52Appeal", selectedMode)">Appeal Decision</a>
+            }
+            else
+            {
+
+                     <span class="s2-tab-disabled" title="Not selected on Step 1">Appeal Decision</span>
+                 }
+            @if (canReview)
+            {
+                <a class="s2-tab @(selectedVariant == "S52Review" ? "active" : "")"
+                     href="@S2Link("S52Review", selectedMode)">Section 52 Review</a>
+            }
+            else
+            {
+
+                     <span class="s2-tab-disabled" title="Not selected on Step 1">Section 52 Review</span>
+                 }
+            <div class="s2-tab-divider"></div>
+            <span class="s2-tab-label">Mode</span>
+            <a class="s2-tab @(selectedMode == "single" ? "active" : "")" href="@S2LinkKeep("single")">Single</a>
+            <a class="s2-tab @(selectedMode == "emailmulti" ? "active" : "")" href="@S2LinkKeep("emailmulti")">Email Multi</a>
+        </div>
+        @if (canReview && canAppeal)
+        {
+            <div class="s2-both-banner">
+                ✅ <strong>Both</strong> sub-types selected — review each tab before starting Step 3.
+            </div>
+        }
+    }
+    else if (supportsSingleEmailMulti)
+    {
+        <div class="s2-tabs">
+            <span class="s2-tab-label">Mode</span>
+            <a class="s2-tab @(selectedMode == "single" ? "active" : "")" href="@S2LinkKeep("single")">Single</a>
+            <a class="s2-tab @(selectedMode == "emailmulti" ? "active" : "")" href="@S2LinkKeep("emailmulti")">Email Multi</a>
+            @if (allowSplitPdf)
+            {
+                <a class="s2-tab @(selectedMode == "splitpdf" ? "active" : "")" href="@S2LinkKeep("splitpdf")">Split PDF</a>
+            }
+        </div>
+    }
+
+    <!-- Body grid -->
+    <div class="s2-body">
+
+        <!-- PDF preview -->
+        <div class="s2-card">
+            <div class="s2-card-head">
+                <div class="s2-card-title">
+                    <div class="s2-card-accent"></div>
+                    PDF Preview
+                </div>
+                <a href="@Model.PdfUrl" target="_blank" style="font-size:12px;font-weight:700;color:var(--s2-gold-d);text-decoration:none;">
+                    ↗ Open in New Tab
+                </a>
+            </div>
+            <div class="s2-card-body">
+                <iframe class="s2-pdf-iframe" src="@Model.PdfUrl" title="Notice PDF Preview"></iframe>
+            </div>
+            <div class="s2-card-foot">
+                <strong>Single</strong> = Standard notice · <strong>Email Multi</strong> = Recipient holds multiple properties · <strong>Split PDF</strong> = Rows split by category
+            </div>
+        </div>
+
+        <!-- Side panel -->
+        <div style="display:flex;flex-direction:column;gap:16px;">
+
+            <!-- Step 1 snapshot -->
+            <div class="s2-card">
+                <div class="s2-card-head">
+                    <div class="s2-card-title">
+                        <div class="s2-card-accent"></div>
+                        Step 1 Snapshot
+                    </div>
+                    <div style="display:flex;gap:5px;">
+                        @if (Model.IsApproved)
+                        {
+                            <span class="s2-badge s2-badge-ok">✓ Approved</span>
+                        }
+                        else
+                        {
+
+                            <span class="s2-badge s2-badge-muted">Not Approved</span>
+                        }
+                        @if (Model.IsConfirmed)
+                        {
+                            <span class="s2-badge s2-badge-gold">✓ Confirmed</span>
+                        }
+                    </div>
+                </div>
+                <div class="s2-snap-grid">
+                    <div class="s2-snap-item">
+                        <span class="s2-snap-label">Letter Date</span>
+                        <span class="s2-snap-value">@Model.LetterDate.ToString("dd MMM yyyy")</span>
+                    </div>
+                    <div class="s2-snap-item">
+                        <span class="s2-snap-label">City Manager Sign</span>
+                        <span class="s2-snap-value @(Model.CityManagerSignDate == null ? "empty" : "")">
+                            @(Model.CityManagerSignDate?.ToString("dd MMM yyyy") ?? "—")
+                        </span>
+                    </div>
+                    @if (Model.ObjectionStartDate != null || Model.ObjectionEndDate != null)
+                    {
+                        <div class="s2-snap-item">
+                            <span class="s2-snap-label">Objection Start</span>
+                            <span class="s2-snap-value @(Model.ObjectionStartDate == null ? "empty" : "")">
+                                @(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                        <div class="s2-snap-item">
+                            <span class="s2-snap-label">Objection End</span>
+                            <span class="s2-snap-value @(Model.ObjectionEndDate == null ? "empty" : "")">
+                                @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                    }
+                    @if (Model.AppealCloseDate != null)
+                    {
+                        <div class="s2-snap-item">
+                            <span class="s2-snap-label">Batch Date</span>
+                            <span class="s2-snap-value @(Model.BatchDate == null ? "empty" : "")">
+                                @(Model.BatchDate?.ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                        <div class="s2-snap-item">
+                            <span class="s2-snap-label">Appeal Close</span>
+                            <span class="s2-snap-value @(Model.AppealCloseDate == null ? "empty" : "")">
+                                @(Model.AppealCloseDate?.ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                    }
+                    @if (Model.BulkFromDate != null || Model.BulkToDate != null)
+                    {
+                        <div class="s2-snap-item">
+                            <span class="s2-snap-label">Bulk From</span>
+                            <span class="s2-snap-value @(Model.BulkFromDate == null ? "empty" : "")">
+                                @(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                        <div class="s2-snap-item">
+                            <span class="s2-snap-label">Bulk To</span>
+                            <span class="s2-snap-value @(Model.BulkToDate == null ? "empty" : "")">
+                                @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "—")
+                            </span>
+                        </div>
+                    }
+                    @if (Model.EvidenceCloseDate != null)
+                    {
+                        <div class="s2-snap-item" style="grid-column:1/-1">
+                            <span class="s2-snap-label">Evidence Close</span>
+                            <span class="s2-snap-value">@Model.EvidenceCloseDate?.ToString("dd MMM yyyy")</span>
+                        </div>
+                    }
+                </div>
+                <div class="s2-sig-row">
+                    <span class="s2-sig-label">Signature</span>
+                    @if (hasSignature)
+                    {
+                        <span class="s2-badge s2-badge-ok">✓ Uploaded</span>
+                        <span class="s2-sig-path">@System.IO.Path.GetFileName(Model.SignaturePath)</span>
+                    }
+                    else
+                    {
+
+                        <span class="s2-badge s2-badge-warn">⚠ Not Uploaded</span>
+                    }
+                </div>
+            </div>
+
+            <!-- Email preview -->
+            <div class="s2-card">
+                <div class="s2-card-head">
+                    <div class="s2-card-title">
+                        <div class="s2-card-accent"></div>
+                        Email Preview
+                    </div>
+                </div>
+                <div class="s2-card-body">
+                    <div class="s2-email-subj">
+                        <span class="s2-subj-label">Subject</span>
+                        @Model.EmailSubject
+                    </div>
+                    <div class="s2-email-body">
+                        @Html.Raw(Model.EmailBodyHtml)
+                    </div>
+                </div>
+
+                <!-- ── Action bar: ONLY "Start Step 3" ─────────── -->
+                <div class="s2-action-bar">
+                    <button class="s2-btn s2-btn-step3" type="button" onclick="openStep3Modal()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                        Start Step 3 Processing
+                    </button>
+                    <a class="s2-btn s2-btn-back" asp-controller="Workflow" asp-action="Step1"
+                       asp-route-settingsId="@Model.SettingsId">
+                        ← Back to Step 1
+                    </a>
+                    <a class="s2-btn s2-btn-lib" asp-controller="Workflow" asp-action="SettingsLibrary">
+                        Settings Library
+                    </a>
+                </div>
+            </div>
+
+        </div><!-- /side panel -->
+    </div><!-- /s2-body -->
+
+</div><!-- /s2-root -->
+<!-- ══════════════════════════════════════════════
+     START STEP 3 — WARNING CONFIRMATION MODAL
+     (replaces both old Approve + Correction modals)
+══════════════════════════════════════════════ -->
+<div class="s2-modal-overlay" id="step3Modal">
+    <div class="s2-modal">
+
+        <div class="s2-modal-head">
+            <div class="s2-modal-head-left">
+                <div class="s2-modal-warn-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e6b000" stroke-width="2.2" stroke-linecap="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="s2-modal-title">Confirm — Start Step 3 Processing</div>
+                    <div class="s2-modal-sub">This will unlock batch creation for this notice</div>
+                </div>
+            </div>
+            <button class="s2-modal-x" onclick="closeStep3Modal()">✕</button>
+        </div>
+
+        <div class="s2-modal-body">
+            <div class="s2-modal-warning">
+                <span class="s2-modal-warning-icon">⚠</span>
+                <div class="s2-modal-warning-text">
+                    You are about to start Step 3 processing for
+                    <strong>@NoticeName(Model.Notice)</strong>
+                    on roll <strong>@Model.RollShortCode — @Model.RollName</strong>.
+                    Step 3 will allow the Data Team to create batches, print PDFs and send notices to ratepayers.
+                </div>
+            </div>
+
+            <div class="s2-modal-summary">
+                <div class="s2-ms-row">
+                    <span class="s2-ms-key">Roll</span>
+                    <span class="s2-ms-val">@Model.RollShortCode — @Model.RollName</span>
+                </div>
+                <div class="s2-ms-row">
+                    <span class="s2-ms-key">Notice</span>
+                    <span class="s2-ms-val">@NoticeName(Model.Notice)</span>
+                </div>
+                <div class="s2-ms-row">
+                    <span class="s2-ms-key">Letter Date</span>
+                    <span class="s2-ms-val">@Model.LetterDate.ToString("dd MMMM yyyy")</span>
+                </div>
+                @if (Model.Notice == NoticeKind.S53 && Model.AppealCloseDate != null)
+                {
+                    <div class="s2-ms-row">
+                        <span class="s2-ms-key">Appeal Close</span>
+                        <span class="s2-ms-val">@Model.AppealCloseDate?.ToString("dd MMMM yyyy")</span>
+                    </div>
+                }
+                @if (Model.Notice == NoticeKind.S49)
+                {
+                    <div class="s2-ms-row">
+                        <span class="s2-ms-key">Objection Period</span>
+                        <span class="s2-ms-val">@(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—") → @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</span>
+                    </div>
+                    <div class="s2-ms-row">
+                        <span class="s2-ms-key">Signature</span>
+                        <span class="s2-ms-val">@(hasSignature ? "✓ Uploaded" : "⚠ Not Uploaded")</span>
+                    </div>
+                }
+                <div class="s2-ms-row">
+                    <span class="s2-ms-key">Version</span>
+                    <span class="s2-ms-val">v @Model.Version</span>
+                </div>
+            </div>
+
+            <div class="s2-modal-note">
+                ℹ This does not send any notices to ratepayers. The Data Team will manage
+                batch creation, PDF printing, and email dispatch in Step 3.
+            </div>
+        </div>
+
+        <div class="s2-modal-foot">
+            <button type="button" class="s2-modal-cancel" onclick="closeStep3Modal()">Cancel</button>
+
+            <form asp-action="Step2Approve" asp-controller="Workflow" method="post" style="margin:0">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="settingsId" value="@Model.SettingsId" />
                 <input type="hidden" name="variant" value="@selectedVariant" />
                 <input type="hidden" name="mode" value="@selectedMode" />
-
-                <div class="modal-head">
-                    <h5>Request Correction</h5>
-                    <button type="button" class="modal-close" onclick="closeModal('corrModal')">✕</button>
-                </div>
-
-                <div class="modal-body">
-                    <p>
-                        A <strong>correction request</strong> email will be generated and saved to:<br />
-                        <code>Notice Email approval_Request\Correction\@Model.Version</code>
-                    </p>
-
-                    <div class="modal-summary">
-                        <div class="ms-row"><span class="ms-key">Roll</span><span class="ms-val">@Model.RollShortCode — @Model.RollName</span></div>
-                        <div class="ms-row"><span class="ms-key">Notice</span><span class="ms-val">@Model.Notice</span></div>
-                        <div class="ms-row"><span class="ms-key">Variant</span><span class="ms-val">@selectedVariant</span></div>
-                        <div class="ms-row"><span class="ms-key">Mode</span><span class="ms-val">@selectedMode</span></div>
-                        <div class="ms-row"><span class="ms-key">Letter Date</span><span class="ms-val">@Model.LetterDate.ToString("yyyy-MM-dd")</span></div>
-                        <div class="ms-row"><span class="ms-key">Signature</span><span class="ms-val">@(hasSignature ? "Uploaded" : "Not Uploaded")</span></div>
-                    </div>
-
-                    <label class="form-label">Correction Comment <span style="color:var(--danger)">*</span></label>
-                    <textarea class="form-control" name="Reason" rows="5" required
-                              placeholder="Explain what must be corrected — PDF wording, dates, email body, layout, etc."></textarea>
-                </div>
-
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-back" onclick="closeModal('corrModal')">Cancel</button>
-                    <button type="submit" class="btn btn-correct">✎ Submit Correction</button>
-                </div>
+                <button type="submit" class="s2-modal-confirm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                    Yes — Start Step 3
+                </button>
             </form>
         </div>
     </div>
+</div>
 
+@section Scripts {
     <script>
-        function openModal(id) {
-          document.getElementById(id).classList.add('open');
-          document.body.style.overflow = 'hidden';
+        function openStep3Modal() {
+            document.getElementById('step3Modal').classList.add('open');
+            document.body.style.overflow = 'hidden';
         }
-        function closeModal(id) {
-          document.getElementById(id).classList.remove('open');
-          document.body.style.overflow = '';
+        function closeStep3Modal() {
+            document.getElementById('step3Modal').classList.remove('open');
+            document.body.style.overflow = '';
         }
-        // Close on overlay click
-        document.querySelectorAll('.modal-overlay').forEach(el => {
-          el.addEventListener('click', function(e) {
-            if (e.target === el) closeModal(el.id);
-          });
+        document.getElementById('step3Modal').addEventListener('click', function(e) {
+            if (e.target === this) closeStep3Modal();
         });
-        // Close on Escape
         document.addEventListener('keydown', function(e) {
-          if (e.key === 'Escape') {
-            document.querySelectorAll('.modal-overlay.open').forEach(el => closeModal(el.id));
-          }
+            if (e.key === 'Escape') closeStep3Modal();
         });
     </script>
-
-</body>
-</html>
+}

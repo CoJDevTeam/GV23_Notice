@@ -9,12 +9,10 @@ using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.Notices;
-using GV23_Notice.Services.Notices.Section49;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.SnapShotStep2;
-using GV23_Notice.Services.Step3;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -42,7 +40,7 @@ namespace GV23_Notice.Controllers
         private readonly IPreviewDbDataService _previewRepo;
         private readonly ITempFileStore _tempFiles;
         private readonly INoticeStep2SnapshotService _snap;
-        private readonly IS52RangePrintService _s52Range;
+        private readonly GV23_Notice.Services.Step3.IS52RangePrintService _s52Range;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -58,7 +56,7 @@ namespace GV23_Notice.Controllers
      IPreviewDbDataService previewDb,
      ITempFileStore tempFiles,
      INoticeStep2SnapshotService snap,
-    IS52RangePrintService s52Range)
+     GV23_Notice.Services.Step3.IS52RangePrintService s52Range)
         {
             _db = db;
             _settings = settings;
@@ -79,8 +77,7 @@ namespace GV23_Notice.Controllers
             _tempFiles = tempFiles;     // ✅ assign
         }
 
-        // GET: /Workflow/Step1\
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
+        // GET: /Workflow/Step1
         [HttpGet("Step1")]
         public async Task<IActionResult> Step1(int? rollId, NoticeKind? notice, BatchMode? mode, int? settingsId, CancellationToken ct)
         {
@@ -131,7 +128,6 @@ namespace GV23_Notice.Controllers
             });
         }
 
-
         private static void ApplyValuationAndFinancialYear(WorkflowStep1Vm vm, NoticeSettings e)
         {
             e.ValuationPeriodCode = vm.ValuationPeriodCode;
@@ -155,7 +151,6 @@ namespace GV23_Notice.Controllers
                     : null;
         }
 
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpGet("FinancialYears")]
         public IActionResult FinancialYears(string valuationPeriodCode)
         {
@@ -175,7 +170,6 @@ namespace GV23_Notice.Controllers
         }
 
         // POST: /Workflow/Step1 (Save Draft)  ✅ UPDATED: Save + Auto-Confirm + Redirect to Summary
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step1")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1Save(
@@ -377,7 +371,6 @@ namespace GV23_Notice.Controllers
 
 
         // GET: /Workflow/SettingsLibrary?rollId=1&notice=S53&mode=Bulk
-        [Authorize(Policy = "ValuationAdminSearchDownload")]
         [HttpGet("SettingsLibrary")]
         public async Task<IActionResult> SettingsLibrary(int? rollId, NoticeKind? notice, BatchMode? mode, CancellationToken ct)
         {
@@ -422,9 +415,7 @@ namespace GV23_Notice.Controllers
         }
 
         // POST: /Workflow/Step1SummaryApprove
-        [Authorize(Policy = "ValuationAdminSearchDownload")]
         [HttpPost("Step1SummaryApprove")]
-
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1SummaryApprove(int settingsId, CancellationToken ct)
         {
@@ -464,7 +455,6 @@ namespace GV23_Notice.Controllers
 
 
         // POST: /Workflow/Step1Confirm
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step1Confirm")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1Confirm(WorkflowStep1Vm vm, CancellationToken ct)
@@ -517,10 +507,7 @@ namespace GV23_Notice.Controllers
 
 
         // ✅ Step1Approve now ONLY validates + redirects to Step2 (NO approval/email here)
-
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step1Approve")]
-
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1Approve(WorkflowStep1Vm vm, CancellationToken ct)
         {
@@ -816,10 +803,7 @@ namespace GV23_Notice.Controllers
                 S52SendMode = s.S52SendMode,
 
                 BatchDate = s.BatchDate,
-                AppealCloseDate = s.AppealCloseDate,
-
-                // ✅ FIX: was missing — caused Step2 to always show "Not Uploaded"
-                SignaturePath = s.SignaturePath
+                AppealCloseDate = s.AppealCloseDate
             };
 
             return View(vm);
@@ -1028,10 +1012,7 @@ namespace GV23_Notice.Controllers
             // SmtpClient doesn't accept CancellationToken directly
             await Task.Run(() => smtp.Send(msg), ct);
         }
-
-
         // POST: /Workflow/Step2Approve
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step2Approve")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step2Approve(Step2ApproveDto dto, CancellationToken ct)
@@ -1140,46 +1121,18 @@ namespace GV23_Notice.Controllers
             s.ApprovedBy = approvedBy;
             await _db.SaveChangesAsync(ct);
 
-            TempData["EmailSubject"] = approvalSubject;
-            return RedirectToAction("Step2EmailSuccess", new
+            TempData["Success"] = "Step 2 approved — ready to create batches.";
+            // Go directly to Step3Kickoff — fromStep2=true triggers the confirmation card
+            return RedirectToAction(nameof(Step3Kickoff), new
             {
                 settingsId = dto.SettingsId,
-                kind = "approval",
-                recipientList = string.Join(", ", GetApprovalRecipients().To)
+                key = s.ApprovalKey!.Value,
+                variant = dto.Variant.ToString(),
+                mode = ToUiMode(dto.Mode),
+                fromStep2 = true
             });
         }
 
-
-        // GET: /Workflow/Step2EmailSuccess
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
-        [HttpGet("Step2EmailSuccess")]
-        public async Task<IActionResult> Step2EmailSuccess(
-            int settingsId, string kind, string? recipientList, CancellationToken ct)
-        {
-            var s = await _settings.GetByIdAsync(settingsId, ct);
-            if (s is null) return NotFound();
-
-            var roll = await _db.RollRegistry.AsNoTracking()
-                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
-
-            var vm = new Step2EmailSuccessVm
-            {
-                SettingsId = settingsId,
-                Kind = kind ?? "approval",
-                RollShortCode = roll?.ShortCode ?? "",
-                RollName = s.RollName ?? roll?.Name ?? "",
-                Notice = s.Notice,
-                Version = s.Version,
-                RecipientList = recipientList ?? "",
-                EmailSubject = TempData["EmailSubject"]?.ToString() ?? "",
-                ApprovedBy = s.ApprovedBy ?? User?.Identity?.Name ?? "",
-                ApprovedAtUtc = kind == "approval" ? s.ApprovedAtUtc : DateTime.UtcNow
-            };
-
-            return View(vm);
-        }
-
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpPost("Step2RequestCorrection")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step2RequestCorrection(Step2CorrectionDto dto, CancellationToken ct)
@@ -1279,16 +1232,17 @@ namespace GV23_Notice.Controllers
             s.CorrectionEmailSavedPath = savedPath;
             await _db.SaveChangesAsync(ct);
 
-            TempData["EmailSubject"] = subject;
-            return RedirectToAction("Step2EmailSuccess", new
+            TempData["Success"] = "Correction request saved with snapshot + email archived (and sent if configured).";
+            return RedirectToAction("Step2", new
             {
                 settingsId = dto.SettingsId,
-                kind = "correction",
-                recipientList = string.Join(", ", GetCorrectionRecipients().To)
+                variant = dto.Variant.ToString(),
+                mode = ToUiMode(dto.Mode),
+                appealNo = dto.AppealNo
             });
         }
 
-        [Authorize(Policy = "DataTeamCreateBatchPrint")]
+
         [HttpGet("Step3Kickoff")]
         public async Task<IActionResult> Step3Kickoff(
        int settingsId,
@@ -1373,7 +1327,7 @@ namespace GV23_Notice.Controllers
             }
             var nextBatchCode = $"{batchPrefix}{nextSeq:0000}";
 
-            var kickoffBatchRows = createdBatchList.Select(b => new KickoffBatchRowVm
+            var kickoffBatchRows = createdBatchList.Select(b => new GV23_Notice.Models.Workflow.ViewModels.KickoffBatchRowVm
             {
                 BatchId = b.Id,
                 BatchName = b.BatchName,
@@ -1386,7 +1340,7 @@ namespace GV23_Notice.Controllers
                 ApprovedAtUtc = b.ApprovedAtUtc
             }).ToList();
 
-            var vm = new WorkflowStep3KickoffVm
+            var vm = new GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
             {
                 SettingsId = s.Id,
                 ApprovalKey = s.ApprovalKey.Value,
@@ -1452,7 +1406,7 @@ namespace GV23_Notice.Controllers
             return View(vm);
         }
 
-        private static string ComputeBatchPrefix(NoticeSettings s, string rollShortCode)
+        private static string ComputeBatchPrefix(Domain.Workflow.Entities.NoticeSettings s, string rollShortCode)
         {
             var code = rollShortCode.Replace(" ", "");
             return s.Notice switch
@@ -1463,8 +1417,6 @@ namespace GV23_Notice.Controllers
                 _ => $"{s.Notice}_{code}_"
             };
         }
-
-        [Authorize(Policy = "ValuationAdminCreateApprove")]
         [HttpGet("Step3PreviewPdf")]
         public async Task<IActionResult> Step3PreviewPdf(int settingsId, Guid key, CancellationToken ct)
         {
@@ -1493,8 +1445,7 @@ namespace GV23_Notice.Controllers
             // Build PDF using REAL data:
             // If split exists, we must produce 4 rows:
             // Multipurpose(total), Business&Commercial, Residential, (blank if needed)
-            var pdfBytes = // AFTER
-BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", rows, contact);
+            var pdfBytes = BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", rows, contact);
 
             var fileName = $"{roll.ShortCode}_S49_STEP3_PREVIEW_{premiseId}.pdf";
             Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
@@ -1505,9 +1456,8 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
         private byte[] BuildS49RealPreviewPdf(
       NoticeSettings s,
       string rollShortCode,
-       string rollName,
-      List<S49RollRowDto> rollRows,
-      SapContactDto contact)
+      List<GV23_Notice.Models.DTOs.S49RollRowDto> rollRows,
+      GV23_Notice.Models.DTOs.SapContactDto contact)
         {
             if (rollRows == null || rollRows.Count == 0)
                 throw new InvalidOperationException("No roll rows found for S49 preview.");
@@ -1521,14 +1471,14 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
                           rollRows.Any(r => !string.IsNullOrWhiteSpace(r.ValuationSplitIndicator));
 
             // Build rows for PDF table
-            List<Section49PropertyRow> propertyRows;
+            List<GV23_Notice.Services.Notices.Section49.Section49PropertyRow> propertyRows;
 
             if (isSplit)
             {
                 // Use your rule: 4 rows always (Multipurpose + BC + Residential + blank)
                 var splitRows = S49SplitHelper.Build4RowSplit(rollRows);
 
-                propertyRows = splitRows.Select(x => new Section49PropertyRow
+                propertyRows = splitRows.Select(x => new GV23_Notice.Services.Notices.Section49.Section49PropertyRow
                 {
                     Category = x.Category ?? "",
                     MarketValue = x.MarketValue <= 0 ? "" : x.MarketValue.ToString("N0"),
@@ -1539,9 +1489,9 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
             else
             {
                 // Single property
-                propertyRows = new List<Section49PropertyRow>
+                propertyRows = new List<GV23_Notice.Services.Notices.Section49.Section49PropertyRow>
         {
-            new Section49PropertyRow
+            new GV23_Notice.Services.Notices.Section49.Section49PropertyRow
             {
                 Category = first.CatDesc ?? "",
                 MarketValue = first.MarketValue.ToString("N0"),
@@ -1552,7 +1502,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
             }
 
             // ✅ Build the NEW expected model (Section49PdfData)
-            var data = new Section49PdfData
+            var data = new GV23_Notice.Services.Notices.Section49.Section49PdfData
             {
                 Addr1 = contact.Addr1 ?? "Owner",
                 Addr2 = contact.Addr2 ?? "",
@@ -1576,7 +1526,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
             };
 
             // ✅ Use the correct context class name you implemented in the new builder
-            var ctx = new Section49NoticeContext
+            var ctx = new GV23_Notice.Services.Notices.Section49.Section49NoticeContext
             {
                 HeaderImagePath = headerPath,
                 SignaturePath = s.SignaturePath ?? "",
@@ -1587,12 +1537,11 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
                 ExtendedEndDate = s.ExtensionDate,
 
                 FinancialYearsText = s.FinancialYearsText ?? "1 July 2025 – 30 June 2026",
-
-                RollHeaderText = rollName
+                RollHeaderText = $"{rollShortCode} ROLL"
             };
 
             var builder = HttpContext.RequestServices
-                .GetRequiredService<ISection49PdfBuilder>();
+                .GetRequiredService<GV23_Notice.Services.Notices.Section49.ISection49PdfBuilder>();
 
             return builder.BuildNotice(data, ctx);
         }
@@ -1602,7 +1551,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
         {
             public sealed record Row(string Category, decimal MarketValue, decimal Extent);
 
-            public static List<Row> Build4RowSplit(List<S49RollRowDto> rows)
+            public static List<Row> Build4RowSplit(List<GV23_Notice.Models.DTOs.S49RollRowDto> rows)
             {
                 // Normalise categories
                 decimal SumValue(string contains) =>
@@ -1644,8 +1593,6 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
                 return result;
             }
         }
-
-        [Authorize(Policy = "DataTeamCreateBatchPrint")]
         [HttpPost("Step3StartS49Batch")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step3StartS49Batch(int settingsId, Guid key, CancellationToken ct)
@@ -1676,7 +1623,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
 
             var premiseIds = await _s49Roll.PickNextPremiseIdsAsync(s.RollId, 500, ct);
 
-            var run = new S49BatchRun
+            var run = new GV23_Notice.Domain.Workflow.Entities.S49BatchRun
             {
                 SettingsId = s.Id,
                 RollId = s.RollId,
@@ -1691,7 +1638,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
             {
                 var (rows, contact) = await _s49Roll.LoadPremiseAsync(s.RollId, pid, ct);
 
-                run.Items.Add(new S49BatchItem
+                run.Items.Add(new GV23_Notice.Domain.Workflow.Entities.S49BatchItem
                 {
                     PremiseId = pid,
                     Email = contact?.Email,
@@ -1710,7 +1657,7 @@ BuildS49RealPreviewPdf(s, roll.ShortCode ?? "", s.RollName ?? roll.Name ?? "", r
             return RedirectToAction(nameof(Step3Kickoff), new { settingsId, key });
         }
 
-        [Authorize(Policy = "DataTeamCreateBatchPrint")]
+
         private async Task SendWorkflowEmailAsync(
     string subject,
     string bodyHtml,

@@ -5,6 +5,16 @@
         public string FromAddress { get; set; } = "";
         public string FromName { get; set; } = "";
 
+        /// <summary>
+        /// CC address added to every outbound notice email (S49 through IN).
+        /// Set in appsettings.json → Email:CcAddress
+        /// Leave blank to disable CC.
+        /// </summary>
+        public string CcAddress { get; set; } = "";
+
+        /// <summary>Display name for the CC address.</summary>
+        public string CcName { get; set; } = "";
+
         public SmtpOptions Smtp { get; set; } = new();
         public LimitsOptions Limits { get; set; } = new();
         public TemplatesOptions Templates { get; set; } = new();

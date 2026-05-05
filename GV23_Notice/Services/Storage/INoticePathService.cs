@@ -20,11 +20,14 @@ namespace GV23_Notice.Services.Storage
         /// {root}\{Appeal_No}\Section 52 Review\{Appeal_No}_{PropertyDesc}_S52.pdf  (isReview=true)
         /// {root}\{Appeal_No}\Appeal Decision\{Appeal_No}_{PropertyDesc}_AD.pdf     (isReview=false)
         /// </summary>
+   
+
         string BuildS52PdfPath(
             RollRegistry roll,
             string appealNo,
             string propertyDesc,
-            bool isReview);
+            bool isReview,
+            bool isPropOwner = false);
 
         /// <summary>
         /// S52-specific .eml path — same folder as PDF, .eml extension.
@@ -35,7 +38,9 @@ namespace GV23_Notice.Services.Storage
             RollRegistry roll,
             string appealNo,
             string propertyDesc,
-            bool isReview);
+            bool isReview,
+            bool isPropOwner = false);
+
 
         /// <summary>
         /// Batch print path:
