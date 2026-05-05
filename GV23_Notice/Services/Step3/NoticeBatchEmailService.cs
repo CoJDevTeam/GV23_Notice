@@ -185,7 +185,19 @@ namespace GV23_Notice.Services.Email
                     log.EmlPath = emlPath;
 
                     // Send via SMTP
-                    await SendOneEmailAsync(subject, bodyHtml, log, ct);
+                    // SmtpFailedRecipientException = relay rejected (external domain)
+                    // The .eml is already saved — still mark as Sent so the batch can proceed
+                    try
+                    {
+                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
+                    }
+                    catch (SmtpFailedRecipientException smtpEx)
+                    {
+                        _log.LogWarning(
+                            "SMTP relay rejected for {Email} (non-accepted domain) — .eml saved, marking Sent. Error: {Msg}",
+                            log.RecipientEmail, smtpEx.Message);
+                        // Do not rethrow — .eml archive exists, record is valid
+                    }
 
                     log.Status = RunStatus.Sent;
                     log.SentAtUtc = DateTime.UtcNow;
