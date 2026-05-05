@@ -4,9 +4,12 @@ using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Storage;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Data;
 using System.Net.Mail;
 using System.Text;
 
@@ -19,6 +22,7 @@ namespace GV23_Notice.Services.Email
         private readonly INoticeEmailTemplateService _templates;
         private readonly INoticePathService _paths;
         private readonly IS49RollRepository _s49Repo;
+        private readonly IConfiguration _config;
         private readonly ILogger<NoticeBatchEmailService> _log;
 
         private const int HardMaxEmails = 2000;
@@ -29,6 +33,7 @@ namespace GV23_Notice.Services.Email
             INoticeEmailTemplateService templates,
             INoticePathService paths,
             IS49RollRepository s49Repo,
+            IConfiguration config,
             ILogger<NoticeBatchEmailService> log)
         {
             _db = db;
@@ -36,6 +41,7 @@ namespace GV23_Notice.Services.Email
             _templates = templates;
             _paths = paths;
             _s49Repo = s49Repo;
+            _config = config;
             _log = log;
         }
 
@@ -129,6 +135,44 @@ namespace GV23_Notice.Services.Email
                                               StringComparison.OrdinalIgnoreCase));
                         emlPath = _paths.BuildS52EmlPath(roll, emlKey, emlDesc, isReview, isPropOwner);
                     }
+                    else if (settings.Notice == NoticeKind.S53)
+                    {
+                        // S53: .eml sits next to the PDF — just change extension
+                        // e.g. GV23-Sup2-521_PORTION_16_ERF_153_RIVER_CLUB_MVD.eml
+                        if (!string.IsNullOrWhiteSpace(log.PdfPath))
+                        {
+                            emlPath = Path.ChangeExtension(log.PdfPath, ".eml");
+                        }
+                        else
+                        {
+                            // Fallback if PdfPath not set yet
+                            var emlKey = log.ObjectionNo ?? log.Id.ToString();
+                            var emlDesc = log.PropertyDesc ?? emlKey;
+                            emlPath = _paths.BuildBatchEmlPath(roll, settings.Notice, batchName, emlDesc);
+                        }
+
+                        // For S53 re-build the email body from Objection_MVD so it
+                        // contains the correct GV + MVD values, not just the run log stub
+                        var objectorType = string.IsNullOrWhiteSpace(log.RecipientName) ? "Owner" : log.RecipientName.Trim();
+                        var mvdEmailData = await FetchS53MvdEmailDataAsync(
+                            batch?.RollId ?? settings.RollId, log.ObjectionNo!, batchName, objectorType, ct);
+
+                        if (mvdEmailData != null)
+                        {
+                            var s53Req = BuildEmailRequest(settings, roll, log);
+                            // Enrich property item with real values from Objection_MVD
+                            if (s53Req.Items.Count > 0)
+                            {
+                                s53Req.Items[0].PropertyDesc = mvdEmailData.PropertyDesc
+                                                               ?? log.PropertyDesc ?? "";
+                                s53Req.Items[0].ObjectionNo = mvdEmailData.ObjectionNo
+                                                               ?? log.ObjectionNo;
+                            }
+                            var (s53Subject, s53Body) = _templates.Build(s53Req);
+                            subject = s53Subject;
+                            bodyHtml = s53Body;
+                        }
+                    }
                     else
                     {
                         emlPath = _paths.BuildBatchEmlPath(
@@ -136,8 +180,8 @@ namespace GV23_Notice.Services.Email
                             log.PropertyDesc ?? log.ObjectionNo ?? log.PremiseId ?? log.Id.ToString());
                     }
 
-
-                    await SaveEmlAsync(emlPath, log.RecipientEmail!, subject, bodyHtml, log.PdfPath!, ct);
+                    await SaveEmlAsync(emlPath, log.RecipientEmail!, subject, bodyHtml, log.PdfPath!, ct,
+                        string.IsNullOrWhiteSpace(_emailOpt.CcAddress) ? null : _emailOpt.CcAddress.Trim());
                     log.EmlPath = emlPath;
 
                     // Send via SMTP
@@ -234,7 +278,8 @@ namespace GV23_Notice.Services.Email
             string subject,
             string bodyHtml,
             string pdfPath,
-            CancellationToken ct)
+            CancellationToken ct,
+            string? ccAddress = null)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(emlPath)!);
 
@@ -248,7 +293,8 @@ namespace GV23_Notice.Services.Email
             var sb = new StringBuilder();
             sb.AppendLine($"Date: {now}");
             sb.AppendLine($"To: {toEmail}");
-            sb.AppendLine("Cc: ValuationEnquiries@joburg.org.za");
+            if (!string.IsNullOrWhiteSpace(ccAddress))
+                sb.AppendLine($"Cc: {ccAddress}");
             sb.AppendLine($"Subject: {subject}");
             sb.AppendLine("MIME-Version: 1.0");
             sb.AppendLine($"Content-Type: multipart/mixed; boundary=\"{boundary}\"");
@@ -280,10 +326,10 @@ namespace GV23_Notice.Services.Email
 
         // ── Send one email via SMTP ──────────────────────────────────────────
         private async Task SendOneEmailAsync(
-         string subject,
-         string bodyHtml,
-         NoticeRunLog log,
-         CancellationToken ct)
+            string subject,
+            string bodyHtml,
+            NoticeRunLog log,
+            CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.PdfPath) || !File.Exists(log.PdfPath))
                 throw new FileNotFoundException($"PDF not found: {log.PdfPath}");
@@ -319,6 +365,65 @@ namespace GV23_Notice.Services.Email
             };
 
             await Task.Run(() => smtp.Send(msg), ct);
+        }
+        // ── S53: fetch email data from Objection_MVD ────────────────────────
+        private async Task<S53MvdEmailData?> FetchS53MvdEmailDataAsync(
+            int rollId,
+            string objectionNo,
+            string batchName,
+            string objectorType,
+            CancellationToken ct)
+        {
+            try
+            {
+                var cs = _config.GetConnectionString("DefaultConnection")
+                         ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+                await using var conn = new SqlConnection(cs);
+                await using var cmd = new SqlCommand("dbo.S53_GetMvdRow", conn)
+                {
+                    CommandType = CommandType.StoredProcedure,
+                    CommandTimeout = 60
+                };
+                cmd.Parameters.AddWithValue("@RollId", rollId);
+                cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
+                cmd.Parameters.AddWithValue("@BatchName", batchName);
+                cmd.Parameters.AddWithValue("@ObjectorType", objectorType);
+
+                await conn.OpenAsync(ct);
+                await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                if (!await reader.ReadAsync(ct)) return null;
+
+                // Column map — safe against missing columns
+                var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < reader.FieldCount; i++) colMap[reader.GetName(i)] = i;
+
+                string? Str(string col) =>
+                    colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
+                        ? reader.GetValue(o)?.ToString() : null;
+
+                return new S53MvdEmailData
+                {
+                    ObjectionNo = Str("Objection_No") ?? objectionNo,
+                    PropertyDesc = Str("PropertyDesc"),
+                    Email = Str("Email"),
+                };
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "FetchS53MvdEmailDataAsync failed for ObjectionNo={No} — using run log data",
+                    objectionNo);
+                return null;
+            }
+        }
+
+        private sealed class S53MvdEmailData
+        {
+            public string? ObjectionNo { get; set; }
+            public string? PropertyDesc { get; set; }
+            public string? Email { get; set; }
         }
     }
 }

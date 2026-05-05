@@ -285,7 +285,7 @@ namespace GV23_Notice.Services.Notices.Section53
                     DataRow(t, "Category", gvCategory, mvdCategory);
                     DataRow(t, "Extent", gvExtent, mvdExtent);
                     DataRow(t, "Market Value", gvValue, mvdValue);
-                    DataRow(t, "With Effective Date", "", wefMvd);
+                    DataRow(t, "With Effective Date", wefMvd, wefMvd);
 
                 }
                 else
@@ -293,7 +293,7 @@ namespace GV23_Notice.Services.Notices.Section53
                     DataRow(t, "Category", gvCategory, mvdCategory);
                     DataRow(t, "Extent", gvExtent, mvdExtent);
                     DataRow(t, "Market Value", gvValue, mvdValue);
-                    DataRow(t, "With Effective Date", "", wefMvd);
+                    DataRow(t, "With Effective Date", wefMvd, wefMvd);
 
 
 
