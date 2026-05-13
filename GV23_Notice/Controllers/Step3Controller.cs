@@ -20,7 +20,7 @@ namespace GV23_Notice.Controllers
         private readonly IStep3PrintQueryService _printQuery;
         private readonly INoticeBatchEmailService _emailSvc;
         private readonly AppDbContext _db;
-
+        private readonly IS52RangePrintService _s52RangePrint;
         public Step3Controller(
             IStep3Step1Service svc,
             IStep3WorkflowSelectService select,
@@ -29,6 +29,7 @@ namespace GV23_Notice.Controllers
             INoticeBatchPrintService print,
             IStep3PrintQueryService printQuery,
             INoticeBatchEmailService emailSvc,
+            IS52RangePrintService s52RangePrint,
             AppDbContext db)
         {
             _svc = svc;
@@ -39,6 +40,7 @@ namespace GV23_Notice.Controllers
             _printQuery = printQuery;
             _emailSvc = emailSvc;
             _db = db;
+            _s52RangePrint = s52RangePrint;
         }
 
         // ── Index ───────────────────────────────────────────────────────────
@@ -133,6 +135,49 @@ namespace GV23_Notice.Controllers
             return RedirectToAction(nameof(Print), new { key });
         }
 
+
+        [HttpPost("PrintS52Range")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> PrintS52Range(
+    Guid key,
+    int settingsId,
+    bool isReview,
+    CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var user = User?.Identity?.Name ?? "Unknown";
+
+            try
+            {
+                var count = await _s52RangePrint.CountRangeAsync(settingsId, isReview, ct);
+
+                if (count <= 0)
+                {
+                    TempData["Error"] =
+                        "No Section 52 records were found for this date range. Please check the From Date and To Date.";
+
+                    return RedirectToAction(nameof(Print), new { key });
+                }
+
+                var res = await _s52RangePrint.PrintRangeAsync(settingsId, isReview, user, ct);
+
+                TempData["Success"] =
+                    $"Section 52 range printed: {res.Printed} notices saved. " +
+                    (res.Failed > 0 ? $"{res.Failed} failed." : "");
+
+                return RedirectToAction(nameof(Print), new
+                {
+                    key = res.WorkflowKey == Guid.Empty ? key : res.WorkflowKey
+                });
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ex.Message;
+                return RedirectToAction(nameof(Print), new { key });
+            }
+        }
         // POST: Print ALL batches in this workflow
         [HttpPost("PrintAll")]
         [ValidateAntiForgeryToken]

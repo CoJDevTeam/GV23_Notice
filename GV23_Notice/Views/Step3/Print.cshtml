@@ -992,6 +992,7 @@
         <div class="sp-chip"><span class="sp-cl">Version</span><span class="sp-cv">@Model.VersionText</span></div>
         @if (Model.IsS52)
         {
+
             <div class="sp-chip"><span class="sp-cl">Type</span><span class="sp-cv">@subTypeLabel</span></div>
             <div class="sp-chip"><span class="sp-cl">Range</span><span class="sp-cv">@(Model.BulkFromDate?.ToString("dd MMM") ?? "?") – @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "?")</span></div>
         }
@@ -1090,38 +1091,43 @@
             <div class="sp-actions">
                 @if (Model.IsS52)
                 {
-                    <!-- S52: Print All button triggers range print across all batches -->
-                    @if (anyPrintable)
+                    var canPrintS52Range = Model.BulkFromDate.HasValue && Model.BulkToDate.HasValue;
+
+                    if (!Model.Batches.Any())
+                    {
+                        if (canPrintS52Range)
+                        {
+                            <button type="button" class="btn-gold" onclick="submitPrintS52Range(this)">
+                                🖨 Print S52 Range
+                            </button>
+
+                            <form id="printS52RangeForm"
+                                  action="/Step3/PrintS52Range"
+                                  method="post"
+                                  style="display:none">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="key" value="@key" />
+                                <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+                                <input type="hidden" name="isReview" value="@Model.S52IsReview.ToString().ToLower()" />
+                            </form>
+                        }
+                        else
+                        {
+                            <div class="btn-gold disabled" style="opacity:.5">
+                                🖨 Print S52 Range
+                            </div>
+
+                            <div class="sp-alert sp-alert-err" style="margin:0">
+                                ⚠ S52 From Date and To Date are missing. Go back to Step 1 / approval settings and save the range.
+                            </div>
+                        }
+                    }
+                    else if (anyPrintable)
                     {
                         <button type="button" class="btn-gold" onclick="submitPrintAll()">
-                            🖨 Print All Batches
+                            🖨 Print Pending Batches
                         </button>
-                        <form id="printAllForm" action="/Step3/PrintAll" method="post" style="display:none">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="key" value="@key" />
-                        </form>
-                    }
-                    else if (Model.Batches.Any())
-                    {
-                        <div class="btn-gold disabled" style="opacity:.5">🖨 Print All Batches</div>
-                    }
-                    <!-- S52: Go to Send Email -->
-                    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
-                        📧 Go to Send Email →
-                    </a>
-                    <!-- S52: Back to Kickoff -->
-                    <a href="@kickoffUrl" class="btn-outline-dark">
-                        ← Back to Kickoff
-                    </a>
-                }
-                else
-                {
-                    <!-- Standard notices: Print All -->
-                    @if (anyPrintable)
-                    {
-                        <button type="button" class="btn-gold" onclick="submitPrintAll()">
-                            🖨 Print All Batches
-                        </button>
+
                         <form id="printAllForm" action="/Step3/PrintAll" method="post" style="display:none">
                             @Html.AntiForgeryToken()
                             <input type="hidden" name="key" value="@key" />
@@ -1129,15 +1135,17 @@
                     }
                     else
                     {
-                        <div class="btn-gold disabled" style="opacity:.5">🖨 Print All Batches</div>
+                        <div class="btn-gold disabled" style="opacity:.5">
+                            ✓ Range Already Printed
+                        </div>
                     }
-                    <!-- Navigate to Send Email -->
+
                     <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
                         📧 Go to Send Email →
                     </a>
-                    <!-- Back to Kickoff to create more batches -->
+
                     <a href="@kickoffUrl" class="btn-outline-dark">
-                        📦 Create More Batches
+                        ← Back to Kickoff
                     </a>
                 }
             </div>
@@ -1241,26 +1249,58 @@
                     <div class="sp-empty">
                         <div class="sp-empty-icon">📦</div>
                         @if (Model.IsS52)
-                        {
-                            <div style="font-size:.95rem;font-weight:800;color:#1a1a1a;margin-bottom:6px">No Batches Found</div>
-                            <div style="font-size:.75rem;color:#9a9a9a;line-height:1.7;max-width:300px">
-                                No S52 batches have been created yet.<br />Return to the Kickoff page and use the batch panel if records are available.
-                            </div>
-                            <a href="@kickoffUrl" class="btn-gold" style="margin-top:20px;max-width:220px">
-                                ← Back to Kickoff
-                            </a>
-                        }
-                        else
-                        {
-                            <div style="font-size:.95rem;font-weight:800;color:#1a1a1a;margin-bottom:6px">No Batches Found</div>
-                            <div style="font-size:.75rem;color:#9a9a9a;line-height:1.7;max-width:300px">
-                                Go back to <strong>Create Batches</strong> to create batches first.
-                            </div>
-                            <a href="@kickoffUrl" class="btn-gold" style="margin-top:20px;max-width:220px">
-                                📦 Go to Create Batches
-                            </a>
-                        }
-                    </div>
+{
+    var canPrintS52Range = Model.BulkFromDate.HasValue && Model.BulkToDate.HasValue;
+
+    <div style="font-size:.95rem;font-weight:800;color:#1a1a1a;margin-bottom:6px">
+        Ready to Print S52 Range
+    </div>
+
+    <div style="font-size:.75rem;color:#9a9a9a;line-height:1.7;max-width:360px">
+        This notice type skips manual batch creation. Click below to pull the records from the configured date range and generate the PDFs.
+    </div>
+
+    <div class="sp-s52-dates" style="margin-top:20px">
+        <div class="sp-s52-date-chip">
+            <div class="sp-s52-date-lbl">From Date</div>
+            <div class="sp-s52-date-val">@(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "Missing")</div>
+        </div>
+        <div class="sp-s52-date-chip">
+            <div class="sp-s52-date-lbl">To Date</div>
+            <div class="sp-s52-date-val">@(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "Missing")</div>
+        </div>
+    </div>
+
+    if (canPrintS52Range)
+    {
+        <button type="button"
+                class="btn-gold"
+                style="margin-top:20px;max-width:240px"
+                onclick="submitPrintS52Range(this)">
+            🖨 Print S52 Range
+        </button>
+
+        <form id="printS52RangeFormMain"
+              action="/Step3/PrintS52Range"
+              method="post"
+              style="display:none">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="key" value="@key" />
+            <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+            <input type="hidden" name="isReview" value="@Model.S52IsReview.ToString().ToLower()" />
+        </form>
+    }
+    else
+    {
+        <div class="sp-alert sp-alert-err" style="max-width:420px;margin-top:20px">
+            ⚠ The S52 date range is missing. The system cannot pull records until Bulk From Date and Bulk To Date are saved.
+        </div>
+
+        <a href="@kickoffUrl" class="btn-gold" style="margin-top:14px;max-width:220px">
+            ← Back to Kickoff
+        </a>
+    }
+}           </div>
                 }
                 else
                 {
@@ -1485,5 +1525,22 @@
         clearInterval(_pollTimer);
         document.getElementById('ppOverlay').classList.remove('active');
         window.location.reload();
+    }
+        function submitPrintS52Range(btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="sp-spin"></span> Starting S52 print…';
+
+        document.getElementById('ppOverlay').classList.add('active');
+        document.getElementById('ppTitle').textContent = 'Printing S52 range…';
+        document.getElementById('ppBatchName').textContent = '@subTypeLabel';
+        document.getElementById('ppWorking').style.display = '';
+        document.getElementById('ppDoneBanner').classList.remove('active');
+        document.getElementById('ppCloseBtn').classList.remove('active');
+
+        const form =
+            document.getElementById('printS52RangeForm') ||
+            document.getElementById('printS52RangeFormMain');
+
+        form.submit();
     }
 </script>
