@@ -464,9 +464,10 @@ namespace GV23_Notice.Services.Storage
                     ERF = Str("ERF"),
                     PTN = Str("PTN"),
                     RE = Str("RE"),
-                    App_Market_Value = N(Dec("App_Market_Value")),
-                    App_Market_Value2 = N(Dec("App_Market_Value2")),
-                    App_Market_Value3 = N(Dec("App_Market_Value3")),
+                    // Market value stored as "R 4,330,000" — read as string to preserve format in PDF
+                    App_Market_Value = Str("App_Market_Value"),
+                    App_Market_Value2 = Str("App_Market_Value2"),
+                    App_Market_Value3 = Str("App_Market_Value3"),
                     App_Extent = N(Dec("App_Extent")),
                     App_Extent2 = N(Dec("App_Extent2")),
                     App_Extent3 = N(Dec("App_Extent3")),
@@ -641,7 +642,7 @@ namespace GV23_Notice.Services.Storage
                 Mvd_Extent = Str("MVD_Extent"),
                 Mvd_Extent2 = Str("MVD_Extent2"),
                 Mvd_Extent3 = Str("MVD_Extent3"),
-                WEFMVD= Str("wefDateMVD"),
+                WEFMVD = Str("wefDateMVD"),
             };
         }
 

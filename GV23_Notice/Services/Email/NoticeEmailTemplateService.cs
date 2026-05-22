@@ -99,9 +99,9 @@ namespace GV23_Notice.Services.Email
 
             // Submission deadline + portal instructions (mirrors the PDF body)
             var closeDate = req.S51SubmissionsCloseDate?.ToString() ?? "";
-            var portal    = req.S51PortalUrl ?? _opt.PortalUrl ?? "https://objections.joburg.org.za";
-            var pin       = req.S51Section51Pin ?? "";
-            var objNo     = req.S51ObjectionNo ?? req.Items.FirstOrDefault()?.ObjectionNo ?? "";
+            var portal = req.S51PortalUrl ?? _opt.PortalUrl ?? "https://objections.joburg.org.za";
+            var pin = req.S51Section51Pin ?? "";
+            var objNo = req.S51ObjectionNo ?? req.Items.FirstOrDefault()?.ObjectionNo ?? "";
 
             if (!string.IsNullOrWhiteSpace(closeDate))
             {
@@ -139,7 +139,19 @@ namespace GV23_Notice.Services.Email
             var subject =
                 $"VALUATION APPEAL BOARD: OUTCOME -{title}DECISIONS FOR THE GENERAL VALUATION ROLL 2023 (GV2023)";
 
-            var greeting = Greeting(req, preferDear: true);
+            // RecipientName stores Appeal_Type from the Appeal_Decision table.
+            // Map to a proper salutation — never show the raw DB value in the email.
+            var appealType = (req.RecipientName ?? "").Trim();
+            var salutation = appealType.ToLowerInvariant() switch
+            {
+                "prop owner" => "Dear Property Owner",
+                "third_party" => "Dear Client",
+                "representative" => "Dear Representative",
+                _ => string.IsNullOrWhiteSpace(appealType)
+                                        ? "Dear Sir/Madam"
+                                        : $"Dear {H(appealType)}"   // fallback: use as-is
+            };
+            var greeting = salutation;
 
             var mid = new StringBuilder();
             mid.Append($"<p>{greeting}</p>");

@@ -125,15 +125,26 @@ namespace GV23_Notice.Services.Email
                     }
                     else if (settings.Notice == NoticeKind.S52)
                     {
-                        var isReview = settings.IsSection52Review == true;
-                        var emlKey = log.AppealNo ?? log.Id.ToString();
-                        var emlDesc = log.PropertyDesc ?? emlKey;
-                        // RecipientName stores "Prop_Owner" for companion rows
-                        var isPropOwner = string.Equals(log.RecipientName, "Prop_Owner",
-                                              StringComparison.OrdinalIgnoreCase)
-                                       || (log.PdfPath != null && log.PdfPath.Contains("_Prop_Owner",
-                                              StringComparison.OrdinalIgnoreCase));
-                        emlPath = _paths.BuildS52EmlPath(roll, emlKey, emlDesc, isReview, isPropOwner);
+                        // S52: .eml sits next to the PDF — just change extension
+                        // Handles both Third_Party and Prop Owner rows automatically
+                        // since log.PdfPath already has the correct _Prop_Owner suffix
+                        if (!string.IsNullOrWhiteSpace(log.PdfPath))
+                        {
+                            emlPath = Path.ChangeExtension(log.PdfPath, ".eml");
+                        }
+                        else
+                        {
+                            // Fallback if PdfPath not set (should not happen after print)
+                            var isReview = settings.IsSection52Review == true;
+                            var emlKey = log.AppealNo ?? log.Id.ToString();
+                            var emlDesc = log.PropertyDesc ?? emlKey;
+                            // RecipientName = "Prop Owner" (space, from Appeal_Type column)
+                            var isPropOwner = string.Equals(log.RecipientName, "Prop Owner",
+                                                 StringComparison.OrdinalIgnoreCase)
+                                          || (log.PdfPath != null && log.PdfPath.Contains(
+                                                 "_Prop_Owner", StringComparison.OrdinalIgnoreCase));
+                            emlPath = _paths.BuildS52EmlPath(roll, emlKey, emlDesc, isReview, isPropOwner);
+                        }
                     }
                     else if (settings.Notice == NoticeKind.S53)
                     {
@@ -180,7 +191,17 @@ namespace GV23_Notice.Services.Email
                             log.PropertyDesc ?? log.ObjectionNo ?? log.PremiseId ?? log.Id.ToString());
                     }
 
-                    await SaveEmlAsync(emlPath, log.RecipientEmail!, subject, bodyHtml, log.PdfPath!, ct,
+                    // Always fetch recipient email fresh from the source table for every notice type.
+                    // This prevents stale or wrong emails being used from the run log cache.
+                    string recipientEmail = log.RecipientEmail ?? "";
+                    {
+                        var freshEmail = await FetchFreshEmailAsync(
+                            settings, log, batchName, ct);
+                        if (!string.IsNullOrWhiteSpace(freshEmail))
+                            recipientEmail = freshEmail;
+                    }
+
+                    await SaveEmlAsync(emlPath, recipientEmail, subject, bodyHtml, log.PdfPath!, ct,
                         string.IsNullOrWhiteSpace(_emailOpt.CcAddress) ? null : _emailOpt.CcAddress.Trim());
                     log.EmlPath = emlPath;
 
@@ -189,7 +210,14 @@ namespace GV23_Notice.Services.Email
                     // The .eml is already saved — still mark as Sent so the batch can proceed
                     try
                     {
-                        await SendOneEmailAsync(subject, bodyHtml, log, ct);
+                        // For S52 use the fresh address we just fetched
+                        // Use the fresh recipientEmail for every notice type
+                        var logForSend = new NoticeRunLog
+                        {
+                            RecipientEmail = recipientEmail,
+                            PdfPath = log.PdfPath
+                        };
+                        await SendOneEmailAsync(subject, bodyHtml, logForSend, ct);
                     }
                     catch (SmtpFailedRecipientException smtpEx)
                     {
@@ -436,6 +464,149 @@ namespace GV23_Notice.Services.Email
             public string? ObjectionNo { get; set; }
             public string? PropertyDesc { get; set; }
             public string? Email { get; set; }
+        }
+
+        // ══════════════════════════════════════════════════════════════════
+        // Fresh email fetch — one method per notice type.
+        // Always reads from the source table, never from the run log cache.
+        // Falls back to null (caller then uses log.RecipientEmail safely).
+        // ══════════════════════════════════════════════════════════════════
+
+        private async Task<string?> FetchFreshEmailAsync(
+            NoticeSettings settings,
+            NoticeRunLog log,
+            string batchName,
+            CancellationToken ct)
+        {
+            return settings.Notice switch
+            {
+                NoticeKind.S49 => await FetchS49EmailAsync(settings.RollId, log.PremiseId, ct),
+
+                NoticeKind.S51 => await FetchS51EmailAsync(settings.RollId, log.ObjectionNo, ct),
+
+                NoticeKind.S52 => await FetchS52EmailAsync(
+                    settings.RollId,
+                    log.AppealNo ?? "",
+                    settings.IsSection52Review == true,
+                    string.IsNullOrWhiteSpace(log.RecipientName) ? null : log.RecipientName.Trim(),
+                    ct),
+
+                NoticeKind.S53 => (await FetchS53MvdEmailDataAsync(
+                    settings.RollId,
+                    log.ObjectionNo ?? "",
+                    batchName,
+                    string.IsNullOrWhiteSpace(log.RecipientName) ? "Owner" : log.RecipientName.Trim(),
+                    ct))?.Email,
+
+                // DJ / IN / S78 are snapshot-based — no per-row email table
+                _ => null
+            };
+        }
+
+        // ── S49: SAP postal table via S49_Step3_LoadPremise SP ────────────────
+        private async Task<string?> FetchS49EmailAsync(
+            int rollId, string? premiseId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(premiseId)) return null;
+            try
+            {
+                var (_, contact) = await _s49Repo.LoadPremiseAsync(rollId, premiseId, ct);
+                return string.IsNullOrWhiteSpace(contact?.Email) ? null : contact.Email.Trim();
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "FetchS49EmailAsync failed for PremiseId={Id} — using cached email", premiseId);
+                return null;
+            }
+        }
+
+        // ── S51: Section51Table via S51_GetNoticeRow SP ───────────────────────
+        private async Task<string?> FetchS51EmailAsync(
+            int rollId, string? objectionNo, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(objectionNo)) return null;
+            try
+            {
+                var cs = _config.GetConnectionString("DefaultConnection")
+                         ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+                await using var cn = new SqlConnection(cs);
+                await using var cmd = new SqlCommand("dbo.S51_GetNoticeRow", cn)
+                {
+                    CommandType = CommandType.StoredProcedure,
+                    CommandTimeout = 30
+                };
+                cmd.Parameters.AddWithValue("@RollId", rollId);
+                cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
+
+                await cn.OpenAsync(ct);
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+                if (!await rd.ReadAsync(ct)) return null;
+
+                var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < rd.FieldCount; i++) colMap[rd.GetName(i)] = i;
+
+                return colMap.TryGetValue("RecipientEmail", out var o) && !rd.IsDBNull(o)
+                    ? rd.GetString(o)?.Trim()
+                    : null;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "FetchS51EmailAsync failed for ObjectionNo={No} — using cached email", objectionNo);
+                return null;
+            }
+        }
+
+        // ── S52: fetch current email from Appeal_Decision at send time ────────
+        // Using the same SP as the print service so the source of truth is always
+        // the Appeal_Decision table — not whatever was cached in the run log.
+        private async Task<string?> FetchS52EmailAsync(
+            int rollId,
+            string appealNo,
+            bool isReview,
+            string? appealType,
+            CancellationToken ct)
+        {
+            try
+            {
+                var cs = _config.GetConnectionString("DefaultConnection")
+                         ?? throw new InvalidOperationException("DefaultConnection not configured.");
+
+                var proc = isReview
+                    ? "dbo.S52_Preview_SelectReviewTop1"
+                    : "dbo.S52_Preview_SelectAppealTop1";
+
+                await using var cn = new SqlConnection(cs);
+                await using var cmd = cn.CreateCommand();
+                cmd.CommandText = proc;
+                cmd.CommandType = CommandType.StoredProcedure;
+                cmd.CommandTimeout = 30;
+                cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
+                cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50) { Value = appealNo.Trim() });
+                if (!string.IsNullOrWhiteSpace(appealType))
+                    cmd.Parameters.Add(new SqlParameter("@AppealType", SqlDbType.NVarChar, 50) { Value = appealType!.Trim() });
+
+                await cn.OpenAsync(ct);
+                await using var rd = await cmd.ExecuteReaderAsync(ct);
+
+                if (!await rd.ReadAsync(ct)) return null;
+
+                var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < rd.FieldCount; i++) colMap[rd.GetName(i)] = i;
+
+                return colMap.TryGetValue("Email", out var o) && !rd.IsDBNull(o)
+                    ? rd.GetString(o)
+                    : null;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex,
+                    "FetchS52EmailAsync failed for AppealNo={No} — using cached run log email",
+                    appealNo);
+                return null;   // fall back to log.RecipientEmail safely
+            }
         }
     }
 }

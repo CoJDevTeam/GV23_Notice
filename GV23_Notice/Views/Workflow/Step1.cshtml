@@ -14,7 +14,7 @@
     <div class="wf-spinner"></div>
     <div>
         <div class="wf-loader-text" id="wf-loader-text">Loading…</div>
-        <div class="wf-loader-sub"  id="wf-loader-sub">Please wait</div>
+        <div class="wf-loader-sub" id="wf-loader-sub">Please wait</div>
     </div>
 </div>
 
@@ -33,14 +33,14 @@
             </div>
         </div>
         <div class="s1-topbar-right">
-          @*   <a class="s1-topbar-link" asp-controller="Workflow" asp-action="SettingsLibrary">
+            @*   <a class="s1-topbar-link" asp-controller="Workflow" asp-action="SettingsLibrary">
                 ← Settings Library
             </a> *@
             @if (isEdit)
             {
                 <a class="s1-topbar-link s1-topbar-link-gold"
-                   asp-controller="Workflow" asp-action="Step1Summary"
-                   asp-route-settingsId="@Model.SettingsId">
+                       asp-controller="Workflow" asp-action="Step1Summary"
+                       asp-route-settingsId="@Model.SettingsId">
                     View Summary →
                 </a>
             }
@@ -150,8 +150,8 @@
                                     <option value="">— Select valuation period first —</option>
                                 </select>
                                 <input type="hidden" asp-for="FinancialYearStart" id="fyStart" />
-                                <input type="hidden" asp-for="FinancialYearEnd"   id="fyEnd"   />
-                                <input type="hidden" asp-for="FinancialYearsText" id="fyText"  />
+                                <input type="hidden" asp-for="FinancialYearEnd" id="fyEnd" />
+                                <input type="hidden" asp-for="FinancialYearsText" id="fyText" />
                                 <div class="s1-val-msg" id="err-FinancialYear">
                                     <span asp-validation-for="FinancialYearStart"></span>
                                 </div>
@@ -319,7 +319,7 @@
                                 <div class="s1-radio-group">
                                     <label class="s1-radio-opt">
                                         <input type="radio" name="S52SendMode" value="1"
-                                               @(Model.S52SendMode == S52SendMode.ReviewOnly ? "checked" : "")
+                                        @(Model.S52SendMode == S52SendMode.ReviewOnly ? "checked" : "")
                                                onchange="onS52ModeChange(this)" />
                                         <div class="s1-radio-body">
                                             <div class="s1-radio-title">Section 52 Review</div>
@@ -328,7 +328,7 @@
                                     </label>
                                     <label class="s1-radio-opt">
                                         <input type="radio" name="S52SendMode" value="2"
-                                               @(Model.S52SendMode == S52SendMode.AppealDecisionOnly ? "checked" : "")
+                                        @(Model.S52SendMode == S52SendMode.AppealDecisionOnly ? "checked" : "")
                                                onchange="onS52ModeChange(this)" />
                                         <div class="s1-radio-body">
                                             <div class="s1-radio-title">Appeal Decision</div>
@@ -337,7 +337,7 @@
                                     </label>
                                     <label class="s1-radio-opt">
                                         <input type="radio" name="S52SendMode" value="3"
-                                               @((int)Model.S52SendMode == 3 || (int)Model.S52SendMode == 0 ? "checked" : "")
+                                        @((int)Model.S52SendMode == 3 || (int)Model.S52SendMode == 0 ? "checked" : "")
                                                onchange="onS52ModeChange(this)" />
                                         <div class="s1-radio-body">
                                             <div class="s1-radio-title">Both</div>
@@ -469,7 +469,6 @@
 
             </div><!-- /s1-main -->
         </div><!-- /s1-layout -->
-
         <!-- ACTION BAR -->
         <div class="s1-action-bar">
             <button type="submit" class="s1-btn s1-btn-primary" id="wf-submit-btn">
@@ -485,18 +484,18 @@
             @if (isEdit)
             {
                 <a class="s1-btn s1-btn-secondary"
-                   asp-controller="Workflow" asp-action="Step1Summary"
-                   asp-route-settingsId="@Model.SettingsId">
+                       asp-controller="Workflow" asp-action="Step1Summary"
+                       asp-route-settingsId="@Model.SettingsId">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
                     </svg>
                     View Summary
                 </a>
             }
             <a class="s1-btn s1-btn-outline"
-               asp-controller="Workflow" asp-action="SettingsLibrary">
+                   asp-controller="Workflow" asp-action="SettingsLibrary">
                 ← Settings Library
             </a>
         </div>
@@ -505,293 +504,306 @@
 </div>
 
 @section Scripts {
-<partial name="_ValidationScriptsPartial" />
-<script>
-/* ── Toast ─────────────────────────────────────── */
-const WfToast = (() => {
-    const c = document.getElementById('wf-toast-container');
-    const ICONS  = {success:'✓',error:'✕',warning:'!',info:'i'};
-    const TITLES = {success:'Success',error:'Error',warning:'Warning',info:'Info'};
-    function show(type, msg, title) {
-        const t = document.createElement('div');
-        t.className = `wf-toast t-${type}`;
-        t.innerHTML = `<div class="wf-toast-main"><div class="wf-toast-stripe"></div>
-            <div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div>
-            <div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div>
-            <div class="wf-toast-msg">${msg}</div></div></div>
-            <button class="wf-toast-close" aria-label="Dismiss">×</button></div>
-            <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
-        c.appendChild(t);
-        requestAnimationFrame(() => requestAnimationFrame(() => {
-            t.classList.add('show');
-            const bar = t.querySelector('.wf-toast-bar');
-            bar.style.transition = 'transform 5000ms linear';
-            bar.style.transform  = 'scaleX(0)';
-        }));
-        const timer = setTimeout(() => dismiss(t), 5000);
-        t.querySelector('.wf-toast-close').onclick = () => { clearTimeout(timer); dismiss(t); };
-    }
-    function dismiss(t) {
-        t.classList.replace('show','hide');
-        t.addEventListener('transitionend', () => t.remove(), {once:true});
-    }
-    return {success:(m,t)=>show('success',m,t), error:(m,t)=>show('error',m,t),
-            warning:(m,t)=>show('warning',m,t), info:(m,t)=>show('info',m,t)};
-})();
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        /* ── Toast ─────────────────────────────────────── */
+        const WfToast = (() => {
+            const c = document.getElementById('wf-toast-container');
+            const ICONS  = {success:'✓',error:'✕',warning:'!',info:'i'};
+            const TITLES = {success:'Success',error:'Error',warning:'Warning',info:'Info'};
+            function show(type, msg, title) {
+                const t = document.createElement('div');
+                t.className = `wf-toast t-${type}`;
+                t.innerHTML = `<div class="wf-toast-main"><div class="wf-toast-stripe"></div>
+                    <div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div>
+                    <div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div>
+                    <div class="wf-toast-msg">${msg}</div></div></div>
+                    <button class="wf-toast-close" aria-label="Dismiss">×</button></div>
+                    <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
+                c.appendChild(t);
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                    t.classList.add('show');
+                    const bar = t.querySelector('.wf-toast-bar');
+                    bar.style.transition = 'transform 5000ms linear';
+                    bar.style.transform  = 'scaleX(0)';
+                }));
+                const timer = setTimeout(() => dismiss(t), 5000);
+                t.querySelector('.wf-toast-close').onclick = () => { clearTimeout(timer); dismiss(t); };
+            }
+            function dismiss(t) {
+                t.classList.replace('show','hide');
+                t.addEventListener('transitionend', () => t.remove(), {once:true});
+            }
+            return {success:(m,t)=>show('success',m,t), error:(m,t)=>show('error',m,t),
+                    warning:(m,t)=>show('warning',m,t), info:(m,t)=>show('info',m,t)};
+        })();
 
-/* ── Loader ─────────────────────────────────────── */
-const WfLoader = (() => {
-    const el=document.getElementById('wf-loader'),
-          tx=document.getElementById('wf-loader-text'),
-          sb=document.getElementById('wf-loader-sub');
-    return {
-        show:(m,h)=>{tx.textContent=m||'Loading…';sb.textContent=h||'Please wait';el.classList.add('active');},
-        hide:()=>el.classList.remove('active')
-    };
-})();
+        /* ── Loader ─────────────────────────────────────── */
+        const WfLoader = (() => {
+            const el=document.getElementById('wf-loader'),
+                  tx=document.getElementById('wf-loader-text'),
+                  sb=document.getElementById('wf-loader-sub');
+            return {
+                show:(m,h)=>{tx.textContent=m||'Loading…';sb.textContent=h||'Please wait';el.classList.add('active');},
+                hide:()=>el.classList.remove('active')
+            };
+        })();
 
-/* ── TempData toasts ────────────────────────────── */
-@if (TempData["Success"] != null)
-{
-    <text>document.addEventListener('DOMContentLoaded',()=>WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"","\\\""))"));</text>
-}
-@if (TempData["Error"] != null)
-{
-    <text>document.addEventListener('DOMContentLoaded',()=>WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"","\\\""))"));</text>
-}
+        /* ── TempData toasts ────────────────────────────── */
+        @if (TempData["Success"] != null)
+        {
+                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));</text>
+        }
+        @if (TempData["Error"] != null)
+        {
+                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));</text>
+        }
 
-/* ── Client validation ──────────────────────────── */
-const REQUIRED = [
-    { id:'field-ValuationPeriodCode', errId:'err-ValuationPeriodCode', label:'Valuation Period',
-      check:()=>{ const v=document.getElementById('valuationPeriod')?.value; return v&&v!==''; }},
-    { id:'field-FinancialYear', errId:'err-FinancialYear', label:'Financial Year',
-      check:()=>{ const v=document.getElementById('fyStart')?.value; return v&&v!==''; }},
-    { id:'field-RollId', errId:'err-RollId', label:'Roll',
-      check:()=>{ const v=document.getElementById('rollSelect')?.value; return v&&v!=='0'&&v!==''; }},
-    { id:'field-Notice', errId:'err-Notice', label:'Notice Type',
-      check:()=>{ const v=document.getElementById('noticeSelect')?.value; return v&&v!==''; }},
-];
+        /* ── Client validation ──────────────────────────── */
+        const REQUIRED = [
+            { id:'field-ValuationPeriodCode', errId:'err-ValuationPeriodCode', label:'Valuation Period',
+              check:()=>{ const v=document.getElementById('valuationPeriod')?.value; return v&&v!==''; }},
+            { id:'field-FinancialYear', errId:'err-FinancialYear', label:'Financial Year',
+              check:()=>{ const v=document.getElementById('fyStart')?.value; return v&&v!==''; }},
+            { id:'field-RollId', errId:'err-RollId', label:'Roll',
+              check:()=>{ const v=document.getElementById('rollSelect')?.value; return v&&v!=='0'&&v!==''; }},
+            { id:'field-Notice', errId:'err-Notice', label:'Notice Type',
+              check:()=>{ const v=document.getElementById('noticeSelect')?.value; return v&&v!==''; }},
+        ];
 
-function setFieldErr(fieldId, errId, msg) {
-    document.getElementById(fieldId)?.classList.toggle('s1-field-invalid', !!msg);
-    const el = document.getElementById(errId);
-    if (el) el.innerHTML = msg
-        ? `<span class="s1-err-text"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${msg}</span>`
-        : '';
-}
+        function setFieldErr(fieldId, errId, msg) {
+            document.getElementById(fieldId)?.classList.toggle('s1-field-invalid', !!msg);
+            const el = document.getElementById(errId);
+            if (el) el.innerHTML = msg
+                ? `<span class="s1-err-text"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${msg}</span>`
+                : '';
+        }
 
-function validateAll() {
-    const errs = [];
-    let hasPeriodErr = false;
-    for (const f of REQUIRED) {
-        if (!f.check()) { setFieldErr(f.id,f.errId,`${f.label} is required.`); errs.push(f.label); if(f.id.includes('Period')||f.id.includes('Financial')) hasPeriodErr=true; }
-        else setFieldErr(f.id,f.errId,null);
-    }
-    // Sidebar error indicator
-    document.getElementById('nav-period')?.classList.toggle('has-error', hasPeriodErr);
-    return errs;
-}
+        function validateAll() {
+            const errs = [];
+            let hasPeriodErr = false;
+            for (const f of REQUIRED) {
+                if (!f.check()) { setFieldErr(f.id,f.errId,`${f.label} is required.`); errs.push(f.label); if(f.id.includes('Period')||f.id.includes('Financial')) hasPeriodErr=true; }
+                else setFieldErr(f.id,f.errId,null);
+            }
+            // Sidebar error indicator
+            document.getElementById('nav-period')?.classList.toggle('has-error', hasPeriodErr);
+            return errs;
+        }
 
-document.addEventListener('DOMContentLoaded', () => {
-    ['valuationPeriod','financialYearSelect','rollSelect','noticeSelect'].forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.addEventListener('change', () => {
-            const map = {valuationPeriod:'field-ValuationPeriodCode,err-ValuationPeriodCode',
-                         financialYearSelect:'field-FinancialYear,err-FinancialYear',
-                         rollSelect:'field-RollId,err-RollId',
-                         noticeSelect:'field-Notice,err-Notice'};
-            const [fid,eid] = (map[id]||'').split(',');
-            if (fid) setFieldErr(fid, eid, null);
+        document.addEventListener('DOMContentLoaded', () => {
+            ['valuationPeriod','financialYearSelect','rollSelect','noticeSelect'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('change', () => {
+                    const map = {valuationPeriod:'field-ValuationPeriodCode,err-ValuationPeriodCode',
+                                 financialYearSelect:'field-FinancialYear,err-FinancialYear',
+                                 rollSelect:'field-RollId,err-RollId',
+                                 noticeSelect:'field-Notice,err-Notice'};
+                    const [fid,eid] = (map[id]||'').split(',');
+                    if (fid) setFieldErr(fid, eid, null);
+                });
+            });
+
+            document.getElementById('wf-form').addEventListener('submit', e => {
+                const errs = validateAll();
+                if (errs.length > 0) {
+                    e.preventDefault();
+                    const banner = document.getElementById('valBanner');
+                    const list   = document.getElementById('valBannerList');
+                    list.innerHTML = errs.map(x=>`<li>${x} is required</li>`).join('');
+                    banner.style.display = 'flex';
+                    banner.scrollIntoView({behavior:'smooth', block:'nearest'});
+                    WfToast.error('Fix the required fields before continuing.', 'Validation Failed');
+                    return;
+                }
+                document.getElementById('valBanner').style.display = 'none';
+                document.getElementById('wf-submit-btn').classList.add('loading');
+                WfLoader.show('Saving settings…', 'Submitting your notice configuration');
+            });
         });
-    });
 
-    document.getElementById('wf-form').addEventListener('submit', e => {
-        const errs = validateAll();
-        if (errs.length > 0) {
-            e.preventDefault();
-            const banner = document.getElementById('valBanner');
-            const list   = document.getElementById('valBannerList');
-            list.innerHTML = errs.map(x=>`<li>${x} is required</li>`).join('');
-            banner.style.display = 'flex';
-            banner.scrollIntoView({behavior:'smooth', block:'nearest'});
-            WfToast.error('Fix the required fields before continuing.', 'Validation Failed');
-            return;
+        function scrollTo(id) {
+            document.getElementById(id)?.scrollIntoView({behavior:'smooth', block:'start'});
         }
-        document.getElementById('valBanner').style.display = 'none';
-        document.getElementById('wf-submit-btn').classList.add('loading');
-        WfLoader.show('Saving settings…', 'Submitting your notice configuration');
-    });
-});
 
-function scrollTo(id) {
-    document.getElementById(id)?.scrollIntoView({behavior:'smooth', block:'start'});
-}
+        /* ── Notice blocks ──────────────────────────────── */
+        const NOTICE_DESCS = {
+            S49:'Section 49 — objection window, inspection dates and signature',
+            S51:'Section 51 — objection decision, evidence close date',
+            S52:'Section 52 — appeal notices, backlog processing by date range',
+            S53:'Section 53 — appeal period, close date with weekend / holiday adjustment',
+            DJ: 'Dear Johnny — only letter date required',
+            IN: 'Invalid notice — objection or omission sub-type',
+            S78:'Section 78 — review period and extraction settings',
+        };
+        const NOTICE_BADGE = {S49:'s1-badge-s49',S51:'s1-badge-s51',S52:'s1-badge-s52',S53:'s1-badge-s53',DJ:'s1-badge-dj',IN:'s1-badge-in',S78:'s1-badge-s78'};
 
-/* ── Notice blocks ──────────────────────────────── */
-const NOTICE_DESCS = {
-    S49:'Section 49 — objection window, inspection dates and signature',
-    S51:'Section 51 — objection decision, evidence close date',
-    S52:'Section 52 — appeal notices, backlog processing by date range',
-    S53:'Section 53 — appeal period, close date with weekend / holiday adjustment',
-    DJ: 'Dear Johnny — only letter date required',
-    IN: 'Invalid notice — objection or omission sub-type',
-    S78:'Section 78 — review period and extraction settings',
-};
-const NOTICE_BADGE = {S49:'s1-badge-s49',S51:'s1-badge-s51',S52:'s1-badge-s52',S53:'s1-badge-s53',DJ:'s1-badge-dj',IN:'s1-badge-in',S78:'s1-badge-s78'};
+        function toIsoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+        function getTodayIso(){ return toIsoDate(new Date()); }
 
-function toIsoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-function getTodayIso(){ return toIsoDate(new Date()); }
+        function showBlocks() {
+            const notice = document.getElementById('noticeSelect')?.value || 'S49';
+            const mode   = document.getElementById('modeSelect')?.value   || '2';
 
-function showBlocks() {
-    const notice = document.getElementById('noticeSelect')?.value || 'S49';
-    const mode   = document.getElementById('modeSelect')?.value   || '2';
+            document.getElementById('noticeHidden').value = notice;
 
-    document.getElementById('noticeHidden').value = notice;
+            // Badge + subtitle
+            const badge = document.getElementById('noticeBadge');
+            if (badge) { badge.textContent = notice; badge.className = `s1-notice-badge ${NOTICE_BADGE[notice]||''}`; }
+            const sub = document.getElementById('noticeSpecificSub');
+            if (sub && NOTICE_DESCS[notice]) sub.textContent = NOTICE_DESCS[notice];
 
-    // Badge + subtitle
-    const badge = document.getElementById('noticeBadge');
-    if (badge) { badge.textContent = notice; badge.className = `s1-notice-badge ${NOTICE_BADGE[notice]||''}`; }
-    const sub = document.getElementById('noticeSpecificSub');
-    if (sub && NOTICE_DESCS[notice]) sub.textContent = NOTICE_DESCS[notice];
+            // Sidebar notice label
+            const sbl = document.getElementById('sb-notice-label');
+            const sbd = document.getElementById('sb-notice-desc');
+            if (sbl) sbl.textContent = notice;
+            if (sbd) sbd.textContent = NOTICE_DESCS[notice]||'';
 
-    // Sidebar notice label
-    const sbl = document.getElementById('sb-notice-label');
-    const sbd = document.getElementById('sb-notice-desc');
-    if (sbl) sbl.textContent = notice;
-    if (sbd) sbd.textContent = NOTICE_DESCS[notice]||'';
+            // Hide all
+            document.querySelectorAll('.notice-block').forEach(b => b.style.display='none');
 
-    // Hide all
-    document.querySelectorAll('.notice-block').forEach(b => b.style.display='none');
+            const map = {S49:'blockS49',S51:'blockS51',S52:'blockS52',S53:'blockS53',S78:'blockS78'};
+            if (map[notice]) document.getElementById(map[notice]).style.display = 'block';
+            if (notice==='DJ'||notice==='IN') {
+                document.getElementById('blockDJIN').style.display = 'block';
+                const hdr  = document.getElementById('djinHeader');
+                const note = document.getElementById('djinNote');
+                const inSub = document.getElementById('blockINSubType');
+                if (notice==='IN') {
+                    if(hdr)  { hdr.textContent='Invalid Notice'; hdr.className='s1-notice-header s1-notice-in'; }
+                    if(note) note.style.display='none';
+                    if(inSub) inSub.style.display='block';
+                } else {
+                    if(hdr)  { hdr.textContent='Dear Johnny Notice'; hdr.className='s1-notice-header s1-notice-dj'; }
+                    if(note) note.style.display='block';
+                    if(inSub) inSub.style.display='none';
+                }
+            }
 
-    const map = {S49:'blockS49',S51:'blockS51',S52:'blockS52',S53:'blockS53',S78:'blockS78'};
-    if (map[notice]) document.getElementById(map[notice]).style.display = 'block';
-    if (notice==='DJ'||notice==='IN') {
-        document.getElementById('blockDJIN').style.display = 'block';
-        const hdr  = document.getElementById('djinHeader');
-        const note = document.getElementById('djinNote');
-        const inSub = document.getElementById('blockINSubType');
-        if (notice==='IN') {
-            if(hdr)  { hdr.textContent='Invalid Notice'; hdr.className='s1-notice-header s1-notice-in'; }
-            if(note) note.style.display='none';
-            if(inSub) inSub.style.display='block';
-        } else {
-            if(hdr)  { hdr.textContent='Dear Johnny Notice'; hdr.className='s1-notice-header s1-notice-dj'; }
-            if(note) note.style.display='block';
-            if(inSub) inSub.style.display='none';
+            const chk   = document.getElementById('overrideS53');
+            const ovBlk = document.getElementById('blockS53Override');
+            const ap    = document.getElementById('appealCloseDate');
+            if (chk) {
+                if(ovBlk) ovBlk.style.display = chk.checked?'block':'none';
+                if(ap)    ap.readOnly = !chk.checked;
+            }
+
+            const letter  = document.getElementById('letterDate')?.value;
+            const ovLetter = document.getElementById('letterOverrideBlock');
+            if (ovLetter)
+                ovLetter.style.display = (notice==='S49'&&letter&&letter!==getTodayIso()) ? 'block':'none';
         }
-    }
 
-    const chk   = document.getElementById('overrideS53');
-    const ovBlk = document.getElementById('blockS53Override');
-    const ap    = document.getElementById('appealCloseDate');
-    if (chk) {
-        if(ovBlk) ovBlk.style.display = chk.checked?'block':'none';
-        if(ap)    ap.readOnly = !chk.checked;
-    }
-
-    const letter  = document.getElementById('letterDate')?.value;
-    const ovLetter = document.getElementById('letterOverrideBlock');
-    if (ovLetter)
-        ovLetter.style.display = (notice==='S49'&&letter&&letter!==getTodayIso()) ? 'block':'none';
-}
-
-function calcS51EvidenceClose() {
-    if (document.getElementById('noticeSelect')?.value!=='S51') return;
-    const letter = document.getElementById('letterDate')?.value;
-    const out    = document.getElementById('evidenceCloseDate');
-    if (!letter||!out) return;
-    const dt = new Date(letter+'T00:00:00');
-    dt.setDate(dt.getDate()+30);
-    out.value = toIsoDate(dt);
-}
-
-async function calcS53AppealClose() {
-    if (document.getElementById('noticeSelect')?.value!=='S53') return;
-    if (document.getElementById('overrideS53')?.checked) return;
-    const rollId = document.getElementById('rollSelect')?.value;
-    const letter = document.getElementById('letterDate')?.value;
-    const out    = document.getElementById('appealCloseDate');
-    if (!rollId||rollId==='0'||!letter||!out) return;
-    WfLoader.show('Calculating appeal date…','Checking weekends and public holidays');
-    try {
-        const res = await fetch(`/Workflow/CalcS53AppealCloseDate?rollId=${encodeURIComponent(rollId)}&letterDate=${encodeURIComponent(letter)}`,
-            {headers:{'Accept':'application/json'}});
-        if (!res.ok) { WfToast.warning('Could not calculate appeal close date.','Calculation Failed'); return; }
-        const data = await res.json();
-        if (data?.appealCloseDate) { out.value=data.appealCloseDate; WfToast.info(`Appeal close date set to ${data.appealCloseDate}.`,'Date Calculated'); }
-    } catch { WfToast.error('Network error.','Error'); }
-    finally  { WfLoader.hide(); }
-}
-
-async function runAll() {
-    showBlocks(); calcS51EvidenceClose(); await calcS53AppealClose();
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('noticeSelect')?.addEventListener('change', runAll);
-    document.getElementById('modeSelect')?.addEventListener('change', runAll);
-    document.getElementById('rollSelect')?.addEventListener('change', runAll);
-    document.getElementById('letterDate')?.addEventListener('change', runAll);
-    document.getElementById('overrideS53')?.addEventListener('change', runAll);
-    runAll();
-});
-
-/* ── Financial year cascade ─────────────────────── */
-async function onValuationPeriodChange() {
-    const fySelect = document.getElementById('financialYearSelect');
-    const code = document.getElementById('valuationPeriod')?.value;
-    fySelect.innerHTML = '<option value="">— Select —</option>';
-    fySelect.disabled  = true;
-    document.getElementById('fyStart').value = '';
-    document.getElementById('fyEnd').value   = '';
-    document.getElementById('fyText').value  = '';
-    setFieldErr('field-FinancialYear','err-FinancialYear',null);
-    if (!code) return;
-    WfLoader.show('Loading financial years…','Fetching available periods');
-    try {
-        const res  = await fetch(`/Workflow/FinancialYears?valuationPeriodCode=${encodeURIComponent(code)}`);
-        if (!res.ok) { WfToast.error('Failed to load financial years.','Load Error'); return; }
-        const list = await res.json();
-        const savedStart = document.getElementById('fyStart').value;
-        for (const item of list) {
-            const opt = document.createElement('option');
-            opt.value = `${item.start}|${item.end}|${item.text}`;
-            opt.textContent = item.text;
-            if (savedStart && item.start && item.start.startsWith(savedStart.substring(0,4))) opt.selected = true;
-            fySelect.appendChild(opt);
+        function calcS51EvidenceClose() {
+            if (document.getElementById('noticeSelect')?.value!=='S51') return;
+            const letter = document.getElementById('letterDate')?.value;
+            const out    = document.getElementById('evidenceCloseDate');
+            if (!letter||!out) return;
+            const dt = new Date(letter+'T00:00:00');
+            dt.setDate(dt.getDate()+30);
+            out.value = toIsoDate(dt);
         }
-        fySelect.disabled = false;
-        if (list.length) { WfToast.success(`${list.length} year(s) loaded.`,'Loaded'); fySelect.dispatchEvent(new Event('change')); }
-    } catch { WfToast.error('Network error.','Error'); }
-    finally  { WfLoader.hide(); }
-}
 
-function onFinancialYearChange() {
-    const v = document.getElementById('financialYearSelect')?.value;
-    if (!v) return;
-    const [start,end,text] = v.split('|');
-    document.getElementById('fyStart').value = start;
-    document.getElementById('fyEnd').value   = end;
-    document.getElementById('fyText').value  = text;
-    setFieldErr('field-FinancialYear','err-FinancialYear',null);
-}
+        async function calcS53AppealClose() {
+            if (document.getElementById('noticeSelect')?.value!=='S53') return;
+            if (document.getElementById('overrideS53')?.checked) return;
+            const rollId = document.getElementById('rollSelect')?.value;
+            const letter = document.getElementById('letterDate')?.value;
+            const out    = document.getElementById('appealCloseDate');
+            if (!rollId||rollId==='0'||!letter||!out) return;
+            WfLoader.show('Calculating appeal date…','Checking weekends and public holidays');
+            try {
+                const res = await fetch(`/Workflow/CalcS53AppealCloseDate?rollId=${encodeURIComponent(rollId)}&letterDate=${encodeURIComponent(letter)}`,
+                    {headers:{'Accept':'application/json'}});
+                if (!res.ok) { WfToast.warning('Could not calculate appeal close date.','Calculation Failed'); return; }
+                const data = await res.json();
+                if (data?.appealCloseDate) { out.value=data.appealCloseDate; WfToast.info(`Appeal close date set to ${data.appealCloseDate}.`,'Date Calculated'); }
+            } catch { WfToast.error('Network error.','Error'); }
+            finally  { WfLoader.hide(); }
+        }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    const vp = document.getElementById('valuationPeriod')?.value;
-    if (vp) await onValuationPeriodChange();
-});
+        async function runAll() {
+            showBlocks(); calcS51EvidenceClose(); await calcS53AppealClose();
+        }
 
-/* ── S52 radio ──────────────────────────────────── */
-function onS52ModeChange(radio) {
-    if (radio) document.getElementById('s52SendModeHidden').value = radio.value;
-    const val = parseInt(document.getElementById('s52SendModeHidden').value||'3');
-    document.getElementById('blockS52Review').style.display = (val===1||val===3)?'block':'none';
-    document.getElementById('blockS52Appeal').style.display = (val===2||val===3)?'block':'none';
-    document.querySelectorAll('input[name="S52SendMode"]').forEach(r => r.checked=parseInt(r.value)===val);
-}
-document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('blockS52')?.style.display!=='none') onS52ModeChange(null);
-});
-</script>
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('noticeSelect')?.addEventListener('change', runAll);
+            document.getElementById('modeSelect')?.addEventListener('change', runAll);
+            document.getElementById('rollSelect')?.addEventListener('change', runAll);
+            document.getElementById('letterDate')?.addEventListener('change', runAll);
+            document.getElementById('overrideS53')?.addEventListener('change', runAll);
+            runAll();
+        });
+
+        /* ── Financial year cascade ─────────────────────── */
+        async function onValuationPeriodChange() {
+            const fySelect = document.getElementById('financialYearSelect');
+            const code = document.getElementById('valuationPeriod')?.value;
+            fySelect.innerHTML = '<option value="">— Select —</option>';
+            fySelect.disabled  = true;
+            document.getElementById('fyStart').value = '';
+            document.getElementById('fyEnd').value   = '';
+            document.getElementById('fyText').value  = '';
+            setFieldErr('field-FinancialYear','err-FinancialYear',null);
+            if (!code) return;
+            WfLoader.show('Loading financial years…','Fetching available periods');
+            try {
+                const res  = await fetch(`/Workflow/FinancialYears?valuationPeriodCode=${encodeURIComponent(code)}`);
+                if (!res.ok) { WfToast.error('Failed to load financial years.','Load Error'); return; }
+                const list = await res.json();
+                const savedStart = document.getElementById('fyStart').value;
+                for (const item of list) {
+                    const opt = document.createElement('option');
+                    opt.value = `${item.start}|${item.end}|${item.text}`;
+                    opt.textContent = item.text;
+                    if (savedStart && item.start && item.start.startsWith(savedStart.substring(0,4))) opt.selected = true;
+                    fySelect.appendChild(opt);
+                }
+                fySelect.disabled = false;
+                if (list.length) { WfToast.success(`${list.length} year(s) loaded.`,'Loaded'); fySelect.dispatchEvent(new Event('change')); }
+            } catch { WfToast.error('Network error.','Error'); }
+            finally  { WfLoader.hide(); }
+        }
+
+        function onFinancialYearChange() {
+            const v = document.getElementById('financialYearSelect')?.value;
+            if (!v) return;
+            const [start,end,text] = v.split('|');
+            document.getElementById('fyStart').value = start;
+            document.getElementById('fyEnd').value   = end;
+            document.getElementById('fyText').value  = text;
+            setFieldErr('field-FinancialYear','err-FinancialYear',null);
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            const vp = document.getElementById('valuationPeriod')?.value;
+            if (vp) await onValuationPeriodChange();
+        });
+
+        /* ── S52 radio ──────────────────────────────────── */
+        function onS52ModeChange(radio) {
+            if (radio) document.getElementById('s52SendModeHidden').value = radio.value;
+            const val = parseInt(document.getElementById('s52SendModeHidden').value||'3');
+
+            const reviewBlock  = document.getElementById('blockS52Review');
+            const appealBlock  = document.getElementById('blockS52Appeal');
+            const showReview   = (val===1||val===3);
+            const showAppeal   = (val===2||val===3);
+
+            reviewBlock.style.display = showReview ? 'block' : 'none';
+            appealBlock.style.display = showAppeal ? 'block' : 'none';
+
+            // Disable inputs in hidden blocks so they are NOT included in the form POST.
+            // Without this, the hidden block's empty value posts first and overwrites the
+            // visible block's value — causing BulkFromDate to be null on the server.
+            reviewBlock.querySelectorAll('input').forEach(i => i.disabled = !showReview);
+            appealBlock.querySelectorAll('input').forEach(i => i.disabled = !showAppeal);
+
+            document.querySelectorAll('input[name="S52SendMode"]').forEach(r => r.checked=parseInt(r.value)===val);
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            if (document.getElementById('blockS52')?.style.display!=='none') onS52ModeChange(null);
+        });
+    </script>
 }

@@ -48,7 +48,15 @@ namespace GV23_Notice.Services.Step3
                         .FirstOrDefaultAsync(x => x.Id == settingsId, ct)
                     ?? throw new InvalidOperationException($"NoticeSettings {settingsId} not found.");
 
-            if (!s.BulkFromDate.HasValue || !s.BulkToDate.HasValue) return 0;
+            if (!s.BulkFromDate.HasValue || !s.BulkToDate.HasValue)
+            {
+                _log.LogWarning("S52 CountRange: BulkFromDate/BulkToDate null for SettingsId={Id}", settingsId);
+                return 0;
+            }
+
+            _log.LogInformation(
+                "S52 CountRange: RollId={RollId} From={From:yyyy-MM-dd} To={To:yyyy-MM-dd} IsReview={Rev}",
+                s.RollId, s.BulkFromDate.Value, s.BulkToDate.Value, isReview);
 
             await using var cn = new SqlConnection(ConnStr);
             await cn.OpenAsync(ct);
@@ -62,7 +70,9 @@ namespace GV23_Notice.Services.Step3
             cmd.Parameters.Add(new SqlParameter("@IsReview", SqlDbType.Bit) { Value = isReview ? 1 : 0 });
 
             var val = await cmd.ExecuteScalarAsync(ct);
-            return val is int i ? i : (val != null ? Convert.ToInt32(val) : 0);
+            var count = val is int i ? i : (val != null ? Convert.ToInt32(val) : 0);
+            _log.LogInformation("S52 CountRange result: {Count}", count);
+            return count;
         }
 
         // ── Print Range ─────────────────────────────────────────────────────
@@ -253,16 +263,17 @@ namespace GV23_Notice.Services.Step3
                     Erf = Str("ERF"),
                     Ptn = Str("PTN"),
                     Re = Str("RE"),
-                    AppMarketValue = Dec("App_Market_Value"),
-                    AppMarketValue2 = Dec("App_Market_Value2"),
-                    AppMarketValue3 = Dec("App_Market_Value3"),
+                    // Store raw string — "R 4,330,000" format preserved for PDF rendering
+                    AppMarketValue = Str("App_Market_Value"),
+                    AppMarketValue2 = Str("App_Market_Value2"),
+                    AppMarketValue3 = Str("App_Market_Value3"),
                     AppExtent = Dec("App_Extent"),
                     AppExtent2 = Dec("App_Extent2"),
                     AppExtent3 = Dec("App_Extent3"),
                     AppCategory = Str("App_Category"),
                     AppCategory2 = Str("App_Category2"),
                     AppCategory3 = Str("App_Category3"),
-                      // "Prop Owner", "Third_Party", "Representative"
+                    // "Prop Owner", "Third_Party", "Representative"
                 });
             }
 
@@ -289,9 +300,9 @@ namespace GV23_Notice.Services.Step3
                 ERF = r.Erf,
                 PTN = r.Ptn,
                 RE = r.Re,
-                App_Market_Value = N(r.AppMarketValue),
-                App_Market_Value2 = N(r.AppMarketValue2),
-                App_Market_Value3 = N(r.AppMarketValue3),
+                App_Market_Value = r.AppMarketValue ?? "",
+                App_Market_Value2 = r.AppMarketValue2 ?? "",
+                App_Market_Value3 = r.AppMarketValue3 ?? "",
                 App_Extent = N(r.AppExtent),
                 App_Extent2 = N(r.AppExtent2),
                 App_Extent3 = N(r.AppExtent3),
@@ -328,9 +339,11 @@ namespace GV23_Notice.Services.Step3
             public string? Erf { get; set; }
             public string? Ptn { get; set; }
             public string? Re { get; set; }
-            public decimal? AppMarketValue { get; set; }
-            public decimal? AppMarketValue2 { get; set; }
-            public decimal? AppMarketValue3 { get; set; }
+            // Market value stored as string — DB has "R 4,330,000" format
+            // which can't be parsed as decimal; store raw to preserve formatting in PDF
+            public string? AppMarketValue { get; set; }
+            public string? AppMarketValue2 { get; set; }
+            public string? AppMarketValue3 { get; set; }
             public decimal? AppExtent { get; set; }
             public decimal? AppExtent2 { get; set; }
             public decimal? AppExtent3 { get; set; }
