@@ -191,12 +191,14 @@ namespace GV23_Notice.Services.Email
                 : "Good Day,");
             mid.Append("</p>");
 
+            mid.Append($"<p><strong>Please ignore the previous Municipal Valuer's Decision Notice for {H(req.RollName)}. This notice supersedes any previous notice for the Municipal Valuer's Decision for {H(req.RollName)}.</strong></p>");
+           
             mid.Append("<p>");
-            mid.Append("Notice is hereby given in terms of section 53(1) of the Municipal Property Rates Act No.6 of 2004 as amended, ");
+              mid.Append("Notice is hereby given in terms of section 53(1) of the Municipal Property Rates Act No.6 of 2004 as amended, ");
             mid.Append("that the objection against the entry of the above property in or omitted from the ");
             mid.Append(H(req.RollName));
             mid.Append(" has been considered by the Municipal Valuer. After reviewing the objection and reasons provided therein, ");
-            mid.Append("together with the available market information, attached is the Municipal Valuer&apos;s decision for the property described.");
+            mid.Append("together with the available market information, attached is the Municipal Valuer's decision for the property described.");
             mid.Append("</p>");
 
             mid.Append(PropertyBlock(req, includeRefs: true));

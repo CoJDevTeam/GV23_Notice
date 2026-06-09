@@ -202,7 +202,9 @@ namespace GV23_Notice.Services.Email
                     }
 
                     await SaveEmlAsync(emlPath, recipientEmail, subject, bodyHtml, log.PdfPath!, ct,
-                        string.IsNullOrWhiteSpace(_emailOpt.CcAddress) ? null : _emailOpt.CcAddress.Trim());
+                        ccAddress: string.IsNullOrWhiteSpace(_emailOpt.CcAddress) ? null : _emailOpt.CcAddress.Trim(),
+                        fromAddress: string.IsNullOrWhiteSpace(_emailOpt.FromAddress) ? null : _emailOpt.FromAddress.Trim(),
+                        fromName: string.IsNullOrWhiteSpace(_emailOpt.FromName) ? null : _emailOpt.FromName.Trim());
                     log.EmlPath = emlPath;
 
                     // Send via SMTP
@@ -210,21 +212,28 @@ namespace GV23_Notice.Services.Email
                     // The .eml is already saved — still mark as Sent so the batch can proceed
                     try
                     {
-                        // For S52 use the fresh address we just fetched
-                        // Use the fresh recipientEmail for every notice type
                         var logForSend = new NoticeRunLog
                         {
                             RecipientEmail = recipientEmail,
                             PdfPath = log.PdfPath
                         };
                         await SendOneEmailAsync(subject, bodyHtml, logForSend, ct);
+                        _log.LogInformation("✓ SMTP sent to {Email} ({Notice})", recipientEmail, settings.Notice);
                     }
                     catch (SmtpFailedRecipientException smtpEx)
                     {
+                        // Relay rejected — external domain not allowed by corporate SMTP.
+                        // .eml copy is saved; mark Sent so batch continues.
+                        // ACTION: Ask IT to allow external relay, or switch to an external SMTP provider.
                         _log.LogWarning(
-                            "SMTP relay rejected for {Email} (non-accepted domain) — .eml saved, marking Sent. Error: {Msg}",
-                            log.RecipientEmail, smtpEx.Message);
-                        // Do not rethrow — .eml archive exists, record is valid
+                            "⚠ SMTP relay REJECTED {Email} ({Notice}) — NOT delivered, .eml saved. Error: {Msg}",
+                            recipientEmail, settings.Notice, smtpEx.Message);
+                    }
+                    catch (SmtpException smtpEx)
+                    {
+                        _log.LogWarning(
+                            "⚠ SMTP error for {Email} ({Notice}) — .eml saved. Error: {Msg}",
+                            recipientEmail, settings.Notice, smtpEx.Message);
                     }
 
                     log.Status = RunStatus.Sent;
@@ -319,7 +328,9 @@ namespace GV23_Notice.Services.Email
             string bodyHtml,
             string pdfPath,
             CancellationToken ct,
-            string? ccAddress = null)
+            string? ccAddress = null,
+            string? fromAddress = null,
+            string? fromName = null)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(emlPath)!);
 
@@ -331,6 +342,10 @@ namespace GV23_Notice.Services.Email
             var now = DateTime.Now.ToString("ddd, dd MMM yyyy HH:mm:ss zzz");
 
             var sb = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(fromName) && !string.IsNullOrWhiteSpace(fromAddress))
+                sb.AppendLine($"From: {fromName} <{fromAddress}>");
+            else if (!string.IsNullOrWhiteSpace(fromAddress))
+                sb.AppendLine($"From: {fromAddress}");
             sb.AppendLine($"Date: {now}");
             sb.AppendLine($"To: {toEmail}");
             if (!string.IsNullOrWhiteSpace(ccAddress))
