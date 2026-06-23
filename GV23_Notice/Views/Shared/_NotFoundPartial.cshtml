@@ -1,0 +1,157 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep2Vm
+
+<style>
+    .nf-wrap {
+        min-height: 420px;
+        background: #fff;
+        border: 1px solid #e6e6e6;
+        border-radius: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 34px;
+        font-family: 'Poppins', sans-serif;
+        box-shadow: 0 4px 18px rgba(0,0,0,.06);
+    }
+
+    .nf-card {
+        max-width: 680px;
+        width: 100%;
+        text-align: center;
+    }
+
+    .nf-icon {
+        width: 76px;
+        height: 76px;
+        border-radius: 22px;
+        background: #fff5d6;
+        color: #b88200;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 34px;
+        margin-bottom: 18px;
+        border: 1px solid #f2d98a;
+    }
+
+    .nf-title {
+        font-size: 1.18rem;
+        font-weight: 900;
+        color: #111;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+    }
+
+    .nf-msg {
+        font-size: .86rem;
+        color: #555;
+        line-height: 1.7;
+        margin-bottom: 18px;
+    }
+
+    .nf-box {
+        background: #f8f8f8;
+        border: 1px solid #e5e5e5;
+        border-radius: 12px;
+        padding: 13px 15px;
+        text-align: left;
+        font-size: .76rem;
+        color: #555;
+        line-height: 1.65;
+        margin-bottom: 18px;
+    }
+
+        .nf-box strong {
+            color: #111;
+        }
+
+    .nf-actions {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .nf-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        padding: 10px 15px;
+        font-size: .76rem;
+        font-weight: 800;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+    }
+
+    .nf-btn-dark {
+        background: #111;
+        color: #fff;
+    }
+
+    .nf-btn-gold {
+        background: #e6b000;
+        color: #111;
+    }
+
+    .nf-btn-light {
+        background: #f3f3f3;
+        color: #333;
+        border: 1px solid #ddd;
+    }
+</style>
+
+<div class="nf-wrap">
+    <div class="nf-card">
+        <div class="nf-icon">🔎</div>
+
+        <div class="nf-title">
+            @(Model.PreviewNotFoundTitle ?? "Preview Not Found")
+        </div>
+
+        <div class="nf-msg">
+            @(Model.PreviewNotFoundMessage ?? "No preview record was found for this notice setup.")
+        </div>
+
+        <div class="nf-box">
+            <div><strong>Roll:</strong> @Model.RollShortCode — @Model.RollName</div>
+            <div><strong>Notice:</strong> @Model.Notice</div>
+            <div><strong>Version:</strong> V @Model.Version</div>
+            <div><strong>Mode:</strong> @Model.SelectedMode</div>
+            <div><strong>Variant:</strong> @Model.SelectedVariant</div>
+
+            @if (!string.IsNullOrWhiteSpace(Model.PreviewNotFoundDetails))
+            {
+                <div style="margin-top:8px;">
+                    <strong>Reason:</strong> @Model.PreviewNotFoundDetails
+                </div>
+            }
+        </div>
+
+        <div class="nf-actions">
+            <a class="nf-btn nf-btn-dark"
+                   asp-controller="Workflow"
+                   asp-action="Step1"
+                   asp-route-settingsId="@Model.SettingsId">
+                Edit Step 1
+            </a>
+
+            <a class="nf-btn nf-btn-gold"
+                   asp-controller="Workflow"
+                   asp-action="SettingsLibrary">
+                Settings Library
+            </a>
+
+            <a class="nf-btn nf-btn-light"
+                   asp-controller="Workflow"
+                   asp-action="Step2"
+                   asp-route-settingsId="@Model.SettingsId"
+                   asp-route-variant="@Model.SelectedVariant"
+                   asp-route-mode="single">
+                Try Single Preview
+            </a>
+        </div>
+    </div>
+</div>

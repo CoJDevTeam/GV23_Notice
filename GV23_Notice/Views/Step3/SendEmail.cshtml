@@ -1,6 +1,7 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3SendEmailVm
 @using System.Globalization
 @using GV23_Notice.Domain.Workflow
+@inject GV23_Notice.Services.QA.INoticeQaService QaService
 
 @{
     ViewData["Title"] = "Step 3 — Send Notices";
@@ -8,6 +9,8 @@
     var totalPrinted = Model.TotalPrinted;
     var totalSent = Model.TotalSent;
     var cap = Model.MaxEmailsPerSend;
+    var qaApproved = await QaService.IsQaApprovedAsync(Model.WorkflowKey, Context.RequestAborted);
+    var qaRequired = await QaService.RequiresQaAsync(Model.WorkflowKey, Context.RequestAborted);
 }
 
 <link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
@@ -918,6 +921,15 @@
         <div class="se-chip"><span class="se-chip-lbl">Ready</span><span class="se-chip-val">@totalPrinted</span></div>
         <div class="se-chip"><span class="se-chip-lbl">Sent</span><span class="se-chip-val">@totalSent</span></div>
         <div class="se-chip"><span class="se-chip-lbl">Cap</span><span class="se-chip-val">@cap</span></div>
+        @if (qaRequired)
+        {
+            <div class="se-chip">
+                <span class="se-chip-lbl">QA</span>
+                <span class="se-chip-val @(qaApproved ? "" : "gold")">
+                    @(qaApproved ? "Approved" : "Required")
+                </span>
+            </div>
+        }
     </div>
 
     <div class="se-banner">
@@ -932,9 +944,32 @@
             <div class="se-bc-arrow">›</div>
             <div class="se-bc done"><div class="se-bc-dot">✓</div>Print</div>
             <div class="se-bc-arrow">›</div>
-            <div class="se-bc active"><div class="se-bc-dot">6</div>Send</div>
+
+            @if (qaRequired)
+            {
+                if (qaApproved)
+                {
+                    <div class="se-bc done"><div class="se-bc-dot">✓</div>QA</div>
+                }
+                else
+                {
+                    <div class="se-bc active"><div class="se-bc-dot">6</div>QA</div>
+                }
+
+                <div class="se-bc-arrow">›</div>
+                <div class="se-bc @(qaApproved ? "active" : "")">
+                    <div class="se-bc-dot">@(qaApproved ? "7" : "–")</div>Send
+                </div>
+            }
+            else
+            {
+                <div class="se-bc active"><div class="se-bc-dot">6</div>Send</div>
+            }
         </div>
-        <div class="se-step-lbl">Send Notices to Clients &nbsp;·&nbsp; <span>Step 3 / Step 3</span></div>
+        <div class="se-step-lbl">
+            Send Notices to Clients &nbsp;·&nbsp;
+            <span>@(qaRequired ? "QA Gate Active" : "Step 3 / Step 3")</span>
+        </div>
     </div>
 
     <div class="se-body">
@@ -946,6 +981,26 @@
             @if (TempData["Error"] != null)
             {
                 <div class="se-alert se-alert-err">@TempData["Error"]</div>
+            }
+            @if (qaRequired && !qaApproved)
+            {
+                <div class="se-alert se-alert-err">
+                    <span>🔒</span>
+                    <span>
+                        QA must be approved before notices can be sent.
+                        <a href="@Url.Action("QA", "Step3", new { key })"
+                               style="color:#8a1a1a;text-decoration:underline;font-weight:800;">
+                            Open QA
+                        </a>
+                    </span>
+                </div>
+            }
+            else if (qaRequired && qaApproved)
+            {
+                <div class="se-alert se-alert-ok">
+                    <span>✅</span>
+                    <span>QA approved. Notices can now be sent.</span>
+                </div>
             }
             <a href="@Url.Action("Print", "Step3", new { key })" class="se-back">← Back to Print Dashboard</a>
             <div class="se-stats">
@@ -959,6 +1014,41 @@
                 <div class="se-cap-bar-wrap"><div class="se-cap-bar-fill" id="capBar" style="width:0%"></div></div>
                 <div class="se-cap-note" id="capNote">Select batches on the right to send</div>
             </div>
+            @if (qaRequired)
+            {
+                <div class="se-card">
+                    <div class="se-card-header">
+                        <span>🧾</span>
+                        <h4>QA Approval Gate</h4>
+                    </div>
+                    <div class="se-card-body">
+                        <div class="se-fl">QA Status</div>
+
+                        @if (qaApproved)
+                        {
+                            <div class="se-fv" style="color:#1a8a4a;">Approved</div>
+                            <div style="font-size:.7rem;color:#777;line-height:1.6;">
+                                This workflow passed QA. Email sending is unlocked.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="se-fv" style="color:#8a1a1a;">Required Before Sending</div>
+                            <div style="font-size:.7rem;color:#777;line-height:1.6;">
+                                You must approve the 5-per-property-type QA sample before sending client notices.
+                            </div>
+
+                            <div style="margin-top:12px;">
+                                <a href="@Url.Action("QA", "Step3", new { key })"
+                                       class="btn-send"
+                                       style="text-decoration:none;box-shadow:none;padding:9px 14px;">
+                                    Open QA Book
+                                </a>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
             <div class="se-card">
                 <div class="se-card-header"><span>📋</span><h4>Workflow Summary</h4></div>
                 <div class="se-card-body">
@@ -1021,7 +1111,13 @@
                         <table class="se-table">
                             <thead>
                                 <tr>
-                                    <th class="col-chk"><input type="checkbox" class="se-chk" id="chkAll" onchange="toggleAll(this)" /></th>
+                                    <th class="col-chk">
+                                        <input type="checkbox"
+                                               class="se-chk"
+                                               id="chkAll"
+                                               onchange="toggleAll(this)"
+                                        @(qaRequired && !qaApproved ? "disabled" : "") />
+                                    </th>
                                     <th>Batch Code</th>
                                     <th>Notice</th>
                                     <th>Batch Date</th>
@@ -1044,9 +1140,14 @@
                                         <td class="col-chk" onclick="event.stopPropagation()">
                                             @if (!isSent && hasReady)
                                             {
-                                                <input type="checkbox" class="se-chk batch-chk" id="chk_@b.BatchId"
-                                                       name="batchIds" value="@b.BatchId"
-                                                       data-count="@b.PrintedCount" onchange="onChkChange()" />
+                                                <input type="checkbox"
+                                                       class="se-chk batch-chk"
+                                                       id="chk_@b.BatchId"
+                                                       name="batchIds"
+                                                       value="@b.BatchId"
+                                                       data-count="@b.PrintedCount"
+                                                       onchange="onChkChange()"
+                                                @(qaRequired && !qaApproved ? "disabled" : "") />
                                             }
                                         </td>
                                         <td>
@@ -1088,9 +1189,12 @@
 
                                                 <span class="se-badge-warn">No email (@b.NoEmailCount)</span>
                                             }
+                                            else if (b.PrintedCount > 0 && qaRequired && !qaApproved)
+                                            {
+                                                <span class="se-badge-warn">🔒 QA Required</span>
+                                            }
                                             else if (b.PrintedCount > 0)
                                             {
-
                                                 <span class="se-badge-info">Ready</span>
                                             }
                                             else
@@ -1114,8 +1218,12 @@
                     <div class="se-sel-info" id="capWarn" style="display:none;color:#e74c3c;font-weight:700;">
                         ⚠ Over @cap limit
                     </div>
-                    <button type="button" class="btn-send" id="sendBtn" disabled onclick="submitSendForm()">
-                        📧 Send Notices
+                    <button type="button"
+                            class="btn-send"
+                            id="sendBtn"
+                            disabled
+                            onclick="submitSendForm()">
+                        @(qaRequired && !qaApproved ? "🔒 QA Required" : "📧 Send Notices")
                     </button>
                 </div>
             </form>
@@ -1174,26 +1282,44 @@
 @section Scripts {
     <script>
         let _selCount=0,_selRecords=0,_pollTimer=null,_sendBatchIds=[];
-        const CAP=@cap,WF_KEY='@key';
+          const CAP=@cap,
+        WF_KEY='@key',
+        QA_REQUIRED=@(qaRequired.ToString().ToLowerInvariant()),
+        QA_APPROVED=@(qaApproved.ToString().ToLowerInvariant());
 
         function onChkChange(){
             _selCount=_selRecords=0;
             document.querySelectorAll('.batch-chk:checked').forEach(c=>{_selCount++;_selRecords+=parseInt(c.dataset.count||'0');});
             updateCapUI();
         }
-        function toggleRow(id){
+               function toggleRow(id){
+            if(QA_REQUIRED && !QA_APPROVED){
+                alert('QA must be approved before selecting batches to send.');
+                return;
+            }
+
             const c=document.getElementById('chk_'+id);
-            if(!c)return;
+            if(!c || c.disabled)return;
+
             c.checked=!c.checked;
             onChkChange();
-            document.getElementById('row_'+id).classList.toggle('row-selected',c.checked);
+
+            const row=document.getElementById('row_'+id);
+            if(row) row.classList.toggle('row-selected',c.checked);
         }
-        function toggleAll(m){
-            document.querySelectorAll('.batch-chk').forEach(c=>{
+                function toggleAll(m){
+            if(QA_REQUIRED && !QA_APPROVED){
+                alert('QA must be approved before selecting batches to send.');
+                m.checked=false;
+                return;
+            }
+
+            document.querySelectorAll('.batch-chk:not(:disabled)').forEach(c=>{
                 c.checked=m.checked;
                 const r=document.getElementById('row_'+c.value);
                 if(r)r.classList.toggle('row-selected',m.checked);
             });
+
             onChkChange();
         }
         function updateCapUI(){
@@ -1207,14 +1333,32 @@
             note.textContent=over?'Over limit by '+(_selRecords-CAP).toLocaleString()+' — deselect some':(_selCount>0?_selRecords.toLocaleString()+' notices will be sent':'Select batches on the right');
             note.className='se-cap-note'+(over?' warn':'');
             document.getElementById('capWarn').style.display=over?'':'none';
-            document.getElementById('sendBtn').disabled=over||_selCount===0;
+                    const qaBlocked = QA_REQUIRED && !QA_APPROVED;
+        const sendBtn = document.getElementById('sendBtn');
+
+        sendBtn.disabled = qaBlocked || over || _selCount === 0;
+
+        if (qaBlocked) {
+            sendBtn.innerHTML = '🔒 QA Required';
+        } else {
+            sendBtn.innerHTML = '📧 Send Notices';
         }
-        function submitSendForm(){
+        }
+                function submitSendForm(){
+            if(QA_REQUIRED && !QA_APPROVED){
+                alert('QA must be approved before notices can be sent.');
+                window.location.href='@Url.Action("QA", "Step3", new { key })';
+                return;
+            }
+
             _sendBatchIds=Array.from(document.querySelectorAll('.batch-chk:checked')).map(c=>parseInt(c.value));
+
             if(!_sendBatchIds.length)return;
+
             const btn=document.getElementById('sendBtn');
             btn.disabled=true;
             btn.innerHTML='<span class="se-spin"></span> Sending…';
+
             showEmailOverlay();
             document.getElementById('sendForm').submit();
         }
@@ -1269,7 +1413,21 @@
             document.getElementById('epOverlay').classList.remove('active');
             window.location.reload();
         }
+                document.addEventListener('DOMContentLoaded', function(){
+            if(QA_REQUIRED && !QA_APPROVED){
+                const btn=document.getElementById('sendBtn');
+                if(btn){
+                    btn.disabled=true;
+                    btn.innerHTML='🔒 QA Required';
+                }
 
+                const note=document.getElementById('capNote');
+                if(note){
+                    note.textContent='QA approval is required before sending notices.';
+                    note.className='se-cap-note warn';
+                }
+            }
+        });
         // ── Page loader dismiss ───────────────────────────────────
         (function () {
             function dismiss() {

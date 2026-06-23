@@ -2,6 +2,7 @@
 using GV23_Notice.Domain.Email;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Services.QA;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Storage;
 using Microsoft.Data.SqlClient;
@@ -24,7 +25,7 @@ namespace GV23_Notice.Services.Email
         private readonly IS49RollRepository _s49Repo;
         private readonly IConfiguration _config;
         private readonly ILogger<NoticeBatchEmailService> _log;
-
+        private readonly INoticeQaService _qa;
         private const int HardMaxEmails = 2000;
 
         public NoticeBatchEmailService(
@@ -34,7 +35,7 @@ namespace GV23_Notice.Services.Email
             INoticePathService paths,
             IS49RollRepository s49Repo,
             IConfiguration config,
-            ILogger<NoticeBatchEmailService> log)
+            ILogger<NoticeBatchEmailService> log,INoticeQaService qa)
         {
             _db = db;
             _emailOpt = emailOpt.Value;
@@ -43,6 +44,7 @@ namespace GV23_Notice.Services.Email
             _s49Repo = s49Repo;
             _config = config;
             _log = log;
+            _qa = qa;
         }
 
         // ── Count ready-to-send records ──────────────────────────────────────
@@ -68,6 +70,14 @@ namespace GV23_Notice.Services.Email
             var ids = batchIds.Distinct().ToList();
             if (ids.Count == 0)
                 return new SendBatchEmailResult { ErrorMessage = "No batches selected." };
+
+            if (!await _qa.IsQaApprovedAsync(workflowKey, ct))
+            {
+                return new SendBatchEmailResult
+                {
+                    ErrorMessage = "QA must be approved before notices can be sent."
+                };
+            }
 
             var settings = await _db.NoticeSettings.AsNoTracking()
                                .FirstOrDefaultAsync(s => s.ApprovalKey == workflowKey

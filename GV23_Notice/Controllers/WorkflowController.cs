@@ -1,5 +1,6 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Email;
+using GV23_Notice.Domain.Rolls;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Helper;
@@ -16,6 +17,7 @@ using GV23_Notice.Services.SnapShotStep2;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -717,13 +719,12 @@ namespace GV23_Notice.Controllers
 
         [HttpGet("Step2")]
         public async Task<IActionResult> Step2(
-     int settingsId,
-     string? variant,
-     string? mode,
-     string? appealNo,
-     CancellationToken ct)
+         int settingsId,
+         string? variant,
+         string? mode,
+         string? appealNo,
+         CancellationToken ct)
         {
-            // 1) Snapshot (approved step1)
             var s = await _settings.GetByIdAsync(settingsId, ct);
             if (s is null) return NotFound();
 
@@ -733,60 +734,100 @@ namespace GV23_Notice.Controllers
                 return RedirectToAction(nameof(Step1), new { settingsId });
             }
 
-            // 2) Parse UI -> enums
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+
+            if (roll is null)
+            {
+                return View(BuildStep2NotFoundVm(
+                    s,
+                    null,
+                    variant,
+                    mode,
+                    appealNo,
+                    "Roll Not Found",
+                    "The roll linked to this notice setting could not be found.",
+                    $"RollId {s.RollId} does not exist in RollRegistry."
+                ));
+            }
+
             var v = PreviewVariantParser.Parse(variant);
             var m = PreviewModeParser.Parse(mode);
 
-            // For S52: default variant based on SendMode when not explicitly chosen
             if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(variant))
             {
                 variant = s.S52SendMode == S52SendMode.ReviewOnly ? "S52Review" : "S52Appeal";
                 v = PreviewVariantParser.Parse(variant);
             }
 
-            // 3) Build preview — S52 uses date-range lookup (no appealNo needed from URL)
-            var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
+            NoticePreviewResult result;
 
-            // 4) Save pdf to temp and get URL for iframe
+            try
+            {
+                result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
+            }
+            catch (InvalidOperationException ex) when (IsPreviewNotFoundError(ex))
+            {
+                var vm = BuildStep2NotFoundVm(
+                    s,
+                    roll,
+                    variant,
+                    mode,
+                    appealNo,
+                    "Preview Not Found",
+                    "No sample record was found for this preview. The setup is saved, but there is no matching data to display.",
+                    ex.Message
+                );
+
+                return View(vm);
+            }
+            catch (SqlException ex) when (ex.Message.Contains("no data", StringComparison.OrdinalIgnoreCase))
+            {
+                var vm = BuildStep2NotFoundVm(
+                    s,
+                    roll,
+                    variant,
+                    mode,
+                    appealNo,
+                    "Preview Not Found",
+                    "No preview data was returned from the database.",
+                    ex.Message
+                );
+
+                return View(vm);
+            }
+
             var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
                 ? $"Preview_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
                 : result.PdfFileName;
 
             var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
 
-            // 5) Roll info (for headers)
-            var roll = await _db.RollRegistry.AsNoTracking()
-                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
-
-            // 6) Build VM
-            var vm = new WorkflowStep2Vm
+            var normalVm = new WorkflowStep2Vm
             {
                 SettingsId = settingsId,
                 RollId = s.RollId,
-                RollShortCode = roll?.ShortCode ?? result.RollShortCode ?? "",
-                RollName = roll?.Name ?? result.RollName ?? "",
+                RollShortCode = roll.ShortCode ?? result.RollShortCode ?? "",
+                RollName = roll.Name ?? result.RollName ?? "",
 
                 Notice = s.Notice,
                 Mode = s.Mode,
                 Version = s.Version,
 
-                // recipient
                 RecipientName = result.RecipientName ?? "",
                 RecipientEmail = result.RecipientEmail ?? "",
 
-                // email preview
                 EmailSubject = result.EmailSubject ?? "",
                 EmailBodyHtml = result.EmailBodyHtml ?? "",
 
-                // pdf preview
                 PdfUrl = pdfUrl,
+                PdfPreviewUrl = pdfUrl,
 
-                // keep UI selection
-                SelectedVariant = (variant ?? "Default"),
-                SelectedMode = (mode ?? "single"),
-                AppealNo = appealNo, // ✅ add to vm if you have it
+                SelectedVariant = variant ?? "Default",
+                SelectedMode = mode ?? "single",
+                AppealNo = appealNo ?? "",
 
-                // ✅ snapshot fields from settings (Step1)
                 LetterDate = s.LetterDate,
                 PortalUrl = s.PortalUrl,
                 EnquiriesLine = s.EnquiriesLine,
@@ -803,12 +844,90 @@ namespace GV23_Notice.Controllers
                 S52SendMode = s.S52SendMode,
 
                 BatchDate = s.BatchDate,
-                AppealCloseDate = s.AppealCloseDate
+                AppealCloseDate = s.AppealCloseDate,
+
+                SignaturePath = s.SignaturePath,
+                IsConfirmed = s.IsConfirmed,
+                IsApproved = s.IsApproved,
+
+                PreviewFound = true
             };
 
-            return View(vm);
+            return View(normalVm);
         }
 
+        private static bool IsPreviewNotFoundError(Exception ex)
+        {
+            var msg = ex.Message ?? "";
+
+            return msg.Contains("no data", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("no roll row found", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("no roll rows found", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("no pending", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                || msg.Contains("missing PREMISEID", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static WorkflowStep2Vm BuildStep2NotFoundVm(
+            NoticeSettings s,
+            RollRegistry? roll,
+            string? variant,
+            string? mode,
+            string? appealNo,
+            string title,
+            string message,
+            string details)
+        {
+            return new WorkflowStep2Vm
+            {
+                SettingsId = s.Id,
+                RollId = s.RollId,
+                RollShortCode = roll?.ShortCode ?? "",
+                RollName = roll?.Name ?? "",
+
+                Notice = s.Notice,
+                Mode = s.Mode,
+                Version = s.Version,
+
+                LetterDate = s.LetterDate,
+                PortalUrl = s.PortalUrl,
+                EnquiriesLine = s.EnquiriesLine,
+                FinancialYearsText = s.FinancialYearsText,
+
+                ObjectionStartDate = s.ObjectionStartDate,
+                ObjectionEndDate = s.ObjectionEndDate,
+                ExtensionDate = s.ExtensionDate,
+
+                EvidenceCloseDate = s.EvidenceCloseDate,
+
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate,
+                S52SendMode = s.S52SendMode,
+
+                BatchDate = s.BatchDate,
+                AppealCloseDate = s.AppealCloseDate,
+
+                SignaturePath = s.SignaturePath,
+                IsConfirmed = s.IsConfirmed,
+                IsApproved = s.IsApproved,
+
+                SelectedVariant = variant ?? "Default",
+                SelectedMode = mode ?? "single",
+                AppealNo = appealNo ?? "",
+
+                RecipientName = "No preview record",
+                RecipientEmail = "",
+                EmailSubject = "",
+                EmailBodyHtml = "",
+                PdfUrl = "",
+                PdfPreviewUrl = "",
+
+                PreviewFound = false,
+                PreviewNotFoundTitle = title,
+                PreviewNotFoundMessage = message,
+                PreviewNotFoundDetails = details
+            };
+        }
         public static class PreviewVariantParser
         {
             public static PreviewVariant Parse(string? variant)

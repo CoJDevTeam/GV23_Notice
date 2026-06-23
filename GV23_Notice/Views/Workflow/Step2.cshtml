@@ -175,7 +175,14 @@
 
     <!-- Body grid -->
     <div class="s2-body">
-
+        @if (!Model.PreviewFound)
+{
+    <div style="grid-column:1 / -1;">
+        @await Html.PartialAsync("_NotFoundPartial", Model)
+    </div>
+}
+else
+{
         <!-- PDF preview -->
         <div class="s2-card">
             <div class="s2-card-head">
@@ -183,12 +190,22 @@
                     <div class="s2-card-accent"></div>
                     PDF Preview
                 </div>
-                <a href="@Model.PdfUrl" target="_blank" style="font-size:12px;font-weight:700;color:var(--s2-gold-d);text-decoration:none;">
-                    ↗ Open in New Tab
-                </a>
+                    @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+                    {
+                        <a href="@Model.PdfUrl" target="_blank" style="font-size:12px;font-weight:700;color:var(--s2-gold-d);text-decoration:none;">
+                            ↗ Open in New Tab
+                        </a>
+                    }
             </div>
             <div class="s2-card-body">
-                <iframe class="s2-pdf-iframe" src="@Model.PdfUrl" title="Notice PDF Preview"></iframe>
+                    @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
+                    {
+                        <iframe class="s2-pdf-iframe" src="@Model.PdfUrl" title="Notice PDF Preview"></iframe>
+                    }
+                    else
+                    {
+                        @await Html.PartialAsync("_NotFoundPartial", Model)
+                    }
             </div>
             <div class="s2-card-foot">
                 <strong>Single</strong> = Standard notice · <strong>Email Multi</strong> = Recipient holds multiple properties · <strong>Split PDF</strong> = Rows split by category
@@ -337,6 +354,7 @@
             </div>
 
         </div><!-- /side panel -->
+        }
     </div><!-- /s2-body -->
 
 </div><!-- /s2-root -->

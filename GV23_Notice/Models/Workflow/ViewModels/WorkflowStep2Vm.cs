@@ -89,5 +89,13 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public bool IsConfirmed { get; set; }
         public bool IsApproved { get; set; }
 
+        public bool PreviewFound { get; set; } = true;
+
+        public string? PreviewNotFoundTitle { get; set; }
+
+        public string? PreviewNotFoundMessage { get; set; }
+
+        public string? PreviewNotFoundDetails { get; set; }
+
     }
 }

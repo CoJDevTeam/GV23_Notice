@@ -50,7 +50,8 @@ namespace GV23_Notice.Data
         public DbSet<DjBatchPickRow> DjBatchPickRows => Set<DjBatchPickRow>();
         public DbSet<InBatchPickRow> InBatchPickRows => Set<InBatchPickRow>();
 
-
+        public DbSet<NoticeQaRun> NoticeQaRuns => Set<NoticeQaRun>();
+        public DbSet<NoticeQaItem> NoticeQaItems => Set<NoticeQaItem>();
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -242,6 +243,68 @@ namespace GV23_Notice.Data
                 b.Property(x => x.HolidayDate).HasConversion(
                     d => d.ToDateTime(TimeOnly.MinValue),
                     d => DateOnly.FromDateTime(d));
+            });
+            modelBuilder.Entity<NoticeQaRun>(b =>
+            {
+                b.ToTable("NoticeQaRuns");
+
+                b.HasKey(x => x.Id);
+
+                b.Property(x => x.Notice).HasConversion<int>();
+
+                b.Property(x => x.Status)
+                    .HasMaxLength(50);
+
+                b.Property(x => x.CreatedBy)
+                    .HasMaxLength(256);
+
+                b.Property(x => x.ApprovedBy)
+                    .HasMaxLength(256);
+
+                b.Property(x => x.Comment)
+                    .HasMaxLength(2000);
+
+                b.HasIndex(x => new { x.WorkflowKey, x.Status });
+                b.HasIndex(x => x.NoticeSettingsId);
+
+                b.HasOne(x => x.NoticeSettings)
+                    .WithMany()
+                    .HasForeignKey(x => x.NoticeSettingsId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<NoticeQaItem>(b =>
+            {
+                b.ToTable("NoticeQaItems");
+
+                b.HasKey(x => x.Id);
+
+                b.Property(x => x.ObjectionNo).HasMaxLength(80);
+                b.Property(x => x.PremiseId).HasMaxLength(80);
+                b.Property(x => x.PropertyType).HasMaxLength(30);
+                b.Property(x => x.PropertyDesc).HasMaxLength(512);
+                b.Property(x => x.PdfPath).HasMaxLength(260);
+
+                b.Property(x => x.NewCategoryMvd).HasMaxLength(200);
+                b.Property(x => x.New2CategoryMvd).HasMaxLength(200);
+                b.Property(x => x.New3CategoryMvd).HasMaxLength(200);
+                b.Property(x => x.ExpectedCategory).HasMaxLength(200);
+
+                b.Property(x => x.QaStatus).HasMaxLength(50);
+                b.Property(x => x.QaComment).HasMaxLength(2000);
+
+                b.HasIndex(x => new { x.NoticeQaRunId, x.PropertyType });
+                b.HasIndex(x => x.NoticeRunLogId);
+
+                b.HasOne(x => x.NoticeQaRun)
+                    .WithMany(x => x.Items)
+                    .HasForeignKey(x => x.NoticeQaRunId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                b.HasOne(x => x.NoticeRunLog)
+                    .WithMany()
+                    .HasForeignKey(x => x.NoticeRunLogId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

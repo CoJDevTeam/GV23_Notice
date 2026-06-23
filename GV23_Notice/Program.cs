@@ -15,6 +15,7 @@ using GV23_Notice.Services.Notices.Section53;
 using GV23_Notice.Services.Notices.Section78;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
+using GV23_Notice.Services.QA;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Search;
 using GV23_Notice.Services.Security;
@@ -51,7 +52,7 @@ builder.Services.Configure<UserManagementAuthOptions>(builder.Configuration.GetS
 builder.Services.Configure<AccessControlOptions>(builder.Configuration.GetSection("AccessControl"));
 builder.Services.Configure<Section53PdfOptions>(builder.Configuration.GetSection("Section53Pdf"));
 builder.Services.Configure<EmailTemplateOptions>(builder.Configuration.GetSection("Email"));
-builder.Services.Configure<GV23_Notice.Domain.Email.EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 
 // ----------------------------------------------------
 // MVC / Razor
@@ -95,12 +96,12 @@ builder.Services.AddScoped<IS53AppealCloseDateCalculator, S53AppealCloseDateCalc
 // Preview / Step 2
 // ----------------------------------------------------
 builder.Services.AddScoped<INoticePreviewService, NoticePreviewService>();
-builder.Services.AddScoped<GV23_Notice.Services.Preview.ITempFileStore, GV23_Notice.Services.Preview.TempFileStore>();
-builder.Services.AddScoped<GV23_Notice.Services.Preview.IPreviewDbDataService, GV23_Notice.Services.Preview.PreviewDbDataService>();
+builder.Services.AddScoped<ITempFileStore, TempFileStore>();
+builder.Services.AddScoped<IPreviewDbDataService, PreviewDbDataService>();
 builder.Services.AddScoped<INoticeSettingsAuditService, NoticeSettingsAuditService>();
 builder.Services.AddScoped<IStep2WorkflowAuditService, Step2WorkflowAuditService>();
 builder.Services.AddScoped<INoticeStep2SnapshotService, NoticeStep2SnapshotService>();
-
+builder.Services.AddScoped<INoticeQaService,NoticeQaService>();
 // ----------------------------------------------------
 // PDF Builders / Notice Services
 // ----------------------------------------------------
@@ -113,7 +114,7 @@ builder.Services.AddScoped<IInvalidNoticePdfService, InvalidNoticePdfService>();
 builder.Services.AddScoped<ISection78PdfBuilder, Section78PdfBuilder>();
 
 // Also register concrete Section52PdfService if some services inject the concrete type
-builder.Services.AddScoped<GV23_Notice.Services.Notices.Section52.Section52PdfService>();
+builder.Services.AddScoped<Section52PdfService>();
 
 // ----------------------------------------------------
 // Search / Audit / Workflow
@@ -130,20 +131,15 @@ builder.Services.AddScoped<IStep3BatchService, Step3BatchService>();
 builder.Services.AddScoped<IStep3BatchQueryService, Step3BatchQueryService>();
 builder.Services.AddScoped<IStep3Step1Service, Step3Step1Service>();
 builder.Services.AddScoped<IStep3WorkflowSelectService, Step3WorkflowSelectService>();
-builder.Services.AddScoped<GV23_Notice.Services.Step3.IStep3PrintQueryService,
-                           GV23_Notice.Services.Step3.Step3PrintQueryService>();
-builder.Services.AddScoped<GV23_Notice.Services.Step3.IS52RangePrintService,
-                           GV23_Notice.Services.Step3.S52RangePrintService>();
+builder.Services.AddScoped<IStep3PrintQueryService,Step3PrintQueryService>();
+builder.Services.AddScoped<IS52RangePrintService,S52RangePrintService>();
 
 // ----------------------------------------------------
 // Email
 // ----------------------------------------------------
-builder.Services.AddScoped<GV23_Notice.Services.Email.INoticeEmailTemplateService,
-                          GV23_Notice.Services.Email.NoticeEmailTemplateService>();
-builder.Services.AddScoped<GV23_Notice.Services.Email.INoticeEmailArchiveService,
-                          GV23_Notice.Services.Email.NoticeEmailArchiveService>();
-builder.Services.AddScoped<GV23_Notice.Services.Email.IWorkflowApprovalEmailService,
-                          GV23_Notice.Services.Email.WorkflowApprovalEmailService>();
+builder.Services.AddScoped<INoticeEmailTemplateService,NoticeEmailTemplateService>();
+builder.Services.AddScoped<INoticeEmailArchiveService,NoticeEmailArchiveService>();
+builder.Services.AddScoped<IWorkflowApprovalEmailService,WorkflowApprovalEmailService>();
 builder.Services.AddScoped<INoticeBatchEmailService, NoticeBatchEmailService>();
 
 // ----------------------------------------------------

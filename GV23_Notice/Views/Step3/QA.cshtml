@@ -1,0 +1,376 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.NoticeQaVm
+
+@{
+    ViewData["Title"] = "Step 3 — QA Printed Notices";
+    var key = Model.WorkflowKey;
+}
+
+<link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
+
+<style>
+    .qa-wrap {
+        padding: 24px;
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .qa-head {
+        background: #111;
+        color: #fff;
+        padding: 18px 22px;
+        border-radius: 14px;
+        margin-bottom: 18px;
+        border-bottom: 4px solid #e6b000;
+    }
+
+    .qa-head h1 {
+        margin: 0;
+        font-size: 1.1rem;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .qa-meta {
+        margin-top: 8px;
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        font-size: .78rem;
+        color: #ddd;
+    }
+
+    .qa-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        margin-bottom: 18px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,.06);
+    }
+
+    .qa-card-head {
+        background: #f8f8f8;
+        padding: 14px 18px;
+        border-bottom: 1px solid #ddd;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .qa-card-head strong {
+        font-size: .95rem;
+    }
+
+    .qa-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .78rem;
+    }
+
+    .qa-table th {
+        background: #fafafa;
+        text-align: left;
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-size: .68rem;
+    }
+
+    .qa-table td {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        vertical-align: top;
+    }
+
+    .qa-pill {
+        display: inline-block;
+        padding: 4px 9px;
+        border-radius: 999px;
+        font-size: .68rem;
+        font-weight: 700;
+    }
+
+    .qa-pass {
+        background: #e8f7ee;
+        color: #137a3b;
+    }
+
+    .qa-fail {
+        background: #fdeaea;
+        color: #b42318;
+    }
+
+    .qa-pending {
+        background: #fff6d8;
+        color: #8a6500;
+    }
+
+    .qa-actions {
+        display: flex;
+        gap: 10px;
+        margin: 18px 0;
+        flex-wrap: wrap;
+    }
+
+    .qa-btn {
+        border: none;
+        border-radius: 10px;
+        padding: 10px 16px;
+        font-size: .78rem;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .qa-btn-main {
+        background: #111;
+        color: #fff;
+    }
+
+    .qa-btn-gold {
+        background: #e6b000;
+        color: #111;
+    }
+
+    .qa-btn-green {
+        background: #15803d;
+        color: #fff;
+    }
+
+    .qa-btn-disabled {
+        background: #ccc;
+        color: #666;
+        cursor: not-allowed;
+    }
+
+    .qa-alert {
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        font-size: .8rem;
+        font-weight: 600;
+    }
+
+    .qa-alert-error {
+        background: #fdeaea;
+        color: #b42318;
+    }
+
+    .qa-alert-success {
+        background: #e8f7ee;
+        color: #137a3b;
+    }
+
+    .qa-alert-info {
+        background: #eef4ff;
+        color: #1d4ed8;
+    }
+
+    .qa-comment {
+        width: 100%;
+        min-height: 80px;
+        border-radius: 10px;
+        border: 1px solid #ccc;
+        padding: 10px;
+        font-size: .82rem;
+    }
+</style>
+
+<div class="qa-wrap">
+
+    <div class="qa-head">
+        <h1>QA Printed Notices</h1>
+        <div class="qa-meta">
+            <span><b>Roll:</b> @Model.RollShortCode</span>
+            <span><b>Notice:</b> @Model.Notice</span>
+            <span><b>Version:</b> @Model.VersionText</span>
+            <span><b>Printed:</b> @Model.TotalPrinted</span>
+            <span><b>QA Status:</b> @Model.QaStatus</span>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="qa-alert qa-alert-success">@TempData["Success"]</div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="qa-alert qa-alert-error">@TempData["Error"]</div>
+    }
+
+    @if (Model.IsApproved)
+    {
+        <div class="qa-alert qa-alert-success">
+            QA has been approved. You can now send notices.
+        </div>
+    }
+    else if (Model.QaRunId == null)
+    {
+        <div class="qa-alert qa-alert-info">
+            Create the QA sample before sending emails. The system will select up to 5 records per Property Type.
+        </div>
+    }
+    else if (Model.FailedItems > 0)
+    {
+        <div class="qa-alert qa-alert-error">
+            QA has @Model.FailedItems failed item(s). Fix captured values before approval.
+        </div>
+    }
+
+    <div class="qa-actions">
+        @if (Model.QaRunId == null || Model.QaStatus == "Open")
+        {
+            <form asp-action="CreateQA" asp-controller="Step3" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="key" value="@key" />
+                <button type="submit" class="qa-btn qa-btn-main">
+                    Create / Recreate QA Sample
+                </button>
+            </form>
+        }
+
+        <a class="qa-btn qa-btn-gold"
+               asp-action="Print"
+               asp-controller="Step3"
+               asp-route-key="@key">
+            Back to Print
+        </a>
+
+        <a class="qa-btn qa-btn-green"
+               asp-action="SendEmail"
+               asp-controller="Step3"
+               asp-route-key="@key">
+            Go to Send Notice
+        </a>
+    </div>
+
+    @if (Model.Groups.Any())
+    {
+        foreach (var group in Model.Groups)
+        {
+            <div class="qa-card">
+                <div class="qa-card-head">
+                    <strong>Property Type: @group.PropertyType</strong>
+                    <span>@group.Items.Count item(s)</span>
+                </div>
+
+                <table class="qa-table">
+                    <thead>
+                        <tr>
+                            <th>Objection No</th>
+                            <th>Premise ID</th>
+                            <th>Property</th>
+                            <th>Expected</th>
+                            <th>New Category MVD</th>
+                            <th>New2</th>
+                            <th>New3</th>
+                            <th>Status</th>
+                            <th>PDF</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in group.Items)
+                        {
+                            <tr>
+                                <td>@item.ObjectionNo</td>
+                                <td>@item.PremiseId</td>
+                                <td>@item.PropertyDesc</td>
+                                <td>
+                                    <strong>@item.ExpectedCategory</strong>
+
+                                    @if (item.IsMulti)
+                                    {
+                                        <div style="margin-top:4px;color:#b42318;font-weight:700;">
+                                            Multi must show Multipurpose.
+                                        </div>
+                                    }
+                                </td>
+                                <td>@item.NewCategoryMvd</td>
+                                <td>@item.New2CategoryMvd</td>
+                                <td>@item.New3CategoryMvd</td>
+                                <td>
+                                    @if (item.IsCategoryValid)
+                                    {
+                                        <span class="qa-pill qa-pass">Passed</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="qa-pill qa-fail">Failed</span>
+                                    }
+
+                                    @if (!string.IsNullOrWhiteSpace(item.QaComment))
+                                    {
+                                        <div style="margin-top:5px;color:#777;">
+                                            @item.QaComment
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(item.PdfPath))
+                                    {
+                                        <a class="qa-btn qa-btn-main"
+                                               target="_blank"
+                                               asp-action="OpenPdf"
+                                               asp-controller="Step3"
+                                               asp-route-runLogId="@item.NoticeRunLogId">
+                                            View PDF
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="qa-pill qa-fail">No PDF</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <div class="qa-card">
+            <div class="qa-card-head">
+                <strong>Approve QA</strong>
+            </div>
+
+            <div style="padding:16px;">
+                <form asp-action="ApproveQA" asp-controller="Step3" method="post">
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden" name="key" value="@key" />
+                    <input type="hidden" name="qaRunId" value="@Model.QaRunId" />
+
+                    <label style="font-size:.8rem;font-weight:700;">QA Comment</label>
+                    <textarea class="qa-comment" name="comment"
+                              placeholder="Optional QA comment..."></textarea>
+
+                    <div style="margin-top:12px;">
+                        @if (Model.CanApprove)
+                        {
+                            <button type="submit" class="qa-btn qa-btn-green">
+                                Approve QA
+                            </button>
+                        }
+                        else if (Model.IsApproved)
+                        {
+                            <button type="button" class="qa-btn qa-btn-disabled" disabled>
+                                QA Already Approved
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="qa-btn qa-btn-disabled" disabled>
+                                Cannot Approve Until Failed Items Are Fixed
+                            </button>
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+</div>

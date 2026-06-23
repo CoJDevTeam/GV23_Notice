@@ -1,5 +1,6 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Services.Email;
+using GV23_Notice.Services.QA;
 using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.Storage;
 using Microsoft.AspNetCore.Authorization;
@@ -21,6 +22,7 @@ namespace GV23_Notice.Controllers
         private readonly INoticeBatchEmailService _emailSvc;
         private readonly AppDbContext _db;
         private readonly IS52RangePrintService _s52RangePrint;
+        private readonly INoticeQaService _qa;
         public Step3Controller(
             IStep3Step1Service svc,
             IStep3WorkflowSelectService select,
@@ -30,7 +32,7 @@ namespace GV23_Notice.Controllers
             IStep3PrintQueryService printQuery,
             INoticeBatchEmailService emailSvc,
             IS52RangePrintService s52RangePrint,
-            AppDbContext db)
+            AppDbContext db, INoticeQaService qa)
         {
             _svc = svc;
             _select = select;
@@ -41,6 +43,7 @@ namespace GV23_Notice.Controllers
             _emailSvc = emailSvc;
             _db = db;
             _s52RangePrint = s52RangePrint;
+            _qa = qa;
         }
 
         // ── Index ───────────────────────────────────────────────────────────
@@ -123,18 +126,21 @@ namespace GV23_Notice.Controllers
             return View(vm);
         }
 
-        // POST: Print a single batch
         [HttpPost("PrintBatch")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> PrintBatch(int batchId, Guid key, CancellationToken ct)
         {
             var user = User?.Identity?.Name ?? "Unknown";
             var res = await _print.PrintBatchAsync(batchId, user, ct);
+
             TempData["Success"] = $"Batch printed: {res.Printed} notices saved. " +
                                   (res.Failed > 0 ? $"{res.Failed} failed." : "");
+
+            if (await _qa.RequiresQaAsync(key, ct))
+                return RedirectToAction(nameof(QA), new { key });
+
             return RedirectToAction(nameof(Print), new { key });
         }
-
 
         [HttpPost("PrintS52Range")]
         [ValidateAntiForgeryToken]
@@ -185,8 +191,13 @@ namespace GV23_Notice.Controllers
         {
             var user = User?.Identity?.Name ?? "Unknown";
             var res = await _print.PrintAllBatchesAsync(key, user, ct);
+
             TempData["Success"] = $"All batches printed: {res.Printed} notices saved across {res.TotalBatches} batches. " +
                                   (res.Failed > 0 ? $"{res.Failed} failed." : "");
+
+            if (await _qa.RequiresQaAsync(key, ct))
+                return RedirectToAction(nameof(QA), new { key });
+
             return RedirectToAction(nameof(Print), new { key });
         }
 
@@ -333,6 +344,87 @@ namespace GV23_Notice.Controllers
             var done = printed == 0 && total > 0;
 
             return Json(new { total, printed, sent, failed, noEmail, done });
+        }
+        // ── QA ───────────────────────────────────────────────────────────────
+
+        [HttpGet("QA")]
+        public async Task<IActionResult> QA(Guid key, CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var vm = await _qa.BuildQaVmAsync(key, ct);
+            return View(vm);
+        }
+
+        [HttpPost("CreateQA")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> CreateQA(Guid key, CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var user = User?.Identity?.Name ?? "Unknown";
+
+            try
+            {
+                await _qa.CreateQaRunAsync(key, user, ct);
+                TempData["Success"] = "QA sample created successfully.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ex.Message;
+            }
+
+            return RedirectToAction(nameof(QA), new { key });
+        }
+
+        [HttpPost("ApproveQA")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ApproveQA(
+            Guid key,
+            int qaRunId,
+            string? comment,
+            CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var user = User?.Identity?.Name ?? "Unknown";
+
+            try
+            {
+                await _qa.ApproveQaAsync(key, qaRunId, user, comment, ct);
+                TempData["Success"] = "QA approved. You can now send notices.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ex.Message;
+            }
+
+            return RedirectToAction(nameof(QA), new { key });
+        }
+
+        [HttpGet("OpenPdf")]
+        public async Task<IActionResult> OpenPdf(int runLogId, CancellationToken ct)
+        {
+            var run = await _db.NoticeRunLogs
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == runLogId, ct);
+
+            if (run == null)
+                return NotFound("Notice run log not found.");
+
+            if (string.IsNullOrWhiteSpace(run.PdfPath))
+                return NotFound("PDF path is empty.");
+
+            if (!System.IO.File.Exists(run.PdfPath))
+                return NotFound("PDF file not found.");
+
+            var fileName = Path.GetFileName(run.PdfPath);
+            var bytes = await System.IO.File.ReadAllBytesAsync(run.PdfPath, ct);
+
+            return File(bytes, "application/pdf", fileName);
         }
     }
 }
