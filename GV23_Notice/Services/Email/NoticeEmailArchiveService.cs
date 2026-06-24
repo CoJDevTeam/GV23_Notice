@@ -7,10 +7,14 @@ namespace GV23_Notice.Services.Email
     public sealed class NoticeEmailArchiveService : INoticeEmailArchiveService
     {
         private readonly IStorageRootResolver _root;
+        private readonly IConfiguration _config;
 
-        public NoticeEmailArchiveService(IStorageRootResolver root)
+        public NoticeEmailArchiveService(
+            IStorageRootResolver root,
+            IConfiguration config)
         {
             _root = root;
+            _config = config;
         }
 
         public async Task<string> SaveAsync(
@@ -36,7 +40,11 @@ namespace GV23_Notice.Services.Email
 
             Directory.CreateDirectory(folder);
 
-            var safeStem = MakeSafeFileName(fileStem);
+            //var safeStem = MakeSafeFileName(fileStem);
+            var safeStem = MakeSafeFileName(
+    string.IsNullOrWhiteSpace(fileStem)
+        ? $"{notice}_{category}"
+        : fileStem);
             var ts = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
             var htmlPath = Path.Combine(folder, $"{ts}_{safeStem}.html");
@@ -62,13 +70,24 @@ namespace GV23_Notice.Services.Email
             await File.WriteAllTextAsync(jsonPath, json, Encoding.UTF8, ct);
 
             // ✅ write .eml
-            SaveAsEml(subject, bodyHtml, emlPath);
+            var archiveToAddress = _config["NoticeEmailArchive:ArchiveToAddress"];
 
+            if (string.IsNullOrWhiteSpace(archiveToAddress))
+                archiveToAddress = "archive@joburg.org.za";
+
+            var archiveToName = _config["NoticeEmailArchive:ArchiveToName"] ?? "GV23 Notice Archive";
+
+            SaveAsEml(subject, bodyHtml, emlPath, archiveToAddress, archiveToName);
             // return eml path (or html path if you prefer)
             return emlPath;
         }
 
-        private static void SaveAsEml(string subject, string bodyHtml, string emlPath)
+        private static void SaveAsEml(
+    string subject,
+    string bodyHtml,
+    string emlPath,
+    string archiveToAddress,
+    string? archiveToName)
         {
             using var msg = new MailMessage
             {
@@ -77,11 +96,17 @@ namespace GV23_Notice.Services.Email
                 IsBodyHtml = true
             };
 
-            // Placeholder From/To for archive file formatting only
+            // Placeholder From/To for archive file formatting only.
+            // This does NOT send the real notice to this address.
             msg.From = new MailAddress("no-reply@joburg.org.za", "GV23 Workflow");
-            msg.To.Add(new MailAddress("JabulaniSib@joburg.org.za"));
 
-            // Write RFC822 using pickup directory trick
+            if (string.IsNullOrWhiteSpace(archiveToAddress))
+                archiveToAddress = "archive@joburg.org.za";
+
+            msg.To.Add(new MailAddress(
+                archiveToAddress.Trim(),
+                string.IsNullOrWhiteSpace(archiveToName) ? "GV23 Notice Archive" : archiveToName.Trim()));
+
             var pickupDir = Path.GetDirectoryName(emlPath)!;
             Directory.CreateDirectory(pickupDir);
 
@@ -93,15 +118,17 @@ namespace GV23_Notice.Services.Email
 
             client.Send(msg);
 
-            // SmtpClient generates a random filename; rename newest .eml to our target name
             var newest = new DirectoryInfo(pickupDir)
                 .GetFiles("*.eml")
                 .OrderByDescending(f => f.LastWriteTimeUtc)
                 .FirstOrDefault();
 
-            if (newest is null) return;
+            if (newest is null)
+                return;
 
-            if (File.Exists(emlPath)) File.Delete(emlPath);
+            if (File.Exists(emlPath))
+                File.Delete(emlPath);
+
             newest.MoveTo(emlPath);
         }
 

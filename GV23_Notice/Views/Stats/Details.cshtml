@@ -1,0 +1,188 @@
+﻿@model GV23_Notice.Models.Stats.NoticeStatsDetailsVm
+
+@{
+    ViewData["Title"] = "Notice Stats Details";
+}
+
+<style>
+    .stats-wrap {
+        padding: 24px;
+        background: #f4f4f4;
+        min-height: calc(100vh - 70px);
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .stats-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 4px solid #2ebd6c;
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+    }
+
+    .stats-title {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .stats-meta {
+        margin-top: 8px;
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        font-size: .75rem;
+        color: #ddd;
+    }
+
+        .stats-meta b {
+            color: #2ebd6c;
+        }
+
+    .btn-dark {
+        background: #111;
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: .75rem;
+        font-weight: 900;
+        text-decoration: none;
+        display: inline-flex;
+        margin-bottom: 16px;
+    }
+
+    .panel {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+
+    .panel-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 3px solid #2ebd6c;
+        padding: 12px 16px;
+        font-size: .8rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+    }
+
+    .table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .75rem;
+    }
+
+        .table th {
+            background: #f7f7f7;
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            color: #777;
+            font-size: .65rem;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+
+        .table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+        }
+
+    .pill {
+        display: inline-flex;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: .65rem;
+        font-weight: 900;
+        background: #eee;
+        color: #333;
+    }
+</style>
+
+<div class="stats-wrap">
+
+    <div class="stats-head">
+        <h1 class="stats-title">Batch Notice Details</h1>
+        <div class="stats-meta">
+            <span>Roll: <b>@Model.RollShortCode — @Model.RollName</b></span>
+            <span>Notice: <b>@Model.Notice</b></span>
+            <span>Version: <b>@Model.VersionText</b></span>
+            <span>Batch: <b>@Model.BatchName</b></span>
+        </div>
+    </div>
+
+    <a class="btn-dark" asp-controller="Stats" asp-action="Index">
+        Back to Stats
+    </a>
+
+    <div class="panel">
+        <div class="panel-head">Notice Records</div>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Reference</th>
+                    <th>Premise ID</th>
+                    <th>Property</th>
+                    <th>Recipient</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Sent At</th>
+                    <th>Sent By</th>
+                    <th>Error</th>
+                    <th>PDF</th>
+                    <th>EML</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var x in Model.Rows)
+                {
+                    var reference = !string.IsNullOrWhiteSpace(x.ObjectionNo)
+                        ? x.ObjectionNo
+                        : x.AppealNo;
+
+                    <tr>
+                        <td>@reference</td>
+                        <td>@x.PremiseId</td>
+                        <td>@x.PropertyDesc</td>
+                        <td>@x.RecipientName</td>
+                        <td>@x.RecipientEmail</td>
+                        <td><span class="pill">@x.Status</span></td>
+                        <td>@(x.SentAtUtc?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—")</td>
+                        <td>@(x.SentBy ?? "—")</td>
+                        <td>@x.ErrorMessage</td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(x.PdfPath))
+                            {
+                                <span>Saved</span>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrWhiteSpace(x.EmlPath))
+                            {
+                                <span>Saved</span>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

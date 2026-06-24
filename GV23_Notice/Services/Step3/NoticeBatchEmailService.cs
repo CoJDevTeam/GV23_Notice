@@ -123,98 +123,113 @@ namespace GV23_Notice.Services.Email
                     var batchName = batch?.BatchName ?? "Batch";
 
                     // Build email body using the same template service as the kickoff preview
+                    // Always fetch recipient email fresh from the source table for every notice type.
+                    // This prevents stale or wrong emails being used from the run log cache.
+                    string recipientEmail = log.RecipientEmail ?? "";
+
+                    var freshEmail = await FetchFreshEmailAsync(settings, log, batchName, ct);
+
+                    if (!string.IsNullOrWhiteSpace(freshEmail))
+                    {
+                        recipientEmail = freshEmail.Trim();
+                        log.RecipientEmail = recipientEmail;
+                    }
+
+                    // Build email body using the same template service as the kickoff preview
                     var req = BuildEmailRequest(settings, roll, log);
+                    req.RecipientEmail = recipientEmail;
+
                     var (subject, bodyHtml) = _templates.Build(req);
-
                     string emlPath;
-                    if (settings.Notice == NoticeKind.S51)
-                    {
-                        var emlKey = log.ObjectionNo ?? log.PremiseId ?? log.Id.ToString();
-                        var emlDesc = log.PropertyDesc ?? emlKey;
-                        emlPath = _paths.BuildS51EmlPath(roll, emlKey, emlDesc);
-                    }
-                    else if (settings.Notice == NoticeKind.S52)
-                    {
-                        // S52: .eml sits next to the PDF — just change extension
-                        // Handles both Third_Party and Prop Owner rows automatically
-                        // since log.PdfPath already has the correct _Prop_Owner suffix
-                        if (!string.IsNullOrWhiteSpace(log.PdfPath))
-                        {
-                            emlPath = Path.ChangeExtension(log.PdfPath, ".eml");
-                        }
-                        else
-                        {
-                            // Fallback if PdfPath not set (should not happen after print)
-                            var isReview = settings.IsSection52Review == true;
-                            var emlKey = log.AppealNo ?? log.Id.ToString();
-                            var emlDesc = log.PropertyDesc ?? emlKey;
-                            // RecipientName = "Prop Owner" (space, from Appeal_Type column)
-                            var isPropOwner = string.Equals(log.RecipientName, "Prop Owner",
-                                                 StringComparison.OrdinalIgnoreCase)
-                                          || (log.PdfPath != null && log.PdfPath.Contains(
-                                                 "_Prop_Owner", StringComparison.OrdinalIgnoreCase));
-                            emlPath = _paths.BuildS52EmlPath(roll, emlKey, emlDesc, isReview, isPropOwner);
-                        }
-                    }
-                    else if (settings.Notice == NoticeKind.S53)
-                    {
-                        // S53: .eml sits next to the PDF — just change extension
-                        // e.g. GV23-Sup2-521_PORTION_16_ERF_153_RIVER_CLUB_MVD.eml
-                        if (!string.IsNullOrWhiteSpace(log.PdfPath))
-                        {
-                            emlPath = Path.ChangeExtension(log.PdfPath, ".eml");
-                        }
-                        else
-                        {
-                            // Fallback if PdfPath not set yet
-                            var emlKey = log.ObjectionNo ?? log.Id.ToString();
-                            var emlDesc = log.PropertyDesc ?? emlKey;
-                            emlPath = _paths.BuildBatchEmlPath(roll, settings.Notice, batchName, emlDesc);
-                        }
 
+                    if (!string.IsNullOrWhiteSpace(log.PdfPath))
+                    {
+                        // Save .eml next to the printed PDF, but with the new required email filename.
+                        emlPath = BuildEmlPathNextToPdf(
+                            pdfPath: log.PdfPath,
+                            notice: settings.Notice,
+                            objectionNo: log.ObjectionNo,
+                            appealNo: log.AppealNo,
+                            propertyDesc: log.PropertyDesc,
+                            recipientEmail: recipientEmail);
+                    }
+                    else
+                    {
+                        // Fallback only if PdfPath is missing.
+                        // This should rarely happen because sending requires printed notices.
+                        var folderKey = log.PropertyDesc
+                                        ?? log.ObjectionNo
+                                        ?? log.AppealNo
+                                        ?? log.PremiseId
+                                        ?? log.Id.ToString();
+
+                        var oldPath = _paths.BuildBatchEmlPath(
+                            roll,
+                            settings.Notice,
+                            batchName,
+                            folderKey);
+
+                        var folder = Path.GetDirectoryName(oldPath)
+                                     ?? throw new InvalidOperationException("Could not resolve EML folder.");
+
+                        Directory.CreateDirectory(folder);
+
+                        var fileName = BuildSentNoticeEmlFileName(
+                            settings.Notice,
+                            log.ObjectionNo,
+                            log.AppealNo,
+                            log.PropertyDesc,
+                            recipientEmail);
+
+                        emlPath = Path.Combine(folder, fileName);
+                    }
+
+                    if (settings.Notice == NoticeKind.S53)
+                    {
                         // For S53 re-build the email body from Objection_MVD so it
-                        // contains the correct GV + MVD values, not just the run log stub
-                        var objectorType = string.IsNullOrWhiteSpace(log.RecipientName) ? "Owner" : log.RecipientName.Trim();
+                        // contains the correct GV + MVD values, not just the run log stub.
+                        var objectorType = string.IsNullOrWhiteSpace(log.RecipientName)
+                            ? "Owner"
+                            : log.RecipientName.Trim();
+
                         var mvdEmailData = await FetchS53MvdEmailDataAsync(
-                            batch?.RollId ?? settings.RollId, log.ObjectionNo!, batchName, objectorType, ct);
+                            batch?.RollId ?? settings.RollId,
+                            log.ObjectionNo!,
+                            batchName,
+                            objectorType,
+                            ct);
 
                         if (mvdEmailData != null)
                         {
                             var s53Req = BuildEmailRequest(settings, roll, log);
-                            // Enrich property item with real values from Objection_MVD
+                            s53Req.RecipientEmail = recipientEmail;
+
                             if (s53Req.Items.Count > 0)
                             {
                                 s53Req.Items[0].PropertyDesc = mvdEmailData.PropertyDesc
-                                                               ?? log.PropertyDesc ?? "";
+                                                               ?? log.PropertyDesc
+                                                               ?? "";
+
                                 s53Req.Items[0].ObjectionNo = mvdEmailData.ObjectionNo
                                                                ?? log.ObjectionNo;
                             }
+
                             var (s53Subject, s53Body) = _templates.Build(s53Req);
                             subject = s53Subject;
                             bodyHtml = s53Body;
                         }
                     }
-                    else
-                    {
-                        emlPath = _paths.BuildBatchEmlPath(
-                            roll, settings.Notice, batchName,
-                            log.PropertyDesc ?? log.ObjectionNo ?? log.PremiseId ?? log.Id.ToString());
-                    }
+                    emlPath = await SaveEmlAsync(
+      emlPath,
+      recipientEmail,
+      subject,
+      bodyHtml,
+      log.PdfPath!,
+      ct,
+      ccAddress: string.IsNullOrWhiteSpace(_emailOpt.CcAddress) ? null : _emailOpt.CcAddress.Trim(),
+      fromAddress: string.IsNullOrWhiteSpace(_emailOpt.FromAddress) ? null : _emailOpt.FromAddress.Trim(),
+      fromName: string.IsNullOrWhiteSpace(_emailOpt.FromName) ? null : _emailOpt.FromName.Trim());
 
-                    // Always fetch recipient email fresh from the source table for every notice type.
-                    // This prevents stale or wrong emails being used from the run log cache.
-                    string recipientEmail = log.RecipientEmail ?? "";
-                    {
-                        var freshEmail = await FetchFreshEmailAsync(
-                            settings, log, batchName, ct);
-                        if (!string.IsNullOrWhiteSpace(freshEmail))
-                            recipientEmail = freshEmail;
-                    }
-
-                    await SaveEmlAsync(emlPath, recipientEmail, subject, bodyHtml, log.PdfPath!, ct,
-                        ccAddress: string.IsNullOrWhiteSpace(_emailOpt.CcAddress) ? null : _emailOpt.CcAddress.Trim(),
-                        fromAddress: string.IsNullOrWhiteSpace(_emailOpt.FromAddress) ? null : _emailOpt.FromAddress.Trim(),
-                        fromName: string.IsNullOrWhiteSpace(_emailOpt.FromName) ? null : _emailOpt.FromName.Trim());
                     log.EmlPath = emlPath;
 
                     // Send via SMTP
@@ -248,6 +263,7 @@ namespace GV23_Notice.Services.Email
 
                     log.Status = RunStatus.Sent;
                     log.SentAtUtc = DateTime.UtcNow;
+                    log.SentBy = sentBy;
 
                     if (settings.Notice == NoticeKind.S49 && !string.IsNullOrWhiteSpace(log.PremiseId))
                         await _s49Repo.MarkEmailSentAsync(roll.RollId, log.PremiseId, ct);
@@ -259,6 +275,7 @@ namespace GV23_Notice.Services.Email
                     _log.LogError(ex, "Email send failed for RunLog {Id}", log.Id);
                     log.Status = RunStatus.Failed;
                     log.ErrorMessage = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
+                    log.SentBy = sentBy;
                     result.Failed++;
                 }
 
@@ -278,6 +295,7 @@ namespace GV23_Notice.Services.Email
             foreach (var log in noEmailLogs)
             {
                 log.Status = RunStatus.NoEmail;
+                log.SentBy = sentBy;
                 result.Skipped++;
             }
 
@@ -331,36 +349,56 @@ namespace GV23_Notice.Services.Email
         }
 
         // ── Save .eml file (RFC 2822 MIME with HTML body + PDF attachment) ───
-        private static async Task SaveEmlAsync(
-            string emlPath,
-            string toEmail,
-            string subject,
-            string bodyHtml,
-            string pdfPath,
-            CancellationToken ct,
-            string? ccAddress = null,
-            string? fromAddress = null,
-            string? fromName = null)
+        private static async Task<string> SaveEmlAsync(
+    string emlPath,
+    string toEmail,
+    string subject,
+    string bodyHtml,
+    string pdfPath,
+    CancellationToken ct,
+    string? ccAddress = null,
+    string? fromAddress = null,
+    string? fromName = null)
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(emlPath)!);
+            var folderPath = Path.GetDirectoryName(emlPath);
+
+            if (string.IsNullOrWhiteSpace(folderPath))
+                throw new InvalidOperationException($"Invalid EML path: {emlPath}");
+
+            Directory.CreateDirectory(folderPath);
+
+            if (string.IsNullOrWhiteSpace(toEmail))
+                throw new InvalidOperationException("Recipient email is empty. Cannot save EML copy.");
+
+            if (string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
+                throw new FileNotFoundException($"PDF not found: {pdfPath}");
 
             var pdfBytes = await File.ReadAllBytesAsync(pdfPath, ct);
             var pdfB64 = Convert.ToBase64String(pdfBytes);
             var pdfName = Path.GetFileName(pdfPath);
+
             var boundary = $"----=_Part_{Guid.NewGuid():N}";
-            var bodyB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(bodyHtml));
+            var bodyB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(bodyHtml ?? ""));
             var now = DateTime.Now.ToString("ddd, dd MMM yyyy HH:mm:ss zzz");
 
+            var safeSubject = string.IsNullOrWhiteSpace(subject)
+                ? "Notice"
+                : subject.Replace("\r", " ").Replace("\n", " ").Trim();
+
             var sb = new StringBuilder();
+
             if (!string.IsNullOrWhiteSpace(fromName) && !string.IsNullOrWhiteSpace(fromAddress))
-                sb.AppendLine($"From: {fromName} <{fromAddress}>");
+                sb.AppendLine($"From: {EncodeMailHeader(fromName)} <{fromAddress}>");
             else if (!string.IsNullOrWhiteSpace(fromAddress))
                 sb.AppendLine($"From: {fromAddress}");
+
             sb.AppendLine($"Date: {now}");
             sb.AppendLine($"To: {toEmail}");
+
             if (!string.IsNullOrWhiteSpace(ccAddress))
                 sb.AppendLine($"Cc: {ccAddress}");
-            sb.AppendLine($"Subject: {subject}");
+
+            sb.AppendLine($"Subject: {EncodeMailHeader(safeSubject)}");
             sb.AppendLine("MIME-Version: 1.0");
             sb.AppendLine($"Content-Type: multipart/mixed; boundary=\"{boundary}\"");
             sb.AppendLine();
@@ -369,9 +407,7 @@ namespace GV23_Notice.Services.Email
             sb.AppendLine("Content-Transfer-Encoding: base64");
             sb.AppendLine();
 
-            // base64 HTML in 76-char lines
-            for (int i = 0; i < bodyB64.Length; i += 76)
-                sb.AppendLine(bodyB64.Substring(i, Math.Min(76, bodyB64.Length - i)));
+            WriteBase64Lines(sb, bodyB64);
 
             sb.AppendLine();
             sb.AppendLine($"--{boundary}");
@@ -380,13 +416,33 @@ namespace GV23_Notice.Services.Email
             sb.AppendLine($"Content-Disposition: attachment; filename=\"{pdfName}\"");
             sb.AppendLine();
 
-            for (int i = 0; i < pdfB64.Length; i += 76)
-                sb.AppendLine(pdfB64.Substring(i, Math.Min(76, pdfB64.Length - i)));
+            WriteBase64Lines(sb, pdfB64);
 
             sb.AppendLine();
             sb.AppendLine($"--{boundary}--");
 
+            if (File.Exists(emlPath))
+            {
+                var name = Path.GetFileNameWithoutExtension(emlPath);
+                var ext = Path.GetExtension(emlPath);
+                emlPath = Path.Combine(folderPath, $"{name}_{Guid.NewGuid():N}{ext}");
+            }
+
             await File.WriteAllTextAsync(emlPath, sb.ToString(), Encoding.UTF8, ct);
+
+            return emlPath;
+        }
+
+        private static void WriteBase64Lines(StringBuilder sb, string base64)
+        {
+            for (int i = 0; i < base64.Length; i += 76)
+                sb.AppendLine(base64.Substring(i, Math.Min(76, base64.Length - i)));
+        }
+
+       
+        private static string EncodeMailHeader(string value)
+        {
+            return value.Replace("\r", " ").Replace("\n", " ").Trim();
         }
 
         // ── Send one email via SMTP ──────────────────────────────────────────
@@ -632,6 +688,97 @@ namespace GV23_Notice.Services.Email
                     appealNo);
                 return null;   // fall back to log.RecipientEmail safely
             }
+        }
+        private static string BuildSentNoticeEmlFileName(
+    NoticeKind notice,
+    string? objectionNo,
+    string? appealNo,
+    string? propertyDesc,
+    string? recipientEmail)
+        {
+            var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
+            var email = MakeSafeFilePart(recipientEmail);
+            if (string.IsNullOrWhiteSpace(email))
+                email = "NoEmail";
+
+            string key;
+
+            if (notice == NoticeKind.S49)
+            {
+                key = MakeSafeFilePart(propertyDesc);
+
+                if (string.IsNullOrWhiteSpace(key))
+                    key = "Property";
+            }
+            else
+            {
+                key = MakeSafeFilePart(objectionNo);
+
+                if (string.IsNullOrWhiteSpace(key))
+                    key = MakeSafeFilePart(appealNo);
+
+                if (string.IsNullOrWhiteSpace(key))
+                    key = MakeSafeFilePart(propertyDesc);
+
+                if (string.IsNullOrWhiteSpace(key))
+                    key = "Notice";
+            }
+
+            return $"email_{key}_{email}_{stamp}.eml";
+        }
+
+        private static string MakeSafeFilePart(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "";
+
+            var clean = value.Trim();
+
+            foreach (var c in Path.GetInvalidFileNameChars())
+                clean = clean.Replace(c, '_');
+
+            clean = clean
+                .Replace(" ", "_")
+                .Replace("/", "_")
+                .Replace("\\", "_")
+                .Replace(":", "_")
+                .Replace("*", "_")
+                .Replace("?", "_")
+                .Replace("\"", "_")
+                .Replace("<", "_")
+                .Replace(">", "_")
+                .Replace("|", "_");
+
+            while (clean.Contains("__"))
+                clean = clean.Replace("__", "_");
+
+            return clean.Trim('_');
+        }
+
+        private static string BuildEmlPathNextToPdf(
+            string pdfPath,
+            NoticeKind notice,
+            string? objectionNo,
+            string? appealNo,
+            string? propertyDesc,
+            string? recipientEmail)
+        {
+            var folder = Path.GetDirectoryName(pdfPath);
+
+            if (string.IsNullOrWhiteSpace(folder))
+                throw new InvalidOperationException($"Invalid PDF path: {pdfPath}");
+
+            Directory.CreateDirectory(folder);
+
+            var emlFileName = BuildSentNoticeEmlFileName(
+                notice,
+                objectionNo,
+                appealNo,
+                propertyDesc,
+                recipientEmail);
+
+            return Path.Combine(folder, emlFileName);
         }
     }
 }

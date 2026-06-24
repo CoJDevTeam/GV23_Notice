@@ -20,6 +20,7 @@ using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Search;
 using GV23_Notice.Services.Security;
 using GV23_Notice.Services.SnapShotStep2;
+using GV23_Notice.Services.Stats;
 using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.Storage;
 using Microsoft.AspNetCore.Authentication;
@@ -142,14 +143,25 @@ builder.Services.AddScoped<INoticeEmailArchiveService,NoticeEmailArchiveService>
 builder.Services.AddScoped<IWorkflowApprovalEmailService,WorkflowApprovalEmailService>();
 builder.Services.AddScoped<INoticeBatchEmailService, NoticeBatchEmailService>();
 
+
+
+// ----------------------------------------------------
+// Stats / Excel / Email
+// ----------------------------------------------------
+builder.Services.AddScoped<INoticeStatsEmailService,NoticeStatsEmailService>();
+builder.Services.AddScoped<INoticeSendStatsService,NoticeSendStatsService>();
+builder.Services.AddScoped<INoticeStatsDashboardService,NoticeStatsDashboardService>();
+
 // ----------------------------------------------------
 // Security
 // ----------------------------------------------------
 builder.Services.AddScoped<IUserAccessService, UserAccessService>();
 builder.Services.AddTransient<IClaimsTransformation, UserClaimsTransformation>();
 
+
 builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme)
     .AddNegotiate();
+
 
 builder.Services.AddAuthorization(options =>
 {

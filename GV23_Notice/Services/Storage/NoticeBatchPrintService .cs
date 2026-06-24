@@ -359,6 +359,12 @@ namespace GV23_Notice.Services.Storage
                 ? cd
                 : (settings.EvidenceCloseDate ?? settings.LetterDate.AddDays(30));
 
+            var address = AddressDisplayHelper.Format(
+    Str(reader, "ADDR1"),
+    Str(reader, "ADDR2"),
+    Str(reader, "ADDR3"),
+    Str(reader, "ADDR4"),
+    Str(reader, "ADDR5"));
             data = new Section51NoticeData
             {
                 ObjectionNo = Str(reader, "ObjectionNo") ?? log.ObjectionNo!,
@@ -367,11 +373,11 @@ namespace GV23_Notice.Services.Storage
                 Section51Pin = Str(reader, "Section51Pin"),
                 Email = Str(reader, "RecipientEmail"),
                 RollName = roll.Name ?? roll.ShortCode,
-                Addr1 = Str(reader, "ADDR1") ?? "",
-                Addr2 = Str(reader, "ADDR2") ?? "",
-                Addr3 = Str(reader, "ADDR3") ?? "",
-                Addr4 = Str(reader, "ADDR4") ?? "",
-                Addr5 = Str(reader, "ADDR5") ?? "",
+                Addr1 = address.Addr1,
+                Addr2 = address.Addr2,
+                Addr3 = address.Addr3,
+                Addr4 = address.Addr4,
+                Addr5 = address.Addr5,
 
 
                 Section6 = new Section6Row
@@ -484,7 +490,12 @@ namespace GV23_Notice.Services.Storage
                 return decimal.TryParse(v.ToString(), out var p) ? p : null;
             }
             string N(decimal? v) => v?.ToString(CultureInfo.InvariantCulture) ?? "";
-
+            var address = AddressDisplayHelper.Format(
+    Str("ADDR1"),
+    Str("ADDR2"),
+    Str("ADDR3"),
+    Str("ADDR4"),
+    Str("ADDR5"));
             if (await rd.ReadAsync(ct))
             {
                 row = new AppealDecisionRow
@@ -495,11 +506,11 @@ namespace GV23_Notice.Services.Storage
                     valuation_Key = Str("valuation_Key"),
                     Property_desc = Str("Property_desc"),
                     Email = Str("Email"),
-                    ADDR1 = Str("ADDR1"),
-                    ADDR2 = Str("ADDR2"),
-                    ADDR3 = Str("ADDR3"),
-                    ADDR4 = Str("ADDR4"),
-                    ADDR5 = Str("ADDR5"),
+                    ADDR1 = address.Addr1,
+                    ADDR2 = address.Addr2,
+                    ADDR3 = address.Addr3,
+                    ADDR4 = address.Addr4,
+                    ADDR5 = address.Addr5,
                     Town = Str("Town"),
                     ERF = Str("ERF"),
                     PTN = Str("PTN"),
@@ -652,6 +663,12 @@ namespace GV23_Notice.Services.Storage
                 var v = reader.GetValue(o);
                 return v is DateTime dt ? dt : Convert.ToDateTime(v);
             }
+            var address = AddressDisplayHelper.Format(
+                Str("ADDR1"),
+                Str("ADDR2"),
+                Str("ADDR3"),
+                Str("ADDR4"),
+                Str("ADDR5"));
 
             return new Section53MvdRow
             {
@@ -659,11 +676,12 @@ namespace GV23_Notice.Services.Storage
                 ValuationKey = Str("ValuationKey"),
                 PropertyDesc = Str("PropertyDesc"),
                 Email = Str("Email"),
-                Addr1 = Str("ADDR1"),
-                Addr2 = Str("ADDR2"),
-                Addr3 = Str("ADDR3"),
-                Addr4 = Str("ADDR4"),
-                Addr5 = Str("ADDR5"),
+
+                Addr1 = address.Addr1,
+                Addr2 = address.Addr2,
+                Addr3 = address.Addr3,
+                Addr4 = address.Addr4,
+                Addr5 = address.Addr5,
                 AppealCloseDate = DateVal("AppealCloseDate"),
                 Section52Review = Str("Section52Review"),
                 RollName = null,   // SP doesn't return RollName — set from roll.Name in caller

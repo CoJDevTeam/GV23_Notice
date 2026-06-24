@@ -40,5 +40,7 @@ namespace GV23_Notice.Domain.Workflow.Entities
 
         public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
         public DateTime? SentAtUtc { get; set; }
+        public string? SentBy { get; set; }
+        public string? EmailCopyPath { get; set; }
     }
 }

@@ -1,11 +1,13 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.QA;
+using GV23_Notice.Services.Stats;
 using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Mono.TextTemplating;
 
 namespace GV23_Notice.Controllers
 {
@@ -23,6 +25,7 @@ namespace GV23_Notice.Controllers
         private readonly AppDbContext _db;
         private readonly IS52RangePrintService _s52RangePrint;
         private readonly INoticeQaService _qa;
+        private readonly INoticeSendStatsService _stats;
         public Step3Controller(
             IStep3Step1Service svc,
             IStep3WorkflowSelectService select,
@@ -32,12 +35,13 @@ namespace GV23_Notice.Controllers
             IStep3PrintQueryService printQuery,
             INoticeBatchEmailService emailSvc,
             IS52RangePrintService s52RangePrint,
-            AppDbContext db, INoticeQaService qa)
+            AppDbContext db, INoticeQaService qa,INoticeSendStatsService statsService)
         {
             _svc = svc;
             _select = select;
             _batchQuery = batchQuery;
             _batchCreate = batchCreate;
+            _stats = statsService;
             _print = print;
             _printQuery = printQuery;
             _emailSvc = emailSvc;
@@ -225,6 +229,7 @@ namespace GV23_Notice.Controllers
             {
                 TempData["Error"] = "Please select at least one batch to send.";
                 return RedirectToAction(nameof(SendEmail), new { key });
+                //return RedirectToAction(nameof(SendStats), new { key });
             }
 
             var user = User?.Identity?.Name ?? "Unknown";
@@ -237,7 +242,8 @@ namespace GV23_Notice.Controllers
                                       (res.Failed > 0 ? $"Failed: {res.Failed}. " : "") +
                                       (res.Skipped > 0 ? $"No email address: {res.Skipped}." : "");
 
-            return RedirectToAction(nameof(SendEmail), new { key });
+            //return RedirectToAction(nameof(SendEmail), new { key });
+            return RedirectToAction(nameof(SendStats), new { key });
         }
 
         // GET: Live progress across ALL batches in a workflow
@@ -425,6 +431,60 @@ namespace GV23_Notice.Controllers
             var bytes = await System.IO.File.ReadAllBytesAsync(run.PdfPath, ct);
 
             return File(bytes, "application/pdf", fileName);
+        }
+
+        [HttpGet("SendStats")]
+        public async Task<IActionResult> SendStats(Guid key, CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var vm = await _stats.BuildStatsAsync(key, ct);
+            return View(vm);
+        }
+
+        [HttpGet("DownloadStatsExcel")]
+        public async Task<IActionResult> DownloadStatsExcel(Guid key, CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var user = User?.Identity?.Name ?? "Unknown";
+            var path = await _stats.GenerateExcelAsync(key, user, ct);
+
+            var bytes = await System.IO.File.ReadAllBytesAsync(path, ct);
+            var fileName = Path.GetFileName(path);
+
+            return File(
+                bytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                fileName);
+        }
+
+        [HttpPost("SendStatsEmail")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendStatsEmail(
+            Guid key,
+            string toEmails,
+            string? ccEmails,
+            CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var user = User?.Identity?.Name ?? "Unknown";
+
+            try
+            {
+                await _stats.SendStatsEmailAsync(key, toEmails, ccEmails, user, ct);
+                TempData["Success"] = "Stats report sent to stakeholders successfully.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ex.Message;
+            }
+
+            return RedirectToAction(nameof(SendStats), new { key });
         }
     }
 }
