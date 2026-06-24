@@ -1,5 +1,6 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Models.DTOs;
+using GV23_Notice.Models.DTOs.GV23_Notice.Models.DTOs;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;

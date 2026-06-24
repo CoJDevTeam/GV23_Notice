@@ -1,4 +1,5 @@
-﻿using System.Data;
+﻿using GV23_Notice.Helpers;
+using System.Data;
 using System.Globalization;
 
 namespace GV23_Notice.Models.DTOs
@@ -66,9 +67,9 @@ namespace GV23_Notice.Models.DTOs
         public string? Old2Category { get; set; }
         public string? Old3Category { get; set; }
 
-        public decimal? OldExtent { get; set; }
-        public decimal? Old2Extent { get; set; }
-        public decimal? Old3Extent { get; set; }
+        public string? OldExtent { get; set; }
+        public string? Old2Extent { get; set; }
+        public string? Old3Extent { get; set; }
 
         public string? OldMarketValue { get; set; }
         public string? Old2MarketValue { get; set; }
@@ -78,9 +79,9 @@ namespace GV23_Notice.Models.DTOs
         public string? New2Category { get; set; }
         public string? New3Category { get; set; }
 
-        public decimal? NewExtent { get; set; }
-        public decimal? New2Extent { get; set; }
-        public decimal? New3Extent { get; set; }
+        public string? NewExtent { get; set; }
+        public string? New2Extent { get; set; }
+        public string? New3Extent { get; set; }
 
         public string? NewMarketValue { get; set; }
         public string? New2MarketValue { get; set; }
@@ -120,9 +121,9 @@ namespace GV23_Notice.Models.DTOs
         public string? AppMarketValue2 { get; set; }
         public string? AppMarketValue3 { get; set; }
 
-        public decimal? AppExtent { get; set; }
-        public decimal? AppExtent2 { get; set; }
-        public decimal? AppExtent3 { get; set; }
+        public string? AppExtent { get; set; }
+        public string? AppExtent2 { get; set; }
+        public string? AppExtent3 { get; set; }
 
         public string? AppCategory { get; set; }
         public string? AppCategory2 { get; set; }
@@ -258,7 +259,13 @@ namespace GV23_Notice.Models.DTOs
 
             return Convert.ToString(v, CultureInfo.InvariantCulture);
         }
+        public string? ExtentText(string key)
+        {
+            if (!_data.TryGetValue(key, out var v) || v is null)
+                return null;
 
+            return ExtentDisplayHelper.SameAsDb(v);
+        }
         public int? Int(string key)
         {
             if (!_data.TryGetValue(key, out var v) || v is null)

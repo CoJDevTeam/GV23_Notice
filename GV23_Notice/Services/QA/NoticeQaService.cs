@@ -245,7 +245,12 @@ namespace GV23_Notice.Services.QA
             {
                 var propertyType = NormalizePropertyType(row.Source.PropertyType);
                 var expected = GetExpectedCategory(propertyType);
-                var isValid = IsCategoryValid(propertyType, row.Source.NewCategoryMvd);
+
+                var isValid = IsCategoryValid(
+                    propertyType,
+                    row.Source.NewCategoryMvd,
+                    row.Source.New2CategoryMvd,
+                    row.Source.New3CategoryMvd);
 
                 qaRun.Items.Add(new NoticeQaItem
                 {
@@ -266,7 +271,9 @@ namespace GV23_Notice.Services.QA
                     QaStatus = isValid ? "Passed" : "Failed",
                     QaComment = isValid
                         ? null
-                        : "Captured category does not match the expected QA rule."
+                        : propertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase)
+                            ? "Multi must have Multiple Purposes as the main category and at least one split category."
+                            : "Captured category does not match the expected QA rule."
                 });
             }
 
@@ -400,23 +407,41 @@ INNER JOIN @ObjectionNos n
         private static string GetExpectedCategory(string propertyType)
         {
             return propertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase)
-                ? "Multipurpose"
+                ? "Multiple Purposes with split categories"
                 : "Check New_Category_MVD";
         }
 
-        private static bool IsCategoryValid(string propertyType, string? newCategoryMvd)
+        private static bool IsCategoryValid(
+            string propertyType,
+            string? newCategoryMvd,
+            string? new2CategoryMvd = null,
+            string? new3CategoryMvd = null)
         {
-            if (propertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase))
+            if (!propertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase))
             {
-                return string.Equals(
-                    newCategoryMvd?.Trim(),
-                    "Multipurpose",
-                    StringComparison.OrdinalIgnoreCase);
+                return !string.IsNullOrWhiteSpace(newCategoryMvd);
             }
 
-            // For Res / Bus / Agric, we only require that New_Category_MVD is captured.
-            // The QA user will visually compare it against the PDF.
-            return !string.IsNullOrWhiteSpace(newCategoryMvd);
+            var mainCategoryOk = IsMultiMainCategory(newCategoryMvd);
+
+            var hasSplitCategory =
+                !string.IsNullOrWhiteSpace(new2CategoryMvd) ||
+                !string.IsNullOrWhiteSpace(new3CategoryMvd);
+
+            return mainCategoryOk && hasSplitCategory;
+        }
+
+        private static bool IsMultiMainCategory(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            var v = value.Trim();
+
+            return v.Equals("Multiple Purposes", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("Multipurpose", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("Multi Purpose", StringComparison.OrdinalIgnoreCase)
+                || v.Equals("Multi-Purpose", StringComparison.OrdinalIgnoreCase);
         }
 
         private sealed class PrintedLogLite

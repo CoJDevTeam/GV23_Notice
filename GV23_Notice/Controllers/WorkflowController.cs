@@ -5,6 +5,7 @@ using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Helper;
 using GV23_Notice.Models.DTOs;
+using GV23_Notice.Models.DTOs.GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
@@ -1575,8 +1576,8 @@ namespace GV23_Notice.Controllers
         private byte[] BuildS49RealPreviewPdf(
       NoticeSettings s,
       string rollShortCode,
-      List<GV23_Notice.Models.DTOs.S49RollRowDto> rollRows,
-      GV23_Notice.Models.DTOs.SapContactDto contact)
+      List<S49RollRowDto> rollRows,
+     SapContactDto contact)
         {
             if (rollRows == null || rollRows.Count == 0)
                 throw new InvalidOperationException("No roll rows found for S49 preview.");
@@ -1670,7 +1671,7 @@ namespace GV23_Notice.Controllers
         {
             public sealed record Row(string Category, decimal MarketValue, decimal Extent);
 
-            public static List<Row> Build4RowSplit(List<GV23_Notice.Models.DTOs.S49RollRowDto> rows)
+            public static List<Row> Build4RowSplit(List<S49RollRowDto> rows)
             {
                 // Normalise categories
                 decimal SumValue(string contains) =>

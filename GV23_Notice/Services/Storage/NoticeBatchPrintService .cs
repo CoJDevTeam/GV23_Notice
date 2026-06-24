@@ -1,20 +1,22 @@
 ﻿using GV23_Notice.Data;
-using GV23_Notice.Services.Notices.Section51;
-using GV23_Notice.Services.Notices.Section52;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
-using System.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Helpers;
+using GV23_Notice.Models.DTOs;
 using GV23_Notice.Services.Notices.Section49;
-using GV23_Notice.Services.Rolls;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using System.Globalization;
+using GV23_Notice.Services.Notices.Section51;
+using GV23_Notice.Services.Notices.Section52;
 // ── S53 additions ──
 using GV23_Notice.Services.Notices.Section53;
 using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
+using GV23_Notice.Services.Rolls;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using System.Data;
+using System.Globalization;
 
 namespace GV23_Notice.Services.Storage
 {
@@ -236,8 +238,11 @@ namespace GV23_Notice.Services.Storage
             static string Money(decimal v) =>
                 "R " + v.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
 
-            static string Num(decimal v) =>
-                v.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+            //static string Num(decimal v) =>
+            //    v.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+
+            static string Extent(object? v) =>
+    ExtentDisplayHelper.SameAsDb(v);
 
             var firstRow = rows[0];
             var propertyDesc = firstRow.PropertyDesc ?? log.PremiseId;
@@ -247,7 +252,12 @@ namespace GV23_Notice.Services.Storage
             {
                 Category = r.CatDesc ?? "",
                 MarketValue = Money(r.MarketValue),
-                Extent = Num(r.Extent),
+
+                // Extent must stay same as DB. Do not use N0/N2.
+                Extent = !string.IsNullOrWhiteSpace(r.ExtentText)
+         ? r.ExtentText
+         : Extent(r.Extent),
+
                 Remarks = r.Reason ?? ""
             }).ToList();
 
@@ -329,6 +339,20 @@ namespace GV23_Notice.Services.Storage
                 return v == DBNull.Value ? null : v?.ToString();
             }
 
+
+            
+            static string? Ext(SqlDataReader r, string col)
+            {
+                try
+                {
+                    var v = r[col];
+                    return ExtentDisplayHelper.SameAsDb(v);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
             propertyDesc = Str(reader, "PropertyDescription") ?? log.ObjectionNo ?? "";
 
             closingDate = reader["ClosingDate"] is DateTime cd
@@ -348,26 +372,35 @@ namespace GV23_Notice.Services.Storage
                 Addr3 = Str(reader, "ADDR3") ?? "",
                 Addr4 = Str(reader, "ADDR4") ?? "",
                 Addr5 = Str(reader, "ADDR5") ?? "",
+
+
                 Section6 = new Section6Row
                 {
                     Old_Category = Str(reader, "OldCategory"),
                     Old2_Category = Str(reader, "OldCategory1"),
                     Old3_Category = Str(reader, "OldCategory2"),
+
                     New_Category = Str(reader, "NewCategory"),
                     New2_Category = Str(reader, "NewCategory1"),
                     New3_Category = Str(reader, "NewCategory2"),
+
                     Old_Market_Value = Str(reader, "OldMarketValue"),
                     Old2_Market_Value = Str(reader, "OldMarketValue1"),
                     Old3_Market_Value = Str(reader, "OldMarketValue2"),
+
                     New_Market_Value = Str(reader, "NewMarketValue"),
                     New2_Market_Value = Str(reader, "NewMarketValue1"),
                     New3_Market_Value = Str(reader, "NewMarketValue2"),
-                    Old_Extent = Str(reader, "OldExtent"),
-                    Old2_Extent = Str(reader, "OldExtent1"),
-                    Old3_Extent = Str(reader, "OldExtent2"),
-                    New_Extent = Str(reader, "NewExtent"),
-                    New2_Extent = Str(reader, "NewExtent1"),
-                    New3_Extent = Str(reader, "NewExtent2"),
+
+                    // Extent must stay same as DB.
+                    Old_Extent = Ext(reader, "OldExtent"),
+                    Old2_Extent = Ext(reader, "OldExtent1"),
+                    Old3_Extent = Ext(reader, "OldExtent2"),
+
+                    New_Extent = Ext(reader, "NewExtent"),
+                    New2_Extent = Ext(reader, "NewExtent1"),
+                    New3_Extent = Ext(reader, "NewExtent2"),
+
                     WithEffectDate = Str(reader, "WEFDATE")
                 }
             };
@@ -436,6 +469,13 @@ namespace GV23_Notice.Services.Storage
             for (int i = 0; i < rd.FieldCount; i++) colMap[rd.GetName(i)] = i;
 
             string? Str(string col) => colMap.TryGetValue(col, out var o) && !rd.IsDBNull(o) ? rd.GetString(o) : null;
+            string? Ext(string col)
+            {
+                if (!colMap.TryGetValue(col, out var o) || rd.IsDBNull(o))
+                    return null;
+
+                return ExtentDisplayHelper.SameAsDb(rd.GetValue(o));
+            }
             decimal? Dec(string col)
             {
                 if (!colMap.TryGetValue(col, out var o) || rd.IsDBNull(o)) return null;
@@ -468,9 +508,9 @@ namespace GV23_Notice.Services.Storage
                     App_Market_Value = Str("App_Market_Value"),
                     App_Market_Value2 = Str("App_Market_Value2"),
                     App_Market_Value3 = Str("App_Market_Value3"),
-                    App_Extent = N(Dec("App_Extent")),
-                    App_Extent2 = N(Dec("App_Extent2")),
-                    App_Extent3 = N(Dec("App_Extent3")),
+                    App_Extent = Ext("App_Extent"),
+                    App_Extent2 = Ext("App_Extent2"),
+                    App_Extent3 = Ext("App_Extent3"),
                     App_Category = Str("App_Category"),
                     App_Category2 = Str("App_Category2"),
                     App_Category3 = Str("App_Category3"),
@@ -601,6 +641,11 @@ namespace GV23_Notice.Services.Storage
                 colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
                     ? reader.GetValue(o)?.ToString() : null;
 
+            string? Ext(string col) =>
+    colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
+        ? ExtentDisplayHelper.SameAsDb(reader.GetValue(o))
+        : null;
+
             DateTime? DateVal(string col)
             {
                 if (!colMap.TryGetValue(col, out var o) || reader.IsDBNull(o)) return null;
@@ -629,9 +674,9 @@ namespace GV23_Notice.Services.Storage
                 Gv_Market_Value = Str("GV_Market_Value"),
                 Gv_Market_Value2 = Str("GV_Market_Value2"),
                 Gv_Market_Value3 = Str("GV_Market_Value3"),
-                Gv_Extent = Str("GV_Extent"),
-                Gv_Extent2 = Str("GV_EXtent2"),
-                Gv_Extent3 = Str("GV_Extent3"),
+                Gv_Extent = Ext("GV_Extent"),
+                Gv_Extent2 = Ext("GV_EXtent2"),
+                Gv_Extent3 = Ext("GV_Extent3"),
 
                 Mvd_Category = Str("MVD_Category"),
                 Mvd_Category2 = Str("MVD_Category2"),
@@ -639,9 +684,9 @@ namespace GV23_Notice.Services.Storage
                 Mvd_Market_Value = Str("MVD_Market_Value"),
                 Mvd_Market_Value2 = Str("MVD_Market_Value2"),
                 Mvd_Market_Value3 = Str("MVD_Market_Value3"),
-                Mvd_Extent = Str("MVD_Extent"),
-                Mvd_Extent2 = Str("MVD_Extent2"),
-                Mvd_Extent3 = Str("MVD_Extent3"),
+                Mvd_Extent = Ext("MVD_Extent"),
+                Mvd_Extent2 = Ext("MVD_Extent2"),
+                Mvd_Extent3 = Ext("MVD_Extent3"),
                 WEFMVD = Str("wefDateMVD"),
             };
         }

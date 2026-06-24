@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Models.DTOs;
+using GV23_Notice.Models.DTOs.GV23_Notice.Models.DTOs;
 
 namespace GV23_Notice.Services.Rolls
 {

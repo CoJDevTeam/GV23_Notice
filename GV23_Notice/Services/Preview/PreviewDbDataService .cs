@@ -1,11 +1,13 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Helpers;
 using GV23_Notice.Models;
 using GV23_Notice.Models.DTOs;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Globalization;
 
 namespace GV23_Notice.Services.Preview
 {
@@ -174,9 +176,9 @@ namespace GV23_Notice.Services.Preview
                 Old2Category = row.Str("Old2_Category"),
                 Old3Category = row.Str("Old3_Category"),
 
-                OldExtent = row.Dec("Old_Extent"),
-                Old2Extent = row.Dec("Old2_Extent"),
-                Old3Extent = row.Dec("Old3_Extent"),
+                OldExtent = row.ExtentText("Old_Extent"),
+                Old2Extent = row.ExtentText("Old2_Extent"),
+                Old3Extent = row.ExtentText("Old3_Extent"),
 
                 OldMarketValue = row.Str("Old_Market_Value"),
                 Old2MarketValue = row.Str("Old2_Market_Value"),
@@ -186,9 +188,9 @@ namespace GV23_Notice.Services.Preview
                 New2Category = row.Str("New2_Category"),
                 New3Category = row.Str("New3_Category"),
 
-                NewExtent = row.Dec("New_Extent"),
-                New2Extent = row.Dec("New2_Extent"),
-                New3Extent = row.Dec("New3_Extent"),
+                NewExtent = row.ExtentText("New_Extent"),
+                New2Extent = row.ExtentText("New2_Extent"),
+                New3Extent = row.ExtentText("New3_Extent"),
 
                 NewMarketValue = row.Str("New_Market_Value"),
                 New2MarketValue = row.Str("New2_Market_Value"),
@@ -309,15 +311,16 @@ namespace GV23_Notice.Services.Preview
                 AppMarketValue2 = Get("App_Market_Value2"),
                 AppMarketValue3 = Get("App_Market_Value3"),
 
-                AppExtent = GetDec("App_Extent"),
-                AppExtent2 = GetDec("App_Extent2"),
-                AppExtent3 = GetDec("App_Extent3"),
+                AppExtent = rowMap.ExtentText("App_Extent"),
+                AppExtent2 = rowMap.ExtentText("App_Extent2"),
+                AppExtent3 = rowMap.ExtentText("App_Extent3"),
 
                 AppCategory = Get("App_Category"),
                 AppCategory2 = Get("App_Category2"),
                 AppCategory3 = Get("App_Category3"),
             };
         }
+
         public async Task<S53PreviewDbData> S53PreviewDbDataAsync(int rollId, bool preferMulti, CancellationToken ct)
         {
             var procName = preferMulti
@@ -356,9 +359,9 @@ namespace GV23_Notice.Services.Preview
                 GvMarketValue2 = row.Str("GV_Market_Value2"),
                 GvMarketValue3 = row.Str("GV_Market_Value3"),
 
-                GvExtent = row.Str("GV_Extent"),
-                GvExtent2 = row.Str("GV_Extent2"),
-                GvExtent3 = row.Str("GV_Extent3"),
+                GvExtent = row.ExtentText("GV_Extent"),
+                GvExtent2 = row.ExtentText("GV_Extent2"),
+                GvExtent3 = row.ExtentText("GV_Extent3"),
 
                 GvCategory = row.Str("GV_Category"),
                 GvCategory2 = row.Str("GV_Category2"),
@@ -368,9 +371,9 @@ namespace GV23_Notice.Services.Preview
                 MvdMarketValue2 = row.Str("MVD_Market_Value2"),
                 MvdMarketValue3 = row.Str("MVD_Market_Value3"),
 
-                MvdExtent = row.Str("MVD_Extent"),
-                MvdExtent2 = row.Str("MVD_Extent2"),
-                MvdExtent3 = row.Str("MVD_Extent3"),
+                MvdExtent = row.ExtentText("MVD_Extent"),
+                MvdExtent2 = row.ExtentText("MVD_Extent2"),
+                MvdExtent3 = row.ExtentText("MVD_Extent3"),
 
                 MvdCategory = row.Str("MVD_Category"),
                 MvdCategory2 = row.Str("MVD_Category2"),
@@ -518,31 +521,74 @@ namespace GV23_Notice.Services.Preview
             public static Row FromReader(SqlDataReader rd)
             {
                 var dict = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
                 for (int i = 0; i < rd.FieldCount; i++)
                 {
                     var name = rd.GetName(i);
                     var val = rd.IsDBNull(i) ? null : rd.GetValue(i);
                     dict[name] = val;
                 }
+
                 return new Row(dict);
             }
 
+            public bool Has(string name)
+                => _map.ContainsKey(name);
+
             public string? Str(string name)
-                => _map.TryGetValue(name, out var v) ? v?.ToString() : null;
+                => _map.TryGetValue(name, out var v) ? v?.ToString()?.Trim() : null;
+
+            public string? ExtentText(string name)
+            {
+                if (!_map.TryGetValue(name, out var v) || v is null)
+                    return null;
+
+                return ExtentDisplayHelper.SameAsDb(v);
+            }
 
             public decimal? Dec(string name)
             {
-                if (!_map.TryGetValue(name, out var v) || v is null) return null;
-                if (v is decimal d) return d;
-                if (decimal.TryParse(v.ToString(), out var parsed)) return parsed;
+                if (!_map.TryGetValue(name, out var v) || v is null)
+                    return null;
+
+                if (v is decimal d)
+                    return d;
+
+                if (v is double db)
+                    return Convert.ToDecimal(db);
+
+                if (v is float f)
+                    return Convert.ToDecimal(f);
+
+                var raw = v.ToString();
+
+                if (string.IsNullOrWhiteSpace(raw))
+                    return null;
+
+                // For money/market values only.
+                // Do not use this for extent display.
+                raw = raw.Trim().Replace(" ", "");
+
+                if (decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                    return parsed;
+
+                if (decimal.TryParse(raw, NumberStyles.Any, new CultureInfo("en-ZA"), out parsed))
+                    return parsed;
+
                 return null;
             }
 
             public DateTime? Dt(string name)
             {
-                if (!_map.TryGetValue(name, out var v) || v is null) return null;
-                if (v is DateTime dt) return dt;
-                if (DateTime.TryParse(v.ToString(), out var parsed)) return parsed;
+                if (!_map.TryGetValue(name, out var v) || v is null)
+                    return null;
+
+                if (v is DateTime dt)
+                    return dt;
+
+                if (DateTime.TryParse(v.ToString(), out var parsed))
+                    return parsed;
+
                 return null;
             }
         }
