@@ -3,6 +3,7 @@ using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.Workflow.ViewModels;
+using GV23_Notice.Services.Workflow;
 using Microsoft.EntityFrameworkCore;
 
 namespace GV23_Notice.Services.Step3
@@ -10,10 +11,13 @@ namespace GV23_Notice.Services.Step3
     public sealed class Step3BatchService : IStep3BatchService
     {
         private readonly AppDbContext _db;
-
-        public Step3BatchService(AppDbContext db)
+        private readonly INoticeSourceStatusService _sourceStatus;
+        private readonly IConfiguration _config;
+        public Step3BatchService(AppDbContext db, INoticeSourceStatusService sourceStatus, IConfiguration config)
         {
             _db = db;
+            _sourceStatus = sourceStatus;
+            _config = config;
         }
 
         public async Task<int> CreateBatchAsync(Guid workflowKey, DateTime batchDate, string createdBy, CancellationToken ct)
@@ -347,18 +351,16 @@ namespace GV23_Notice.Services.Step3
                         if (!s.AppealCloseDate.HasValue)
                             throw new InvalidOperationException("S53 batch requires AppealCloseDate to be set in Step 1.");
 
-                        // Dates come from NoticeSettings (calculated in Step 1)
-                        // so NoticeBatches.BatchDate == Objection_MVD.Batch_Date exactly
-                        var s53BatchDate = s.BatchDate.HasValue ? s.BatchDate.Value.Date : batchDateUtc;
+                        // Dates come from NoticeSettings.
+                        var s53BatchDate = s.BatchDate.HasValue
+                            ? s.BatchDate.Value.Date
+                            : batchDateUtc;
+
                         var s53AppealClose = s.AppealCloseDate.Value.Date;
                         var sapNo = createdBy;
 
-                        batch.BatchDate = s53BatchDate;   // keep NoticeBatches in sync
+                        batch.BatchDate = s53BatchDate;
 
-                        // ── Dedicated SqlConnection — completely separate from EF's connection
-                        // Reason: EF releases its connection after SaveChangesAsync above.
-                        // Re-using it causes state conflicts when the reader is open.
-                        // A fresh SqlConnection avoids all of that.
                         var connStr = _db.Database.GetConnectionString()
                                       ?? throw new InvalidOperationException("Connection string not found.");
 
@@ -384,8 +386,9 @@ namespace GV23_Notice.Services.Step3
 
                             using var reader = await cmd.ExecuteReaderAsync(ct);
 
-                            // The SP returns multiple result sets (one per sp_executesql call).
-                            // Advance through them until we find the final SELECT with 4 columns.
+                            // The SP may return multiple result sets.
+                            // We only want the final result set with:
+                            // ObjectionNo, PremiseId, RecipientEmail, ObjectorType
                             do
                             {
                                 if (reader.FieldCount == 4)
@@ -397,17 +400,16 @@ namespace GV23_Notice.Services.Step3
                                             ObjectionNo = reader.IsDBNull(0) ? null : reader.GetString(0),
                                             PremiseId = reader.IsDBNull(1) ? null : reader.GetString(1),
                                             RecipientEmail = reader.IsDBNull(2) ? null : reader.GetString(2),
-                                            ObjectorType = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                            ObjectorType = reader.IsDBNull(3) ? null : reader.GetString(3)
                                         });
                                     }
-                                    break;  // found and read the data result set
+
+                                    break;
                                 }
                             }
                             while (await reader.NextResultAsync(ct));
                         }
-                        // spConn is disposed here — fully closed before EF SaveChanges below
 
-                        // ── Create NoticeRunLog entries ─────────────────────────────────────
                         var runLogs = s53Rows
                             .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
                             .Select(x => new NoticeRunLog
@@ -416,17 +418,35 @@ namespace GV23_Notice.Services.Step3
                                 ObjectionNo = x.ObjectionNo,
                                 PremiseId = x.PremiseId,
                                 RecipientEmail = x.RecipientEmail,
-                                // RecipientName stores the ObjectorType so the print
-                                // service knows which Objection_MVD row/filename to use.
+
+                                // RecipientName stores ObjectorType for S53.
+                                // Example: Owner, Owner_Rep, Owner_Third_Party
                                 RecipientName = x.ObjectorType,
+
                                 Status = RunStatus.Generated,
                                 CreatedAtUtc = nowUtc
-                            }).ToList();
+                            })
+                            .ToList();
+
+                        EnsureBatchHasRecords(runLogs.Count, s.Notice);
 
                         _db.NoticeRunLogs.AddRange(runLogs);
+
                         batch.NumberOfRecords = runLogs.Count;
+                        batch.Mode = ResolveBatchModeFromCount(runLogs.Count);
 
                         await _db.SaveChangesAsync(ct);
+
+                        // Now that the RunLogs exist, update the source status.
+                        // Create Batch stage = Printing-Pending
+                        await _sourceStatus.SetS53StatusAsync(
+                            batch.RollId,
+                            runLogs.Select(x => x.ObjectionNo ?? ""),
+                            NoticeWorkflowStatus.PrintingPending,
+                            ct);
+
+                        await _db.SaveChangesAsync(ct);
+
                         return batch.Id;
                     }
 
@@ -437,7 +457,18 @@ namespace GV23_Notice.Services.Step3
                     throw new NotSupportedException($"Step3 batch creation not implemented for notice: {s.Notice}");
             }
         }
+        private static BatchMode ResolveBatchModeFromCount(int count)
+        {
+            return count == 1
+                ? BatchMode.Single
+                : BatchMode.Bulk;
+        }
 
+        private static void EnsureBatchHasRecords(int count, NoticeKind notice)
+        {
+            if (count <= 0)
+                throw new InvalidOperationException($"No records were selected for {notice} batch.");
+        }
         // ── Legacy overload (kept for backward compat) ───────────────────────
         public async Task<NoticeBatch> CreateBatchAsync(int settingsId, string createdBy, CancellationToken ct)
         {

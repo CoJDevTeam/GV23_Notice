@@ -23,6 +23,7 @@ using GV23_Notice.Services.SnapShotStep2;
 using GV23_Notice.Services.Stats;
 using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.Storage;
+using GV23_Notice.Services.Workflow;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.EntityFrameworkCore;
@@ -116,6 +117,7 @@ builder.Services.AddScoped<ISection78PdfBuilder, Section78PdfBuilder>();
 
 // Also register concrete Section52PdfService if some services inject the concrete type
 builder.Services.AddScoped<Section52PdfService>();
+builder.Services.AddScoped<INoticeSourceStatusService,NoticeSourceStatusService>();
 
 // ----------------------------------------------------
 // Search / Audit / Workflow

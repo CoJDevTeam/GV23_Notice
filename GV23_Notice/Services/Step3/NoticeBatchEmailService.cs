@@ -5,6 +5,7 @@ using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Services.QA;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Storage;
+using GV23_Notice.Services.Workflow;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -26,6 +27,7 @@ namespace GV23_Notice.Services.Email
         private readonly IConfiguration _config;
         private readonly ILogger<NoticeBatchEmailService> _log;
         private readonly INoticeQaService _qa;
+        private readonly INoticeSourceStatusService _sourceStatus;
         private const int HardMaxEmails = 2000;
 
         public NoticeBatchEmailService(
@@ -35,7 +37,7 @@ namespace GV23_Notice.Services.Email
             INoticePathService paths,
             IS49RollRepository s49Repo,
             IConfiguration config,
-            ILogger<NoticeBatchEmailService> log,INoticeQaService qa)
+            ILogger<NoticeBatchEmailService> log,INoticeQaService qa, INoticeSourceStatusService sourceStatus)
         {
             _db = db;
             _emailOpt = emailOpt.Value;
@@ -45,29 +47,37 @@ namespace GV23_Notice.Services.Email
             _config = config;
             _log = log;
             _qa = qa;
+            _sourceStatus = sourceStatus;
         }
 
         // ── Count ready-to-send records ──────────────────────────────────────
         public async Task<int> CountSelectedRecordsAsync(
-            IEnumerable<int> batchIds, CancellationToken ct)
+     IEnumerable<int> batchIds, CancellationToken ct)
         {
             var ids = batchIds.Distinct().ToList();
+
+            if (ids.Count == 0)
+                return 0;
+
             return await _db.NoticeRunLogs
                 .Where(r => ids.Contains(r.NoticeBatchId)
                          && r.Status == RunStatus.Printed
                          && r.RecipientEmail != null
-                         && r.RecipientEmail != "")
+                         && r.RecipientEmail != ""
+                         && r.PdfPath != null
+                         && r.PdfPath != "")
                 .CountAsync(ct);
         }
 
         // ── Send emails for selected batches ─────────────────────────────────
         public async Task<SendBatchEmailResult> SendBatchEmailsAsync(
-            IEnumerable<int> batchIds,
-            Guid workflowKey,
-            string sentBy,
-            CancellationToken ct)
+     IEnumerable<int> batchIds,
+     Guid workflowKey,
+     string sentBy,
+     CancellationToken ct)
         {
             var ids = batchIds.Distinct().ToList();
+
             if (ids.Count == 0)
                 return new SendBatchEmailResult { ErrorMessage = "No batches selected." };
 
@@ -88,7 +98,6 @@ namespace GV23_Notice.Services.Email
                            .FirstOrDefaultAsync(r => r.RollId == settings.RollId, ct)
                        ?? throw new InvalidOperationException("Roll not found.");
 
-            // Load batches so we can build eml paths per batch
             var batches = await _db.NoticeBatches.AsNoTracking()
                 .Where(b => ids.Contains(b.Id))
                 .ToDictionaryAsync(b => b.Id, ct);
@@ -98,33 +107,286 @@ namespace GV23_Notice.Services.Email
                          && r.Status == RunStatus.Printed
                          && r.RecipientEmail != null
                          && r.RecipientEmail != ""
-                         && r.PdfPath != null)
-                .OrderBy(r => r.NoticeBatchId).ThenBy(r => r.Id)
+                         && r.PdfPath != null
+                         && r.PdfPath != "")
+                .OrderBy(r => r.NoticeBatchId)
+                .ThenBy(r => r.Id)
                 .ToListAsync(ct);
 
-            var result = new SendBatchEmailResult { BatchesProcessed = ids.Count };
+            var result = new SendBatchEmailResult
+            {
+                BatchesProcessed = ids.Count
+            };
 
-            var maxSend = Math.Min(HardMaxEmails, _emailOpt.Limits?.MaxSendPerBatch ?? HardMaxEmails);
+            var maxSend = Math.Min(
+                HardMaxEmails,
+                _emailOpt.Limits?.MaxSendPerBatch ?? HardMaxEmails);
+
             if (runLogs.Count > maxSend)
             {
-                result.ErrorMessage = $"Selection contains {runLogs.Count} emails but the limit is {maxSend}. " +
-                                      "Please select fewer batches.";
+                result.ErrorMessage =
+                    $"Selection contains {runLogs.Count} emails but the limit is {maxSend}. Please select fewer batches.";
+
                 return result;
             }
 
             var delay = Math.Max(0, _emailOpt.Limits?.DelayMsBetweenSends ?? 0);
 
+            // ============================================================
+            // S53 SPECIAL RULE:
+            // Owner_Rep / Owner_Third_Party are companion copies.
+            // They share one Obj_Property_Info source status with the
+            // Representative / Third_Party record.
+            //
+            // So send all records for the same ObjectionNo first,
+            // then update source status once:
+            // Email-Sent-Pending -> Notice-Sent
+            // ============================================================
+            if (settings.Notice == NoticeKind.S53)
+            {
+                var groups = runLogs
+                    .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                    .GroupBy(x => x.ObjectionNo!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(g => g.Key)
+                    .ToList();
+
+                foreach (var group in groups)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var objectionNo = group.Key;
+                    var groupLogs = group.OrderBy(x => x.Id).ToList();
+
+                    batches.TryGetValue(groupLogs.First().NoticeBatchId, out var batch);
+                    var batchName = batch?.BatchName ?? "Batch";
+                    var rollId = batch?.RollId ?? settings.RollId;
+
+                    try
+                    {
+                        var canSend = await _sourceStatus.IsS53StatusAsync(
+                            rollId,
+                            objectionNo,
+                            NoticeWorkflowStatus.EmailSentPending,
+                            ct);
+
+                        if (!canSend)
+                        {
+                            throw new InvalidOperationException(
+                                $"Cannot send S53 notice {objectionNo}. Source status must be '{NoticeWorkflowStatus.EmailSentPending}'.");
+                        }
+
+                        foreach (var log in groupLogs)
+                        {
+                            try
+                            {
+                                var objectorType = string.IsNullOrWhiteSpace(log.RecipientName)
+                                    ? "Owner"
+                                    : log.RecipientName.Trim();
+
+                                var mvdEmailData = await FetchS53MvdEmailDataAsync(
+                                    rollId,
+                                    log.ObjectionNo!,
+                                    batchName,
+                                    objectorType,
+                                    ct);
+
+                                if (mvdEmailData == null)
+                                {
+                                    throw new InvalidOperationException(
+                                        $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, BatchName={batchName}, ObjectorType={objectorType}.");
+                                }
+
+                                if (string.IsNullOrWhiteSpace(mvdEmailData.Email))
+                                {
+                                    throw new InvalidOperationException(
+                                        $"S53 email not found in Objection_MVD for ObjectionNo={log.ObjectionNo}, ObjectorType={objectorType}, BatchName={batchName}.");
+                                }
+
+                                var recipientEmail = mvdEmailData.Email.Trim();
+                                log.RecipientEmail = recipientEmail;
+
+                                var req = BuildEmailRequest(settings, roll, log);
+                                req.RecipientEmail = recipientEmail;
+
+                                if (req.Items.Count > 0)
+                                {
+                                    req.Items[0].PropertyDesc = mvdEmailData.PropertyDesc
+                                                               ?? log.PropertyDesc
+                                                               ?? "";
+
+                                    req.Items[0].ObjectionNo = mvdEmailData.ObjectionNo
+                                                               ?? log.ObjectionNo;
+                                }
+
+                                var (subject, bodyHtml) = _templates.Build(req);
+
+                                if (string.IsNullOrWhiteSpace(log.PdfPath))
+                                    throw new InvalidOperationException($"PDF path is empty for RunLog {log.Id}.");
+
+                                var emlPath = BuildEmlPathNextToPdf(
+                                    pdfPath: log.PdfPath,
+                                    notice: settings.Notice,
+                                    objectionNo: log.ObjectionNo,
+                                    appealNo: log.AppealNo,
+                                    propertyDesc: log.PropertyDesc,
+                                    recipientEmail: recipientEmail);
+
+                                emlPath = await SaveEmlAsync(
+                                    emlPath,
+                                    recipientEmail,
+                                    subject,
+                                    bodyHtml,
+                                    log.PdfPath!,
+                                    ct,
+                                    ccAddress: string.IsNullOrWhiteSpace(_emailOpt.CcAddress)
+                                        ? null
+                                        : _emailOpt.CcAddress.Trim(),
+                                    fromAddress: string.IsNullOrWhiteSpace(_emailOpt.FromAddress)
+                                        ? null
+                                        : _emailOpt.FromAddress.Trim(),
+                                    fromName: string.IsNullOrWhiteSpace(_emailOpt.FromName)
+                                        ? null
+                                        : _emailOpt.FromName.Trim());
+
+                                log.EmlPath = emlPath;
+
+                                try
+                                {
+                                    var logForSend = new NoticeRunLog
+                                    {
+                                        RecipientEmail = recipientEmail,
+                                        PdfPath = log.PdfPath
+                                    };
+
+                                    await SendOneEmailAsync(subject, bodyHtml, logForSend, ct);
+
+                                    _log.LogInformation(
+                                        "✓ SMTP sent to {Email} ({Notice})",
+                                        recipientEmail,
+                                        settings.Notice);
+                                }
+                                catch (SmtpFailedRecipientException smtpEx)
+                                {
+                                    _log.LogWarning(
+                                        "⚠ SMTP relay rejected {Email} ({Notice}) — .eml saved. Error: {Msg}",
+                                        recipientEmail,
+                                        settings.Notice,
+                                        smtpEx.Message);
+                                }
+                                catch (SmtpException smtpEx)
+                                {
+                                    _log.LogWarning(
+                                        "⚠ SMTP error for {Email} ({Notice}) — .eml saved. Error: {Msg}",
+                                        recipientEmail,
+                                        settings.Notice,
+                                        smtpEx.Message);
+                                }
+
+                                log.Status = RunStatus.Sent;
+                                log.SentAtUtc = DateTime.UtcNow;
+                                log.SentBy = sentBy;
+                                log.ErrorMessage = null;
+
+                                result.Sent++;
+
+                                await _db.SaveChangesAsync(ct);
+
+                                if (delay > 0)
+                                    await Task.Delay(delay, ct);
+                            }
+                            catch (Exception ex)
+                            {
+                                _log.LogError(
+                                    ex,
+                                    "Email send failed for RunLog {Id}. Notice={Notice}, ObjectionNo={ObjectionNo}, ObjectorType={ObjectorType}",
+                                    log.Id,
+                                    settings.Notice,
+                                    log.ObjectionNo,
+                                    log.RecipientName);
+
+                                log.Status = RunStatus.Failed;
+                                log.ErrorMessage = ex.Message.Length > 2000
+                                    ? ex.Message[..2000]
+                                    : ex.Message;
+
+                                log.SentBy = sentBy;
+                                result.Failed++;
+
+                                await _db.SaveChangesAsync(ct);
+                            }
+                        }
+
+                        var allGroupSent = groupLogs.All(x => x.Status == RunStatus.Sent);
+
+                        if (allGroupSent)
+                        {
+                            await _sourceStatus.SetS53StatusAsync(
+                                rollId,
+                                new[] { objectionNo },
+                                NoticeWorkflowStatus.NoticeSent,
+                                ct);
+                        }
+
+                        await _db.SaveChangesAsync(ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogError(
+                            ex,
+                            "S53 email group failed. ObjectionNo={ObjectionNo}, Batch={BatchName}",
+                            objectionNo,
+                            batchName);
+
+                        foreach (var log in groupLogs)
+                        {
+                            if (log.Status != RunStatus.Sent)
+                            {
+                                log.Status = RunStatus.Failed;
+                                log.ErrorMessage = ex.Message.Length > 2000
+                                    ? ex.Message[..2000]
+                                    : ex.Message;
+
+                                log.SentBy = sentBy;
+                            }
+                        }
+
+                        result.Failed += groupLogs.Count(x => x.Status == RunStatus.Failed);
+
+                        await _db.SaveChangesAsync(ct);
+                    }
+                }
+
+                var missingObjectionLogs = runLogs
+                    .Where(x => string.IsNullOrWhiteSpace(x.ObjectionNo))
+                    .ToList();
+
+                foreach (var log in missingObjectionLogs)
+                {
+                    log.Status = RunStatus.Failed;
+                    log.ErrorMessage = $"S53 RunLog {log.Id} has no ObjectionNo.";
+                    log.SentBy = sentBy;
+                    result.Failed++;
+                }
+
+                if (missingObjectionLogs.Count > 0)
+                    await _db.SaveChangesAsync(ct);
+
+                return result;
+            }
+
+            // ============================================================
+            // NORMAL SEND LOGIC FOR NON-S53 NOTICES
+            // ============================================================
             foreach (var log in runLogs)
             {
                 ct.ThrowIfCancellationRequested();
+
                 try
                 {
                     batches.TryGetValue(log.NoticeBatchId, out var batch);
                     var batchName = batch?.BatchName ?? "Batch";
+                    var rollId = batch?.RollId ?? settings.RollId;
 
-                    // Build email body using the same template service as the kickoff preview
-                    // Always fetch recipient email fresh from the source table for every notice type.
-                    // This prevents stale or wrong emails being used from the run log cache.
                     string recipientEmail = log.RecipientEmail ?? "";
 
                     var freshEmail = await FetchFreshEmailAsync(settings, log, batchName, ct);
@@ -135,16 +397,18 @@ namespace GV23_Notice.Services.Email
                         log.RecipientEmail = recipientEmail;
                     }
 
-                    // Build email body using the same template service as the kickoff preview
+                    if (string.IsNullOrWhiteSpace(recipientEmail))
+                        throw new InvalidOperationException($"Recipient email is empty for RunLog {log.Id}.");
+
                     var req = BuildEmailRequest(settings, roll, log);
                     req.RecipientEmail = recipientEmail;
 
                     var (subject, bodyHtml) = _templates.Build(req);
+
                     string emlPath;
 
                     if (!string.IsNullOrWhiteSpace(log.PdfPath))
                     {
-                        // Save .eml next to the printed PDF, but with the new required email filename.
                         emlPath = BuildEmlPathNextToPdf(
                             pdfPath: log.PdfPath,
                             notice: settings.Notice,
@@ -155,8 +419,6 @@ namespace GV23_Notice.Services.Email
                     }
                     else
                     {
-                        // Fallback only if PdfPath is missing.
-                        // This should rarely happen because sending requires printed notices.
                         var folderKey = log.PropertyDesc
                                         ?? log.ObjectionNo
                                         ?? log.AppealNo
@@ -184,57 +446,25 @@ namespace GV23_Notice.Services.Email
                         emlPath = Path.Combine(folder, fileName);
                     }
 
-                    if (settings.Notice == NoticeKind.S53)
-                    {
-                        // For S53 re-build the email body from Objection_MVD so it
-                        // contains the correct GV + MVD values, not just the run log stub.
-                        var objectorType = string.IsNullOrWhiteSpace(log.RecipientName)
-                            ? "Owner"
-                            : log.RecipientName.Trim();
-
-                        var mvdEmailData = await FetchS53MvdEmailDataAsync(
-                            batch?.RollId ?? settings.RollId,
-                            log.ObjectionNo!,
-                            batchName,
-                            objectorType,
-                            ct);
-
-                        if (mvdEmailData != null)
-                        {
-                            var s53Req = BuildEmailRequest(settings, roll, log);
-                            s53Req.RecipientEmail = recipientEmail;
-
-                            if (s53Req.Items.Count > 0)
-                            {
-                                s53Req.Items[0].PropertyDesc = mvdEmailData.PropertyDesc
-                                                               ?? log.PropertyDesc
-                                                               ?? "";
-
-                                s53Req.Items[0].ObjectionNo = mvdEmailData.ObjectionNo
-                                                               ?? log.ObjectionNo;
-                            }
-
-                            var (s53Subject, s53Body) = _templates.Build(s53Req);
-                            subject = s53Subject;
-                            bodyHtml = s53Body;
-                        }
-                    }
                     emlPath = await SaveEmlAsync(
-      emlPath,
-      recipientEmail,
-      subject,
-      bodyHtml,
-      log.PdfPath!,
-      ct,
-      ccAddress: string.IsNullOrWhiteSpace(_emailOpt.CcAddress) ? null : _emailOpt.CcAddress.Trim(),
-      fromAddress: string.IsNullOrWhiteSpace(_emailOpt.FromAddress) ? null : _emailOpt.FromAddress.Trim(),
-      fromName: string.IsNullOrWhiteSpace(_emailOpt.FromName) ? null : _emailOpt.FromName.Trim());
+                        emlPath,
+                        recipientEmail,
+                        subject,
+                        bodyHtml,
+                        log.PdfPath!,
+                        ct,
+                        ccAddress: string.IsNullOrWhiteSpace(_emailOpt.CcAddress)
+                            ? null
+                            : _emailOpt.CcAddress.Trim(),
+                        fromAddress: string.IsNullOrWhiteSpace(_emailOpt.FromAddress)
+                            ? null
+                            : _emailOpt.FromAddress.Trim(),
+                        fromName: string.IsNullOrWhiteSpace(_emailOpt.FromName)
+                            ? null
+                            : _emailOpt.FromName.Trim());
 
                     log.EmlPath = emlPath;
 
-                    // Send via SMTP
-                    // SmtpFailedRecipientException = relay rejected (external domain)
-                    // The .eml is already saved — still mark as Sent so the batch can proceed
                     try
                     {
                         var logForSend = new NoticeRunLog
@@ -242,40 +472,64 @@ namespace GV23_Notice.Services.Email
                             RecipientEmail = recipientEmail,
                             PdfPath = log.PdfPath
                         };
+
                         await SendOneEmailAsync(subject, bodyHtml, logForSend, ct);
-                        _log.LogInformation("✓ SMTP sent to {Email} ({Notice})", recipientEmail, settings.Notice);
+
+                        _log.LogInformation(
+                            "✓ SMTP sent to {Email} ({Notice})",
+                            recipientEmail,
+                            settings.Notice);
                     }
                     catch (SmtpFailedRecipientException smtpEx)
                     {
-                        // Relay rejected — external domain not allowed by corporate SMTP.
-                        // .eml copy is saved; mark Sent so batch continues.
-                        // ACTION: Ask IT to allow external relay, or switch to an external SMTP provider.
                         _log.LogWarning(
-                            "⚠ SMTP relay REJECTED {Email} ({Notice}) — NOT delivered, .eml saved. Error: {Msg}",
-                            recipientEmail, settings.Notice, smtpEx.Message);
+                            "⚠ SMTP relay rejected {Email} ({Notice}) — .eml saved. Error: {Msg}",
+                            recipientEmail,
+                            settings.Notice,
+                            smtpEx.Message);
                     }
                     catch (SmtpException smtpEx)
                     {
                         _log.LogWarning(
                             "⚠ SMTP error for {Email} ({Notice}) — .eml saved. Error: {Msg}",
-                            recipientEmail, settings.Notice, smtpEx.Message);
+                            recipientEmail,
+                            settings.Notice,
+                            smtpEx.Message);
                     }
 
                     log.Status = RunStatus.Sent;
                     log.SentAtUtc = DateTime.UtcNow;
                     log.SentBy = sentBy;
+                    log.ErrorMessage = null;
 
                     if (settings.Notice == NoticeKind.S49 && !string.IsNullOrWhiteSpace(log.PremiseId))
-                        await _s49Repo.MarkEmailSentAsync(roll.RollId, log.PremiseId, ct);
+                    {
+                        await _s49Repo.MarkEmailSentAsync(
+                            roll.RollId,
+                            log.PremiseId,
+                            ct);
+                    }
 
                     result.Sent++;
                 }
                 catch (Exception ex)
                 {
-                    _log.LogError(ex, "Email send failed for RunLog {Id}", log.Id);
+                    _log.LogError(
+                        ex,
+                        "Email send failed for RunLog {Id}. Notice={Notice}, ObjectionNo={ObjectionNo}, AppealNo={AppealNo}, PremiseId={PremiseId}",
+                        log.Id,
+                        settings.Notice,
+                        log.ObjectionNo,
+                        log.AppealNo,
+                        log.PremiseId);
+
                     log.Status = RunStatus.Failed;
-                    log.ErrorMessage = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
+                    log.ErrorMessage = ex.Message.Length > 2000
+                        ? ex.Message[..2000]
+                        : ex.Message;
+
                     log.SentBy = sentBy;
+
                     result.Failed++;
                 }
 
@@ -285,7 +539,6 @@ namespace GV23_Notice.Services.Email
                     await Task.Delay(delay, ct);
             }
 
-            // Mark Printed logs with no email as NoEmail
             var noEmailLogs = await _db.NoticeRunLogs
                 .Where(r => ids.Contains(r.NoticeBatchId)
                          && r.Status == RunStatus.Printed
@@ -296,6 +549,7 @@ namespace GV23_Notice.Services.Email
             {
                 log.Status = RunStatus.NoEmail;
                 log.SentBy = sentBy;
+                log.ErrorMessage = "Recipient email is empty.";
                 result.Skipped++;
             }
 

@@ -10,6 +10,7 @@ using GV23_Notice.Services.Notices.Section52;
 using GV23_Notice.Services.Notices.Section53;
 using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
 using GV23_Notice.Services.Rolls;
+using GV23_Notice.Services.Workflow;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -32,6 +33,7 @@ namespace GV23_Notice.Services.Storage
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<NoticeBatchPrintService> _log;
         private readonly IConfiguration _config;
+        private readonly INoticeSourceStatusService _sourceStatus;
 
         public NoticeBatchPrintService(
             AppDbContext db,
@@ -43,7 +45,7 @@ namespace GV23_Notice.Services.Storage
             ISection53PdfService s53Builder,             // ← S53 added
             IWebHostEnvironment env,
             ILogger<NoticeBatchPrintService> log,
-            IConfiguration config)
+            IConfiguration config,INoticeSourceStatusService sourceStatus)
         {
             _db = db;
             _paths = paths;
@@ -55,11 +57,12 @@ namespace GV23_Notice.Services.Storage
             _env = env;
             _log = log;
             _config = config;
+            _sourceStatus = sourceStatus;
         }
 
         // ── Print a single batch ────────────────────────────────────────────
         public async Task<PrintBatchResult> PrintBatchAsync(
-            int noticeBatchId, string printedBy, CancellationToken ct)
+     int noticeBatchId, string printedBy, CancellationToken ct)
         {
             var batch = await _db.NoticeBatches.AsNoTracking()
                             .FirstOrDefaultAsync(b => b.Id == noticeBatchId, ct)
@@ -80,7 +83,10 @@ namespace GV23_Notice.Services.Storage
                 .ToListAsync(ct);
 
             foreach (var rl in runLogs.Where(x => x.Status == RunStatus.Failed))
+            {
                 rl.Status = RunStatus.Generated;
+                rl.ErrorMessage = null;
+            }
 
             var result = new PrintBatchResult
             {
@@ -88,21 +94,168 @@ namespace GV23_Notice.Services.Storage
                 Total = runLogs.Count
             };
 
+            // ============================================================
+            // S53 SPECIAL RULE:
+            // Owner_Rep / Owner_Third_Party are companion copies.
+            // They share the same Obj_Property_Info row/status as the
+            // Representative / Third_Party record.
+            //
+            // So we print all records for the same ObjectionNo first,
+            // then update source status once:
+            // Printing-Pending -> QA-Pending
+            // ============================================================
+            if (settings.Notice == NoticeKind.S53)
+            {
+                var groups = runLogs
+                    .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                    .GroupBy(x => x.ObjectionNo!.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(g => g.Key)
+                    .ToList();
+
+                foreach (var group in groups)
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    var objectionNo = group.Key;
+                    var groupLogs = group.OrderBy(x => x.Id).ToList();
+
+                    try
+                    {
+                        var canPrint = await _sourceStatus.IsS53StatusAsync(
+                            batch.RollId,
+                            objectionNo,
+                            NoticeWorkflowStatus.PrintingPending,
+                            ct);
+
+                        if (!canPrint)
+                        {
+                            throw new InvalidOperationException(
+                                $"Cannot print S53 notice {objectionNo}. Source status must be '{NoticeWorkflowStatus.PrintingPending}'.");
+                        }
+
+                        var printedGroupLogs = new List<NoticeRunLog>();
+
+                        foreach (var log in groupLogs)
+                        {
+                            try
+                            {
+                                await PrintOneAsync(settings, roll, batch, log, ct);
+
+                                log.ErrorMessage = null;
+                                printedGroupLogs.Add(log);
+                                result.Printed++;
+                            }
+                            catch (Exception ex)
+                            {
+                                _log.LogError(
+                                    ex,
+                                    "Print failed for RunLog {Id}. Notice={Notice}, ObjectionNo={ObjectionNo}, ObjectorType={ObjectorType}, Batch={BatchName}",
+                                    log.Id,
+                                    settings.Notice,
+                                    log.ObjectionNo,
+                                    log.RecipientName,
+                                    batch.BatchName);
+
+                                log.Status = RunStatus.Failed;
+                                log.ErrorMessage = ex.Message.Length > 2000
+                                    ? ex.Message[..2000]
+                                    : ex.Message;
+
+                                result.Failed++;
+                            }
+                        }
+
+                        // Only move source status when every copy for that objection printed.
+                        var allGroupPrinted = groupLogs.All(x => x.Status == RunStatus.Printed);
+
+                        if (allGroupPrinted)
+                        {
+                            await _sourceStatus.SetS53StatusAsync(
+                                batch.RollId,
+                                new[] { objectionNo },
+                                NoticeWorkflowStatus.QaPending,
+                                ct);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogError(
+                            ex,
+                            "Print group failed. Notice={Notice}, ObjectionNo={ObjectionNo}, Batch={BatchName}",
+                            settings.Notice,
+                            objectionNo,
+                            batch.BatchName);
+
+                        foreach (var log in groupLogs)
+                        {
+                            if (log.Status != RunStatus.Printed)
+                            {
+                                log.Status = RunStatus.Failed;
+                                log.ErrorMessage = ex.Message.Length > 2000
+                                    ? ex.Message[..2000]
+                                    : ex.Message;
+                            }
+                        }
+
+                        result.Failed += groupLogs.Count(x => x.Status == RunStatus.Failed);
+                    }
+
+                    await _db.SaveChangesAsync(ct);
+                }
+
+                // Any S53 row without ObjectionNo must fail clearly.
+                var missingObjectionLogs = runLogs
+                    .Where(x => string.IsNullOrWhiteSpace(x.ObjectionNo))
+                    .ToList();
+
+                foreach (var log in missingObjectionLogs)
+                {
+                    log.Status = RunStatus.Failed;
+                    log.ErrorMessage = $"S53 RunLog {log.Id} has no ObjectionNo.";
+                    result.Failed++;
+                }
+
+                if (missingObjectionLogs.Count > 0)
+                    await _db.SaveChangesAsync(ct);
+
+                return result;
+            }
+
+            // ============================================================
+            // Normal print logic for other notice types
+            // ============================================================
             foreach (var log in runLogs)
             {
                 try
                 {
+                    ct.ThrowIfCancellationRequested();
+
                     await PrintOneAsync(settings, roll, batch, log, ct);
+
+                    log.ErrorMessage = null;
                     result.Printed++;
                 }
                 catch (Exception ex)
                 {
-                    _log.LogError(ex, "Print failed for RunLog {Id}", log.Id);
+                    _log.LogError(
+                        ex,
+                        "Print failed for RunLog {Id}. Notice={Notice}, ObjectionNo={ObjectionNo}, AppealNo={AppealNo}, PremiseId={PremiseId}, Batch={BatchName}",
+                        log.Id,
+                        settings.Notice,
+                        log.ObjectionNo,
+                        log.AppealNo,
+                        log.PremiseId,
+                        batch.BatchName);
+
                     log.Status = RunStatus.Failed;
-                    log.ErrorMessage = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
+                    log.ErrorMessage = ex.Message.Length > 2000
+                        ? ex.Message[..2000]
+                        : ex.Message;
+
                     result.Failed++;
-                    await _db.SaveChangesAsync(ct);
                 }
+
+                await _db.SaveChangesAsync(ct);
             }
 
             return result;

@@ -5,6 +5,7 @@ using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services.Rolls;
+using GV23_Notice.Services.Workflow;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
@@ -15,15 +16,17 @@ namespace GV23_Notice.Services.QA
     {
         private readonly AppDbContext _db;
         private readonly IRollDbConnectionFactory _rollConn;
+        private readonly INoticeSourceStatusService _sourceStatus;
 
         private const int SamplePerPropertyType = 5;
 
         public NoticeQaService(
             AppDbContext db,
-            IRollDbConnectionFactory rollConn)
+            IRollDbConnectionFactory rollConn,INoticeSourceStatusService sourceStatus)
         {
             _db = db;
             _rollConn = rollConn;
+            _sourceStatus = sourceStatus;
         }
 
         public async Task<bool> RequiresQaAsync(Guid workflowKey, CancellationToken ct)
@@ -210,6 +213,24 @@ namespace GV23_Notice.Services.QA
 
             var sourceRows = await LoadObjPropertyInfoRowsAsync(roll.SourceDb, objectionNos, ct);
 
+            if (settings.Notice == NoticeKind.S53)
+            {
+                var invalidStatusRows = sourceRows
+                    .Where(x => !string.Equals(
+                        x.ObjectionStatus?.Trim(),
+                        NoticeWorkflowStatus.QaPending,
+                        StringComparison.OrdinalIgnoreCase))
+                    .Select(x => $"{x.ObjectionNo} [{x.ObjectionStatus}]")
+                    .ToList();
+
+                if (invalidStatusRows.Any())
+                {
+                    throw new InvalidOperationException(
+                        "Cannot create QA. All S53 source records must be on 'QA-Pending'. Invalid records: " +
+                        string.Join(", ", invalidStatusRows.Take(20)));
+                }
+            }
+
             var joined = printedLogs
                 .Join(
                     sourceRows,
@@ -284,11 +305,11 @@ namespace GV23_Notice.Services.QA
         }
 
         public async Task ApproveQaAsync(
-            Guid workflowKey,
-            int qaRunId,
-            string user,
-            string? comment,
-            CancellationToken ct)
+       Guid workflowKey,
+       int qaRunId,
+       string user,
+       string? comment,
+       CancellationToken ct)
         {
             var qaRun = await _db.NoticeQaRuns
                 .Include(x => x.Items)
@@ -303,6 +324,39 @@ namespace GV23_Notice.Services.QA
             if (qaRun.Items.Count == 0)
                 throw new InvalidOperationException("Cannot approve QA because there are no QA items.");
 
+            var settings = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == qaRun.NoticeSettingsId, ct)
+                ?? throw new InvalidOperationException("Notice settings not found for QA run.");
+
+            var batchIds = await _db.NoticeBatches
+                .AsNoTracking()
+                .Where(x => x.WorkflowKey == workflowKey && x.BatchKind == "STEP3")
+                .Select(x => x.Id)
+                .ToListAsync(ct);
+
+            if (batchIds.Count == 0)
+                throw new InvalidOperationException("No STEP3 batches found for this workflow.");
+
+            var printedLogs = await _db.NoticeRunLogs
+                .AsNoTracking()
+                .Where(x =>
+                    batchIds.Contains(x.NoticeBatchId) &&
+                    x.Status == RunStatus.Printed &&
+                    x.ObjectionNo != null &&
+                    x.ObjectionNo != "")
+                .Select(x => new
+                {
+                    x.ObjectionNo
+                })
+                .ToListAsync(ct);
+
+            if (printedLogs.Count == 0)
+                throw new InvalidOperationException("No printed notices found for QA approval.");
+
+            // ------------------------------------------------------------
+            // QA item validation
+            // ------------------------------------------------------------
             var failed = qaRun.Items
                 .Where(x => !x.IsCategoryValid || x.QaStatus == "Failed")
                 .ToList();
@@ -310,14 +364,51 @@ namespace GV23_Notice.Services.QA
             if (failed.Count > 0)
                 throw new InvalidOperationException("QA cannot be approved. Fix the failed category records first.");
 
+            // ------------------------------------------------------------
+            // S53 workflow gate:
+            // QA can only be approved when source status is QA-Pending.
+            // ------------------------------------------------------------
+            if (settings.Notice == NoticeKind.S53)
+            {
+                foreach (var log in printedLogs)
+                {
+                    if (string.IsNullOrWhiteSpace(log.ObjectionNo))
+                        continue;
+
+                    var canApproveQa = await _sourceStatus.IsS53StatusAsync(
+                        qaRun.RollId,
+                        log.ObjectionNo,
+                        NoticeWorkflowStatus.QaPending,
+                        ct);
+
+                    if (!canApproveQa)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot approve QA for S53 notice {log.ObjectionNo}. Source status must be '{NoticeWorkflowStatus.QaPending}'.");
+                    }
+                }
+            }
+
             qaRun.Status = "Approved";
             qaRun.ApprovedBy = user;
             qaRun.ApprovedAtUtc = DateTime.UtcNow;
             qaRun.Comment = comment;
 
             await _db.SaveChangesAsync(ct);
-        }
 
+            // ------------------------------------------------------------
+            // After QA approval:
+            // QA-Pending -> Email-Sent-Pending
+            // ------------------------------------------------------------
+            if (settings.Notice == NoticeKind.S53)
+            {
+                await _sourceStatus.SetS53StatusAsync(
+                    qaRun.RollId,
+                    printedLogs.Select(x => x.ObjectionNo ?? ""),
+                    NoticeWorkflowStatus.EmailSentPending,
+                    ct);
+            }
+        }
         private async Task<List<ObjPropertyInfoLite>> LoadObjPropertyInfoRowsAsync(
             string sourceDb,
             List<string> objectionNos,
@@ -340,6 +431,7 @@ namespace GV23_Notice.Services.QA
             var sql = @"
 SELECT
     p.Objection_No,
+   p.objection_Status,
     p.Property_Type,
     p.Property_Desc,
     p.Premise_id,
@@ -361,15 +453,18 @@ INNER JOIN @ObjectionNos n
 
             while (await rd.ReadAsync(ct))
             {
-                rows.Add(new ObjPropertyInfoLite
-                {
+               
+                   rows.Add(new ObjPropertyInfoLite
+{
                     ObjectionNo = ReadString(rd, "Objection_No") ?? "",
+                    ObjectionStatus = ReadString(rd, "objection_Status"),
                     PropertyType = ReadString(rd, "Property_Type"),
                     PropertyDesc = ReadString(rd, "Property_Desc"),
                     PremiseId = ReadString(rd, "Premise_id"),
                     NewCategoryMvd = ReadString(rd, "New_Category_MVD"),
                     New2CategoryMvd = ReadString(rd, "New2_Category_MVD"),
                     New3CategoryMvd = ReadString(rd, "New3_Category_MVD")
+
                 });
             }
 
@@ -462,6 +557,7 @@ INNER JOIN @ObjectionNos n
             public string? NewCategoryMvd { get; set; }
             public string? New2CategoryMvd { get; set; }
             public string? New3CategoryMvd { get; set; }
+            public string? ObjectionStatus { get; set; }
         }
     }
 }

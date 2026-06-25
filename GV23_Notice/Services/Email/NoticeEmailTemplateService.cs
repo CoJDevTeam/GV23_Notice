@@ -186,13 +186,11 @@ namespace GV23_Notice.Services.Email
             var mid = new StringBuilder();
 
             mid.Append("<p>");
-            mid.Append(!string.IsNullOrWhiteSpace(req.RecipientName)
-                ? $"Good Day {H(req.RecipientName)},"
-                : "Good Day,");
+            mid.Append(S53Greeting(req));
             mid.Append("</p>");
 
-            mid.Append($"<p><strong>Please ignore the previous Municipal Valuer's Decision Notice for {H(req.RollName)}. This notice supersedes any previous notice for the Municipal Valuer's Decision for {H(req.RollName)}.</strong></p>");
-           
+            //mid.Append($"<p><strong>Please ignore the previous Municipal Valuer's Decision Notice for {H(req.RollName)}. This notice supersedes any previous notice for the Municipal Valuer's Decision for {H(req.RollName)}.</strong></p>");
+
             mid.Append("<p>");
               mid.Append("Notice is hereby given in terms of section 53(1) of the Municipal Property Rates Act No.6 of 2004 as amended, ");
             mid.Append("that the objection against the entry of the above property in or omitted from the ");
@@ -455,5 +453,23 @@ namespace GV23_Notice.Services.Email
             => $"{label} - {req.RollShortCode}".Trim();
 
         private static string H(string input) => WebUtility.HtmlEncode(input ?? "");
+
+
+        private string S53Greeting(NoticeEmailRequest req)
+        {
+            var objectorType = (req.RecipientName ?? "").Trim();
+
+            var greeting = objectorType.ToLowerInvariant() switch
+            {
+                "owner" => "Dear Property Owner",
+                "representative" => "Dear Property Representative",
+                "owner_rep" => "Dear Property Owner",
+                "third_party" => "Dear Property Objector",
+                "owner_third_party" => "Dear Property Owner",
+                _ => "Dear Client"
+            };
+
+            return greeting;
+        }
     }
 }
