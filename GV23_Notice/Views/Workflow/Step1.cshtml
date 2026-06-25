@@ -181,6 +181,9 @@
                                     <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 Notice</option>
                                     <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny Notice</option>
                                     <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity Notices</option>
+                                    
+
+                                    <option value="S53Rev" selected="@(Model.Notice == NoticeKind.S53Rev)">Section 53 Revised MVD Notice</option>
                                     @*   <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option> *@
                                 </select>
                               
@@ -366,6 +369,11 @@
                         <!-- S53 -->
                         <div id="blockS53" class="notice-block">
                             <div class="s1-notice-header s1-notice-s53">Section 53 — Appeal Period</div>
+                            <div id="s53RevNotice" class="s1-info-note" style="display:none; margin-bottom:12px; border-left:4px solid #b8860b;">
+                                <strong>Revised MVD selected.</strong>
+                                This will use records with source status <strong>Revised-MVD</strong> and revised MVD values.
+                                It will replace the previous Section 53 notice.
+                            </div>
                             <div class="s1-row s1-row-3">
                                 <div class="s1-field">
                                     <label class="s1-label">Batch Date <span class="s1-opt">(default Today)</span></label>
@@ -628,17 +636,27 @@
         }
 
         /* ── Notice blocks ──────────────────────────────── */
-        const NOTICE_DESCS = {
-            S49:'Section 49 — objection window, inspection dates and signature',
-            S51:'Section 51 — objection decision, evidence close date',
-            S52:'Section 52 — appeal notices, backlog processing by date range',
-            S53:'Section 53 — appeal period, close date with weekend / holiday adjustment',
+              const NOTICE_DESCS = {
+            S49: 'Section 49 — objection window, inspection dates and signature',
+            S51: 'Section 51 — objection decision, evidence close date',
+            S52: 'Section 52 — appeal notices, backlog processing by date range',
+            S53: 'Section 53 MVD — appeal period, close date with weekend / holiday adjustment',
+            S53Rev: 'Section 53 Revised MVD — revised objection decision replacing the previous Section 53 notice',
             DJ: 'Dear Johnny — only letter date required',
             IN: 'Invalid notice — objection or omission sub-type',
-            S78:'Section 78 — review period and extraction settings',
+            S78: 'Section 78 — review period and extraction settings',
         };
-        const NOTICE_BADGE = {S49:'s1-badge-s49',S51:'s1-badge-s51',S52:'s1-badge-s52',S53:'s1-badge-s53',DJ:'s1-badge-dj',IN:'s1-badge-in',S78:'s1-badge-s78'};
 
+        const NOTICE_BADGE = {
+            S49: 's1-badge-s49',
+            S51: 's1-badge-s51',
+            S52: 's1-badge-s52',
+            S53: 's1-badge-s53',
+            S53Rev: 's1-badge-s53',
+            DJ: 's1-badge-dj',
+            IN: 's1-badge-in',
+            S78: 's1-badge-s78'
+        };
         function toIsoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
         function getTodayIso(){ return toIsoDate(new Date()); }
 
@@ -659,11 +677,28 @@
             const sbd = document.getElementById('sb-notice-desc');
             if (sbl) sbl.textContent = notice;
             if (sbd) sbd.textContent = NOTICE_DESCS[notice]||'';
+                    const revBox = document.getElementById('s53RevNotice');
+        if (revBox) {
+            revBox.style.display = notice === 'S53Rev' ? 'block' : 'none';
+        }
 
+        const s53Header = document.querySelector('#blockS53 .s1-notice-header');
+        if (s53Header) {
+            s53Header.textContent = notice === 'S53Rev'
+                ? 'Section 53 Revised MVD — Appeal Period'
+                : 'Section 53 — Appeal Period';
+        }
             // Hide all
             document.querySelectorAll('.notice-block').forEach(b => b.style.display='none');
 
-            const map = {S49:'blockS49',S51:'blockS51',S52:'blockS52',S53:'blockS53',S78:'blockS78'};
+                    const map = {
+            S49: 'blockS49',
+            S51: 'blockS51',
+            S52: 'blockS52',
+            S53: 'blockS53',
+            S53Rev: 'blockS53',
+            S78: 'blockS78'
+        };
             if (map[notice]) document.getElementById(map[notice]).style.display = 'block';
             if (notice==='DJ'||notice==='IN') {
                 document.getElementById('blockDJIN').style.display = 'block';
@@ -705,8 +740,9 @@
             out.value = toIsoDate(dt);
         }
 
-        async function calcS53AppealClose() {
-            if (document.getElementById('noticeSelect')?.value!=='S53') return;
+         async function calcS53AppealClose() {
+        const selectedNotice = document.getElementById('noticeSelect')?.value;
+        if (selectedNotice !== 'S53' && selectedNotice !== 'S53Rev') return;
             if (document.getElementById('overrideS53')?.checked) return;
             const rollId = document.getElementById('rollSelect')?.value;
             const letter = document.getElementById('letterDate')?.value;

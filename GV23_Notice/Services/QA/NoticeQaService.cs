@@ -44,7 +44,7 @@ namespace GV23_Notice.Services.QA
 
             // This QA rule is mainly for printed MVD notices.
             // Keep this as S53 first. After testing, we can extend it to S49/S51 if needed.
-            return settings.Notice == NoticeKind.S53;
+            return settings.Notice.IsSection53Family();
         }
 
         public async Task<bool> IsQaApprovedAsync(Guid workflowKey, CancellationToken ct)
@@ -213,7 +213,7 @@ namespace GV23_Notice.Services.QA
 
             var sourceRows = await LoadObjPropertyInfoRowsAsync(roll.SourceDb, objectionNos, ct);
 
-            if (settings.Notice == NoticeKind.S53)
+            if (settings.Notice.IsSection53Family())
             {
                 var invalidStatusRows = sourceRows
                     .Where(x => !string.Equals(
@@ -368,7 +368,7 @@ namespace GV23_Notice.Services.QA
             // S53 workflow gate:
             // QA can only be approved when source status is QA-Pending.
             // ------------------------------------------------------------
-            if (settings.Notice == NoticeKind.S53)
+            if (settings.Notice.IsSection53Family())
             {
                 foreach (var log in printedLogs)
                 {
@@ -400,7 +400,7 @@ namespace GV23_Notice.Services.QA
             // After QA approval:
             // QA-Pending -> Email-Sent-Pending
             // ------------------------------------------------------------
-            if (settings.Notice == NoticeKind.S53)
+            if (settings.Notice.IsSection53Family())
             {
                 await _sourceStatus.SetS53StatusAsync(
                     qaRun.RollId,

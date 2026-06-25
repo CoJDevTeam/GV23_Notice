@@ -728,5 +728,103 @@ namespace GV23_Notice.Services.Preview
         }
         private static string SafeEmail(string? value)
     => string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
+
+
+        public async Task<S53PreviewDbData> S53RevPreviewDbDataAsync(
+        int rollId,
+        bool preferMulti,
+        CancellationToken ct)
+        {
+            var cs = _db.Database.GetConnectionString()
+                     ?? throw new InvalidOperationException("Connection string not found.");
+
+            await using var conn = new SqlConnection(cs);
+            await using var cmd = new SqlCommand("dbo.S53Rev_Preview_SelectTop1", conn)
+            {
+                CommandType = CommandType.StoredProcedure,
+                CommandTimeout = 120
+            };
+
+            cmd.Parameters.AddWithValue("@RollId", rollId);
+
+            await conn.OpenAsync(ct);
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+            {
+                throw new InvalidOperationException(
+                    "No Revised MVD preview record found. Expected source status must be Revised-MVD, " +
+                    "Printing-Pending, QA-Pending, or Email-Sent-Pending, and revised MVD fields must be populated.");
+            }
+
+            var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < reader.FieldCount; i++)
+            {
+                colMap[reader.GetName(i)] = i;
+            }
+
+            string? Str(string name)
+            {
+                if (!colMap.TryGetValue(name, out var ordinal))
+                    return null;
+
+                if (reader.IsDBNull(ordinal))
+                    return null;
+
+                return reader.GetValue(ordinal)?.ToString()?.Trim();
+            }
+
+            var addr = BuildPreviewAddress(
+        Str("ADDR1"),
+        Str("ADDR2"),
+        Str("ADDR3"),
+        Str("ADDR4"),
+        Str("ADDR5"));
+
+            return new S53PreviewDbData
+            {
+                ObjectionNo = Str("ObjectionNo"),
+                PremiseId = Str("PremiseId"),
+                ValuationKey = Str("ValuationKey"),
+                PropertyDesc = Str("PropertyDesc"),
+                ObjectorType = Str("ObjectorType"),
+
+                GvCategory = Str("GV_Category"),
+                GvCategory2 = Str("GV_Category2"),
+                GvCategory3 = Str("GV_Category3"),
+
+                GvMarketValue = Str("GV_Market_Value"),
+                GvMarketValue2 = Str("GV_Market_Value2"),
+                GvMarketValue3 = Str("GV_Market_Value3"),
+
+                GvExtent = Str("GV_Extent"),
+                GvExtent2 = Str("GV_Extent2"),
+                GvExtent3 = Str("GV_Extent3"),
+
+                MvdCategory = Str("MVD_Category"),
+                MvdCategory2 = Str("MVD_Category2"),
+                MvdCategory3 = Str("MVD_Category3"),
+
+                MvdMarketValue = Str("MVD_Market_Value"),
+                MvdMarketValue2 = Str("MVD_Market_Value2"),
+                MvdMarketValue3 = Str("MVD_Market_Value3"),
+
+                MvdExtent = Str("MVD_Extent"),
+                MvdExtent2 = Str("MVD_Extent2"),
+                MvdExtent3 = Str("MVD_Extent3"),
+
+                WEFMVD = Str("wefDateMVD"),
+
+                Addr1 = addr.Addr1,
+                Addr2 = addr.Addr2,
+                Addr3 = addr.Addr3,
+                Addr4 = addr.Addr4,
+                Addr5 = addr.Addr5,
+
+                Email = Str("Email"),
+                Section52Review = Str("Section52Review")
+            };
+        }
     }
 }

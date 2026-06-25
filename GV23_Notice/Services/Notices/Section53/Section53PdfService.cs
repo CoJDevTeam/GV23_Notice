@@ -47,6 +47,25 @@ namespace GV23_Notice.Services.Notices.Section53
             var red7b = TextStyle.Default.FontFamily("Arial").FontSize(7).SemiBold().FontColor(Colors.Red.Medium);
             var recipient = Safe(model.Addr1);
             var greeting = string.IsNullOrWhiteSpace(recipient) ? "Dear Client" : $"Dear Client";
+
+            var noticeMainTitle = model.IsRevisedMvd
+    ? "SECTION 53:REVISED MVD NOTICE"
+    : "SECTION 53:MVD NOTICE";
+
+            var noticeSubTitle = model.IsRevisedMvd
+                ? "Revised notification of outcome of objection in terms of section 53(1) of the Municipal Property Rates Act, No.6 of 2004 as amended"
+                : "Notification of outcome of objection in terms of section 53(1) of the Municipal Property Rates Act, No.6 of 2004 as amended";
+
+            var mvdDecisionHeading = model.IsRevisedMvd
+                ? "Revised Municipal Valuer’s Decision (MVD)"
+                : "Municipal Valuer’s Decision (MVD)";
+
+            var mvdDecisionSentence = model.IsRevisedMvd
+                ? "the revised Municipal Valuer’s decision is as follows:"
+                : "the Municipal Valuer’s decision is as follows:";
+
+            var revisedNoticeText =
+                "Please ignore the previous Section 53 notice. This revised notice replaces the previous Municipal Valuer's Decision notice.";
             return Document.Create(container =>
             {
                 container.Page(page =>
@@ -134,16 +153,28 @@ namespace GV23_Notice.Services.Notices.Section53
 
                         col.Item().PaddingTop(2);
 
-                        col.Item().AlignCenter().Text("SECTION 53:MVD NOTICE").Style(title12);
+                        col.Item().AlignCenter().Text(noticeMainTitle).Style(title12);
 
                         col.Item().AlignCenter()
-                            .Text("Notification of outcome of objection in terms of section 53(1) of the Municipal Property Rates Act, No.6 of 2004 as amended")
+                            .Text(noticeSubTitle)
                             .Style(body9b);
 
                         col.Item().PaddingTop(6).LineHorizontal(1.5f).LineColor(Colors.Grey.Darken2);
                         col.Item().PaddingTop(1);
 
                         col.Item().PaddingTop(1).Text(greeting).FontFamily("Arial").FontSize(9).Bold();
+
+                        if (model.IsRevisedMvd)
+                        {
+                            col.Item()
+                                .PaddingTop(2)
+                                .BorderLeft(3)
+                                .BorderColor(Colors.Orange.Darken2)
+                                .PaddingLeft(6)
+                                .Text(revisedNoticeText)
+                                .Style(body9b)
+                                .FontColor(Colors.Orange.Darken4);
+                        }
 
                         col.Item().PaddingTop(1);
 
@@ -156,8 +187,7 @@ namespace GV23_Notice.Services.Notices.Section53
                                 .Style(body9);
                             t.Span("After reviewing the objection and reasons provided therein and the submission of the owner if a submission was made, together with the available market information, ")
                                 .Style(body9);
-                            t.Span("the Municipal Valuer’s decision is as follows:")
-                                .Style(body9);
+                            t.Span(mvdDecisionSentence).Style(body9);
                         });
 
                         col.Item().PaddingTop(0);
@@ -276,8 +306,10 @@ namespace GV23_Notice.Services.Notices.Section53
                     h.Cell().Element(BlueHeaderCell).Text("");
                     h.Cell().Element(BlueHeaderCell).Text($"Entry in {m.RollName} (GVR2023).")
      .FontFamily("Arial").FontSize(9).SemiBold().FontColor(Colors.White);
-                    h.Cell().Element(BlueHeaderCell).Text("Municipal Valuer’s Decision (MVD)")
-                        .FontFamily("Arial").FontSize(9).SemiBold().FontColor(Colors.White);
+                    h.Cell().Element(BlueHeaderCell).Text(m.IsRevisedMvd
+        ? "Revised Municipal Valuer’s Decision (MVD)"
+        : "Municipal Valuer’s Decision (MVD)")
+    .FontFamily("Arial").FontSize(9).SemiBold().FontColor(Colors.White);
                 });
 
                 if (!isMulti)
@@ -443,6 +475,7 @@ namespace GV23_Notice.Services.Notices.Section53
             public string WEFMVD2 => First.WEFMVD2 ?? "";
 
             public string WEFMVD3 => First.WEFMVD3 ?? "";
+            public bool IsRevisedMvd => First.IsRevisedMvd;
         }
 
         private static string ResolveWwwRootPath(IWebHostEnvironment env, string? relativePath)

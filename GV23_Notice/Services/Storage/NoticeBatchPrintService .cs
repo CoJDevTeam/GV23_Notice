@@ -104,7 +104,7 @@ namespace GV23_Notice.Services.Storage
             // then update source status once:
             // Printing-Pending -> QA-Pending
             // ============================================================
-            if (settings.Notice == NoticeKind.S53)
+            if (settings.Notice.IsSection53Family())
             {
                 var groups = runLogs
                     .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
@@ -307,7 +307,8 @@ namespace GV23_Notice.Services.Storage
                     (pdfBytes, propertyDesc) = await BuildS52PdfAsync(settings, roll, log, ct);
                     break;
 
-                case NoticeKind.S53:                     // ← S53 added
+                case NoticeKind.S53:
+                case NoticeKind.S53Rev:
                     (pdfBytes, propertyDesc) = await BuildS53PdfAsync(settings, roll, batch, log, ct);
                     break;
 
@@ -341,18 +342,29 @@ namespace GV23_Notice.Services.Storage
                     isReview: isReview,
                     isPropOwner: isPropOwner);
             }
-            else if (settings.Notice == NoticeKind.S53)  // ← S53 path added
+            else if (settings.Notice.IsSection53Family())
             {
-                // RecipientName stores ObjectorType for S53 (Owner/Representative/Third_Party/Owner_Rep/Owner_Third_Party)
                 var objectorType = string.IsNullOrWhiteSpace(log.RecipientName)
                     ? "Owner"
                     : log.RecipientName.Trim();
 
-                pdfPath = _paths.BuildS53PdfPath(
-                    roll: roll,
-                    objectionNo: log.ObjectionNo ?? propertyDesc,
-                    propertyDesc: propertyDesc,
-                    objectorType: objectorType);
+                if (settings.Notice == NoticeKind.S53Rev)
+                {
+                    pdfPath = BuildS53RevPdfPath(
+                        roll: roll,
+                        batchName: batch.BatchName,
+                        objectionNo: log.ObjectionNo,
+                        propertyDesc: propertyDesc,
+                        objectorType: objectorType);
+                }
+                else
+                {
+                    pdfPath = _paths.BuildS53PdfPath(
+                        roll: roll,
+                        objectionNo: log.ObjectionNo ?? propertyDesc,
+                        propertyDesc: propertyDesc,
+                        objectorType: objectorType);
+                }
             }
             else
             {
@@ -719,7 +731,7 @@ namespace GV23_Notice.Services.Storage
             // (Representative / Third_Party) already saved this PDF. Just record path.
             if (objectorType == "Owner_Rep" || objectorType == "Owner_Third_Party")
             {
-                var secRow = await FetchMvdRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, objectorType, ct);
+                var secRow = await FetchMvdRowAsync(cs, settings.Notice, batch.RollId, log.ObjectionNo, batch.BatchName, objectorType, ct);
                 if (secRow == null)
                     throw new InvalidOperationException(
                         $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, " +
@@ -727,6 +739,7 @@ namespace GV23_Notice.Services.Storage
 
                 // Set RollName from registry — SP does not return it
                 secRow.RollName = roll.Name ?? roll.ShortCode ?? "Valuation Roll";
+                secRow.IsRevisedMvd = settings.Notice == NoticeKind.S53Rev;
 
                 var secDesc = secRow.PropertyDesc ?? log.ObjectionNo ?? "Property";
                 var secBytes = _s53Builder.BuildNoticePdf(secRow, DateOnly.FromDateTime(settings.LetterDate));
@@ -734,13 +747,14 @@ namespace GV23_Notice.Services.Storage
             }
 
             // Primary row — fetch from Objection_MVD and build PDF
-            var mvdRow = await FetchMvdRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, objectorType, ct)
+            var mvdRow = await FetchMvdRowAsync(cs, settings.Notice, batch.RollId, log.ObjectionNo, batch.BatchName, objectorType, ct)
                          ?? throw new InvalidOperationException(
                              $"S53_GetMvdRow returned no row for ObjectionNo={log.ObjectionNo}, " +
                              $"BatchName={batch.BatchName}, ObjectorType={objectorType}.");
 
             // Set RollName from registry — SP doesn't return it
             mvdRow.RollName = roll.Name ?? roll.ShortCode ?? "Valuation Roll";
+            mvdRow.IsRevisedMvd = settings.Notice == NoticeKind.S53Rev;
 
             var propertyDesc = mvdRow.PropertyDesc ?? log.ObjectionNo ?? "Property";
             var letterDate = DateOnly.FromDateTime(settings.LetterDate);
@@ -755,38 +769,112 @@ namespace GV23_Notice.Services.Storage
                 _ => null
             };
 
-            if (pairedType != null)
-            {
-                var pairedRow = await FetchMvdRowAsync(cs, batch.RollId, log.ObjectionNo, batch.BatchName, pairedType, ct);
-                if (pairedRow != null)
+            
+                if (pairedType != null)
                 {
-                    var pairedDesc = pairedRow.PropertyDesc ?? propertyDesc;
-                    var pairedBytes = _s53Builder.BuildNoticePdf(pairedRow, letterDate);
-                    var pairedPath = _paths.BuildS53PdfPath(roll, log.ObjectionNo!, pairedDesc, pairedType);
-                    SavePdf(pairedPath, pairedBytes);
-                    _log.LogInformation("S53 paired PDF saved: {ObjectionNo} {Type} → {Path}",
-                        log.ObjectionNo, pairedType, pairedPath);
+                    var pairedRow = await FetchMvdRowAsync(
+                        cs,
+                        settings.Notice,
+                        batch.RollId,
+                        log.ObjectionNo,
+                        batch.BatchName,
+                        pairedType,
+                        ct);
+
+                    if (pairedRow != null)
+                    {
+                        pairedRow.IsRevisedMvd = settings.Notice == NoticeKind.S53Rev;
+                        pairedRow.RollName = roll.Name ?? roll.ShortCode ?? "Valuation Roll";
+
+                        var pairedDesc = pairedRow.PropertyDesc ?? propertyDesc;
+                        var pairedBytes = _s53Builder.BuildNoticePdf(pairedRow, letterDate);
+
+                        var pairedPath = settings.Notice == NoticeKind.S53Rev
+                            ? BuildS53RevPdfPath(
+                                roll: roll,
+                                batchName: batch.BatchName,
+                                objectionNo: log.ObjectionNo,
+                                propertyDesc: pairedDesc,
+                                objectorType: pairedType)
+                            : _paths.BuildS53PdfPath(
+                                roll,
+                                log.ObjectionNo!,
+                                pairedDesc,
+                                pairedType);
+
+                        SavePdf(pairedPath, pairedBytes);
+
+                        _log.LogInformation(
+                            "S53 paired PDF saved: {ObjectionNo} {Type} → {Path}",
+                            log.ObjectionNo,
+                            pairedType,
+                            pairedPath);
+                    }
                 }
-            }
+            
 
             return (pdfBytes, propertyDesc);
         }
+        private static string BuildS53RevPdfPath(
+    Domain.Rolls.RollRegistry roll,
+    string batchName,
+    string? objectionNo,
+    string propertyDesc,
+    string objectorType)
+        {
+            var root = Path.Combine(
+                @"C:\GV23_Notice",
+                SafeFile(roll.ShortCode ?? roll.Name ?? "ROLL"),
+                "Section53",
+                "RevisedMVD",
+                SafeFile(batchName),
+                SafeFile(objectorType));
 
+            Directory.CreateDirectory(root);
+
+            var fileName = $"{SafeFile(objectionNo)}_{SafeFile(propertyDesc)}_RevisedMVD.pdf";
+
+            return Path.Combine(root, fileName);
+        }
+
+        private static string SafeFile(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "UNKNOWN";
+
+            var invalid = Path.GetInvalidFileNameChars();
+
+            var clean = new string(value
+                .Trim()
+                .Select(ch => invalid.Contains(ch) ? '_' : ch)
+                .ToArray());
+
+            while (clean.Contains("__"))
+                clean = clean.Replace("__", "_");
+
+            return clean.Trim('_');
+        }
         // ── S53 helper: fetch one Objection_MVD row ──────────────────────────
         private async Task<Section53MvdRow?> FetchMvdRowAsync(
-            string cs,
-            int rollId,
-            string objectionNo,
-            string batchName,
-            string objectorType,
-            CancellationToken ct)
+    string cs,
+    NoticeKind notice,
+    int rollId,
+    string objectionNo,
+    string batchName,
+    string objectorType,
+    CancellationToken ct)
         {
+            var proc = notice == NoticeKind.S53Rev
+                ? "dbo.S53Rev_GetMvdRow"
+                : "dbo.S53_GetMvdRow";
+
             await using var conn = new SqlConnection(cs);
-            await using var cmd = new SqlCommand("dbo.S53_GetMvdRow", conn)
+            await using var cmd = new SqlCommand(proc, conn)
             {
                 CommandType = CommandType.StoredProcedure,
                 CommandTimeout = 60
             };
+
             cmd.Parameters.AddWithValue("@RollId", rollId);
             cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
             cmd.Parameters.AddWithValue("@BatchName", batchName);
@@ -795,27 +883,32 @@ namespace GV23_Notice.Services.Storage
             await conn.OpenAsync(ct);
             await using var reader = await cmd.ExecuteReaderAsync(ct);
 
-            if (!await reader.ReadAsync(ct)) return null;
+            if (!await reader.ReadAsync(ct))
+                return null;
 
-            // Column map — safe: any column the SP does not return gives null
             var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < reader.FieldCount; i++) colMap[reader.GetName(i)] = i;
+            for (int i = 0; i < reader.FieldCount; i++)
+                colMap[reader.GetName(i)] = i;
 
             string? Str(string col) =>
                 colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
-                    ? reader.GetValue(o)?.ToString() : null;
+                    ? reader.GetValue(o)?.ToString()
+                    : null;
 
             string? Ext(string col) =>
-    colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
-        ? ExtentDisplayHelper.SameAsDb(reader.GetValue(o))
-        : null;
+                colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
+                    ? ExtentDisplayHelper.SameAsDb(reader.GetValue(o))
+                    : null;
 
             DateTime? DateVal(string col)
             {
-                if (!colMap.TryGetValue(col, out var o) || reader.IsDBNull(o)) return null;
+                if (!colMap.TryGetValue(col, out var o) || reader.IsDBNull(o))
+                    return null;
+
                 var v = reader.GetValue(o);
                 return v is DateTime dt ? dt : Convert.ToDateTime(v);
             }
+
             var address = AddressDisplayHelper.Format(
                 Str("ADDR1"),
                 Str("ADDR2"),
@@ -835,16 +928,19 @@ namespace GV23_Notice.Services.Storage
                 Addr3 = address.Addr3,
                 Addr4 = address.Addr4,
                 Addr5 = address.Addr5,
+
                 AppealCloseDate = DateVal("AppealCloseDate"),
                 Section52Review = Str("Section52Review"),
-                RollName = null,   // SP doesn't return RollName — set from roll.Name in caller
+                RollName = null,
 
                 Gv_Category = Str("GV_Category"),
                 Gv_Category2 = Str("GV_Category2"),
                 Gv_Category3 = Str("GV_Category3"),
+
                 Gv_Market_Value = Str("GV_Market_Value"),
                 Gv_Market_Value2 = Str("GV_Market_Value2"),
                 Gv_Market_Value3 = Str("GV_Market_Value3"),
+
                 Gv_Extent = Ext("GV_Extent"),
                 Gv_Extent2 = Ext("GV_EXtent2"),
                 Gv_Extent3 = Ext("GV_Extent3"),
@@ -852,13 +948,17 @@ namespace GV23_Notice.Services.Storage
                 Mvd_Category = Str("MVD_Category"),
                 Mvd_Category2 = Str("MVD_Category2"),
                 Mvd_Category3 = Str("MVD_Category3"),
+
                 Mvd_Market_Value = Str("MVD_Market_Value"),
                 Mvd_Market_Value2 = Str("MVD_Market_Value2"),
                 Mvd_Market_Value3 = Str("MVD_Market_Value3"),
+
                 Mvd_Extent = Ext("MVD_Extent"),
                 Mvd_Extent2 = Ext("MVD_Extent2"),
                 Mvd_Extent3 = Ext("MVD_Extent3"),
+
                 WEFMVD = Str("wefDateMVD"),
+                IsRevisedMvd = notice == NoticeKind.S53Rev,
             };
         }
 

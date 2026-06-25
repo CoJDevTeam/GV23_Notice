@@ -142,7 +142,7 @@ namespace GV23_Notice.Services.Email
             // then update source status once:
             // Email-Sent-Pending -> Notice-Sent
             // ============================================================
-            if (settings.Notice == NoticeKind.S53)
+            if (settings.Notice.IsSection53Family())
             {
                 var groups = runLogs
                     .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
@@ -184,11 +184,12 @@ namespace GV23_Notice.Services.Email
                                     : log.RecipientName.Trim();
 
                                 var mvdEmailData = await FetchS53MvdEmailDataAsync(
-                                    rollId,
-                                    log.ObjectionNo!,
-                                    batchName,
-                                    objectorType,
-                                    ct);
+    settings.Notice,
+    rollId,
+    log.ObjectionNo!,
+    batchName,
+    objectorType,
+    ct);
 
                                 if (mvdEmailData == null)
                                 {
@@ -743,23 +744,29 @@ namespace GV23_Notice.Services.Email
         }
         // ── S53: fetch email data from Objection_MVD ────────────────────────
         private async Task<S53MvdEmailData?> FetchS53MvdEmailDataAsync(
-            int rollId,
-            string objectionNo,
-            string batchName,
-            string objectorType,
-            CancellationToken ct)
+         NoticeKind notice,
+         int rollId,
+         string objectionNo,
+         string batchName,
+         string objectorType,
+         CancellationToken ct)
         {
             try
             {
                 var cs = _config.GetConnectionString("DefaultConnection")
                          ?? throw new InvalidOperationException("DefaultConnection not configured.");
 
+                var proc = notice == NoticeKind.S53Rev
+                    ? "dbo.S53Rev_GetMvdRow"
+                    : "dbo.S53_GetMvdRow";
+
                 await using var conn = new SqlConnection(cs);
-                await using var cmd = new SqlCommand("dbo.S53_GetMvdRow", conn)
+                await using var cmd = new SqlCommand(proc, conn)
                 {
                     CommandType = CommandType.StoredProcedure,
                     CommandTimeout = 60
                 };
+
                 cmd.Parameters.AddWithValue("@RollId", rollId);
                 cmd.Parameters.AddWithValue("@ObjectionNo", objectionNo);
                 cmd.Parameters.AddWithValue("@BatchName", batchName);
@@ -768,28 +775,33 @@ namespace GV23_Notice.Services.Email
                 await conn.OpenAsync(ct);
                 await using var reader = await cmd.ExecuteReaderAsync(ct);
 
-                if (!await reader.ReadAsync(ct)) return null;
+                if (!await reader.ReadAsync(ct))
+                    return null;
 
-                // Column map — safe against missing columns
                 var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                for (int i = 0; i < reader.FieldCount; i++) colMap[reader.GetName(i)] = i;
+                for (int i = 0; i < reader.FieldCount; i++)
+                    colMap[reader.GetName(i)] = i;
 
                 string? Str(string col) =>
                     colMap.TryGetValue(col, out var o) && !reader.IsDBNull(o)
-                        ? reader.GetValue(o)?.ToString() : null;
+                        ? reader.GetValue(o)?.ToString()
+                        : null;
 
                 return new S53MvdEmailData
                 {
                     ObjectionNo = Str("Objection_No") ?? objectionNo,
                     PropertyDesc = Str("PropertyDesc"),
-                    Email = Str("Email"),
+                    Email = Str("Email")
                 };
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex,
-                    "FetchS53MvdEmailDataAsync failed for ObjectionNo={No} — using run log data",
-                    objectionNo);
+                _log.LogWarning(
+                    ex,
+                    "FetchS53MvdEmailDataAsync failed for ObjectionNo={No}, Notice={Notice}",
+                    objectionNo,
+                    notice);
+
                 return null;
             }
         }
@@ -826,12 +838,13 @@ namespace GV23_Notice.Services.Email
                     string.IsNullOrWhiteSpace(log.RecipientName) ? null : log.RecipientName.Trim(),
                     ct),
 
-                NoticeKind.S53 => (await FetchS53MvdEmailDataAsync(
-                    settings.RollId,
-                    log.ObjectionNo ?? "",
-                    batchName,
-                    string.IsNullOrWhiteSpace(log.RecipientName) ? "Owner" : log.RecipientName.Trim(),
-                    ct))?.Email,
+                NoticeKind.S53 or NoticeKind.S53Rev => (await FetchS53MvdEmailDataAsync(
+     settings.Notice,
+     settings.RollId,
+     log.ObjectionNo ?? "",
+     batchName,
+     string.IsNullOrWhiteSpace(log.RecipientName) ? "Owner" : log.RecipientName.Trim(),
+     ct))?.Email,
 
                 // DJ / IN / S78 are snapshot-based — no per-row email table
                 _ => null
@@ -944,17 +957,30 @@ namespace GV23_Notice.Services.Email
             }
         }
         private static string BuildSentNoticeEmlFileName(
-    NoticeKind notice,
-    string? objectionNo,
-    string? appealNo,
-    string? propertyDesc,
-    string? recipientEmail)
+      NoticeKind notice,
+      string? objectionNo,
+      string? appealNo,
+      string? propertyDesc,
+      string? recipientEmail)
         {
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
             var email = MakeSafeFilePart(recipientEmail);
             if (string.IsNullOrWhiteSpace(email))
                 email = "NoEmail";
+
+            if (notice == NoticeKind.S53Rev)
+            {
+                var objectionKey = MakeSafeFilePart(objectionNo);
+
+                if (string.IsNullOrWhiteSpace(objectionKey))
+                    objectionKey = MakeSafeFilePart(propertyDesc);
+
+                if (string.IsNullOrWhiteSpace(objectionKey))
+                    objectionKey = "Notice";
+
+                return $"email_{objectionKey}_{email}_RevisedMVD_{stamp}.eml";
+            }
 
             string key;
 

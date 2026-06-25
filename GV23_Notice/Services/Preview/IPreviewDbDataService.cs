@@ -21,5 +21,10 @@ namespace GV23_Notice.Services.Preview
         Task<NoticePreviewSnapshot> DJByObjectionNoAsync(int settingsId, string objectionNo, CancellationToken ct);
         Task<NoticePreviewSnapshot> InvalidByObjectionNoAsync(int settingsId, string objectionNo, bool isOmission, CancellationToken ct);
 
+        Task<S53PreviewDbData> S53RevPreviewDbDataAsync(
+    int rollId,
+    bool preferMulti,
+    CancellationToken ct);
+
     }
 }

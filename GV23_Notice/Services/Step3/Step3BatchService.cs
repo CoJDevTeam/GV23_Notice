@@ -38,13 +38,7 @@ namespace GV23_Notice.Services.Step3
 
             // 2) Compute correct prefix per notice type
             var shortCode = roll.ShortCode ?? "";
-            var prefix = s.Notice switch
-            {
-                NoticeKind.S52 => (s.IsSection52Review ? "S52" : "AD") + $"_{shortCode}_",
-                NoticeKind.DJ => $"DJ_{shortCode}_",
-                NoticeKind.IN => ((s.IsInvalidOmission ?? false) ? "IOM" : "IOBJ") + $"_{shortCode}_",
-                _ => $"{s.Notice}_{shortCode}_"
-            };
+            var prefix = BuildStep3BatchPrefix(s, shortCode);
 
             // 3) Compute next sequence using the correct prefix
             var last = await _db.NoticeBatches.AsNoTracking()
@@ -450,6 +444,99 @@ namespace GV23_Notice.Services.Step3
                         return batch.Id;
                     }
 
+                case NoticeKind.S53Rev:
+                    {
+                        if (!s.AppealCloseDate.HasValue)
+                            throw new InvalidOperationException("S53 Revised MVD batch requires AppealCloseDate to be set in Step 1.");
+
+                        var s53BatchDate = s.BatchDate.HasValue
+                            ? s.BatchDate.Value.Date
+                            : batchDateUtc;
+
+                        var s53AppealClose = s.AppealCloseDate.Value.Date;
+                        var sapNo = createdBy;
+
+                        batch.BatchDate = s53BatchDate;
+
+                        var connStr = _db.Database.GetConnectionString()
+                                      ?? throw new InvalidOperationException("Connection string not found.");
+
+                        var s53Rows = new List<S53BatchPickRow>();
+
+                        using (var spConn = new Microsoft.Data.SqlClient.SqlConnection(connStr))
+                        {
+                            await spConn.OpenAsync(ct);
+
+                            using var cmd = new Microsoft.Data.SqlClient.SqlCommand(
+                                "EXEC dbo.S53Rev_Step3_InsertTop500IntoMvdTable " +
+                                "@RollId, @BatchName, @BatchDate, @AppealCloseDate, @SapNo",
+                                spConn)
+                            {
+                                CommandTimeout = 300
+                            };
+
+                            cmd.Parameters.AddWithValue("@RollId", s.RollId);
+                            cmd.Parameters.AddWithValue("@BatchName", batchName);
+                            cmd.Parameters.AddWithValue("@BatchDate", s53BatchDate);
+                            cmd.Parameters.AddWithValue("@AppealCloseDate", s53AppealClose);
+                            cmd.Parameters.AddWithValue("@SapNo", sapNo);
+
+                            using var reader = await cmd.ExecuteReaderAsync(ct);
+
+                            do
+                            {
+                                if (reader.FieldCount == 4)
+                                {
+                                    while (await reader.ReadAsync(ct))
+                                    {
+                                        s53Rows.Add(new S53BatchPickRow
+                                        {
+                                            ObjectionNo = reader.IsDBNull(0) ? null : reader.GetString(0),
+                                            PremiseId = reader.IsDBNull(1) ? null : reader.GetString(1),
+                                            RecipientEmail = reader.IsDBNull(2) ? null : reader.GetString(2),
+                                            ObjectorType = reader.IsDBNull(3) ? null : reader.GetString(3)
+                                        });
+                                    }
+
+                                    break;
+                                }
+                            }
+                            while (await reader.NextResultAsync(ct));
+                        }
+
+                        var runLogs = s53Rows
+                            .Where(x => !string.IsNullOrWhiteSpace(x.ObjectionNo))
+                            .Select(x => new NoticeRunLog
+                            {
+                                NoticeBatchId = batch.Id,
+                                ObjectionNo = x.ObjectionNo,
+                                PremiseId = x.PremiseId,
+                                RecipientEmail = x.RecipientEmail,
+                                RecipientName = x.ObjectorType,
+                                Status = RunStatus.Generated,
+                                CreatedAtUtc = nowUtc
+                            })
+                            .ToList();
+
+                        EnsureBatchHasRecords(runLogs.Count, s.Notice);
+
+                        _db.NoticeRunLogs.AddRange(runLogs);
+
+                        batch.NumberOfRecords = runLogs.Count;
+                        batch.Mode = ResolveBatchModeFromCount(runLogs.Count);
+
+                        await _db.SaveChangesAsync(ct);
+
+                        await _sourceStatus.SetS53StatusAsync(
+                            batch.RollId,
+                            runLogs.Select(x => x.ObjectionNo ?? ""),
+                            NoticeWorkflowStatus.PrintingPending,
+                            ct);
+
+                        await _db.SaveChangesAsync(ct);
+
+                        return batch.Id;
+                    }
                 default:
                     // Remove the incomplete batch header since nothing was assigned
                     _db.NoticeBatches.Remove(batch);
@@ -462,6 +549,17 @@ namespace GV23_Notice.Services.Step3
             return count == 1
                 ? BatchMode.Single
                 : BatchMode.Bulk;
+        }
+        private static string BuildStep3BatchPrefix(NoticeSettings s, string shortCode)
+        {
+            return s.Notice switch
+            {
+                NoticeKind.S52 => (s.IsSection52Review ? "S52" : "AD") + $"_{shortCode}_",
+                NoticeKind.DJ => $"DJ_{shortCode}_",
+                NoticeKind.IN => ((s.IsInvalidOmission ?? false) ? "IOM" : "IOBJ") + $"_{shortCode}_",
+                NoticeKind.S53Rev => $"S53REV_{shortCode}_",
+                _ => $"{s.Notice}_{shortCode}_"
+            };
         }
 
         private static void EnsureBatchHasRecords(int count, NoticeKind notice)
@@ -482,7 +580,7 @@ namespace GV23_Notice.Services.Step3
                            .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
                        ?? throw new InvalidOperationException("RollRegistry not found.");
 
-            var prefix = $"{s.Notice}_{roll.ShortCode}_";
+            var prefix = BuildStep3BatchPrefix(s, roll.ShortCode ?? "");
             var last = await _db.NoticeBatches.AsNoTracking()
                 .Where(x => x.NoticeSettingsId == settingsId)
                 .OrderByDescending(x => x.Id)

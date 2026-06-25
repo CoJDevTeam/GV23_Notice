@@ -79,11 +79,7 @@ namespace GV23_Notice.Services.Notices
             var roll = await _db.RollRegistry
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.RollId == settings.RollId, ct);
-
-            var rollName = await _db.RollRegistry
-    .Where(r => r.RollId == r.RollId)
-    .Select(r => r.Name)
-    .FirstOrDefaultAsync(ct) ?? "Valuation Roll";
+            var rollName = roll?.Name ?? settings.RollName ?? "Valuation Roll";
 
             if (roll is null)
                 throw new InvalidOperationException("RollRegistry not found.");
@@ -208,15 +204,45 @@ namespace GV23_Notice.Services.Notices
                     {
                         var preferMulti = isSplitPdf;
                         var db = await _previewDb.S53PreviewDbDataAsync(roll.RollId, preferMulti, ct);
-                       
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
-                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
+                        samplePropertyDesc = db.PropertyDesc ?? "";
 
-                        var row = MapS53ToRow(db, settings, rollName);
+                        var row = MapS53ToRow(
+                            db,
+                            settings,
+                            rollName,
+                            isRevisedMvd: false);
+
                         pdfBytes = _s53.BuildNoticePdf(row, DateOnly.FromDateTime(settings.LetterDate));
                         pdfFileName = $"{roll.ShortCode}_S53_PREVIEW.pdf";
+
+                        recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
+                        recipientEmail = db.Email ?? "";
+                        addressLine = BuildAddrLine(db.Addr2, db.Addr3, db.Addr4, db.Addr5);
+
+                        sampleAppealNo = "";
+                        break;
+                    }
+
+                case NoticeKind.S53Rev:
+                    {
+                        var preferMulti = isSplitPdf;
+                        var db = await _previewDb.S53RevPreviewDbDataAsync(roll.RollId, preferMulti, ct);
+
+                        sampleObjectionNo = db.ObjectionNo ?? "";
+                        valuationKey = db.ValuationKey ?? "";
+                        samplePropertyDesc = db.PropertyDesc ?? "";
+
+                        var row = MapS53ToRow(
+                            db,
+                            settings,
+                            rollName,
+                            isRevisedMvd: true);
+
+                        pdfBytes = _s53.BuildNoticePdf(row, DateOnly.FromDateTime(settings.LetterDate));
+                        pdfFileName = $"{roll.ShortCode}_S53_REVISED_MVD_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
@@ -593,12 +619,17 @@ namespace GV23_Notice.Services.Notices
                 App_Market_Value3 = db.AppMarketValue3
             };
         }
-        private static Section53MvdRow MapS53ToRow(S53PreviewDbData db, NoticeSettings settings, string rollName)
+        private static Section53MvdRow MapS53ToRow(
+      S53PreviewDbData db,
+      NoticeSettings settings,
+      string rollName,
+      bool isRevisedMvd)
         {
             return new Section53MvdRow
             {
                 ObjectionNo = db.ObjectionNo,
                 PropertyDesc = db.PropertyDesc,
+
                 Addr1 = db.Addr1,
                 Addr2 = db.Addr2,
                 Addr3 = db.Addr3,
@@ -608,7 +639,10 @@ namespace GV23_Notice.Services.Notices
                 ValuationKey = db.ValuationKey,
                 Section52Review = db.Section52Review,
 
-                AppealCloseDate = (settings.AppealCloseDate ?? db.AppealCloseDate) ?? settings.LetterDate.AddDays(45),
+                // IMPORTANT:
+                // Revised MVD appeal close date comes from Step 1 Date Configuration.
+                AppealCloseDate = settings.AppealCloseDate
+                                  ?? settings.LetterDate.AddDays(45),
 
                 Gv_Category = db.GvCategory ?? "",
                 Gv_Category2 = db.GvCategory2 ?? "",
@@ -633,7 +667,11 @@ namespace GV23_Notice.Services.Notices
                 Mvd_Extent = db.MvdExtent ?? "",
                 Mvd_Extent2 = db.MvdExtent2 ?? "",
                 Mvd_Extent3 = db.MvdExtent3 ?? "",
+
+                WEFMVD = db.WEFMVD ?? "",
+
                 RollName = rollName,
+                IsRevisedMvd = isRevisedMvd
             };
         }
         private static NoticeEmailRequest BuildEmailReqFromReal(

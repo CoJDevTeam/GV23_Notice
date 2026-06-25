@@ -16,6 +16,7 @@ using GV23_Notice.Services.Notices.Section78;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.QA;
+using GV23_Notice.Services.RevisedMVD;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Search;
 using GV23_Notice.Services.Security;
@@ -118,6 +119,7 @@ builder.Services.AddScoped<ISection78PdfBuilder, Section78PdfBuilder>();
 // Also register concrete Section52PdfService if some services inject the concrete type
 builder.Services.AddScoped<Section52PdfService>();
 builder.Services.AddScoped<INoticeSourceStatusService,NoticeSourceStatusService>();
+builder.Services.AddScoped<IRevisedMvdRepository,RevisedMvdRepository>();
 
 // ----------------------------------------------------
 // Search / Audit / Workflow

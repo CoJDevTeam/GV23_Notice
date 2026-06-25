@@ -64,6 +64,7 @@
             public string? WEFMVD { get; set; }
             public string? WEFMVD2 { get; set; }
             public string? WEFMVD3 { get; set; }
+            public bool IsRevisedMvd { get; set; }
         }
     }
 }

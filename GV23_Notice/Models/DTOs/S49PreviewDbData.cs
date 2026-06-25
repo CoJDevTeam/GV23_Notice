@@ -135,6 +135,8 @@ namespace GV23_Notice.Models.DTOs
         public int RollId { get; set; }
         public string ObjectionNo { get; set; } = "";
 
+        public string? ObjectorType { get; set; }
+
         public string? PremiseId { get; set; }
         public string? ValuationKey { get; set; }
         public string? PropertyDesc { get; set; }
@@ -176,6 +178,7 @@ namespace GV23_Notice.Models.DTOs
         public DateTime? AppealCloseDate { get; set; }
         public DateTime? BatchDate { get; set; }
         public string? BatchName { get; set; }
+        public string? WEFMVD { get; set; }
     }
 
     public sealed class DJPreviewDbData

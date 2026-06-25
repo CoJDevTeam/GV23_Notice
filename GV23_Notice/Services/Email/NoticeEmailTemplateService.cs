@@ -28,6 +28,7 @@ namespace GV23_Notice.Services.Email
                 NoticeKind.DJ => BuildDearJonny(req),
                 NoticeKind.IN => BuildInvalid(req),
                 NoticeKind.S78 => BuildS78(req),
+                NoticeKind.S53Rev => BuildS53Rev(req),
                 _ => (Subject(req, "Notice"), BaseHtml(req, "<p>No email template configured.</p>"))
             };
         }
@@ -470,6 +471,56 @@ namespace GV23_Notice.Services.Email
             };
 
             return greeting;
+        }
+        private (string Subject, string BodyHtml) BuildS53Rev(NoticeEmailRequest req)
+        {
+            var subject = req.Items.Count == 1
+                ? $"{req.RollShortCode} Revised Section 53 Objection Decision Notice: {req.Items[0].PropertyDesc}".Trim()
+                : $"{req.RollShortCode} Revised Objection Decision Notice ({req.Items.Count} properties)".Trim();
+
+            var mid = new StringBuilder();
+
+            mid.Append("<p>");
+            mid.Append(S53Greeting(req));
+            mid.Append("</p>");
+
+            mid.Append("<p><strong>");
+            mid.Append("Please ignore the previous Section 53 notice. ");
+            mid.Append("This revised notice replaces the previous Municipal Valuer's Decision notice.");
+            mid.Append("</strong></p>");
+
+            mid.Append("<p>");
+            mid.Append("Revised objection decision notice is hereby given in terms of section 53(1) of the Municipal Property Rates Act No.6 of 2004 as amended, ");
+            mid.Append("that the objection against the entry of the above property in or omitted from the ");
+            mid.Append(H(req.RollName));
+            mid.Append(" has been considered by the Municipal Valuer. After reviewing the objection and reasons provided therein, ");
+            mid.Append("together with the available market information, attached is the revised Municipal Valuer's decision for the property described.");
+            mid.Append("</p>");
+
+            mid.Append(PropertyBlock(req, includeRefs: true));
+
+            mid.Append("<p>");
+            mid.Append("Should you wish to lodge an appeal against the Municipal Valuer's Decision, please login to the City's online system on the following link: ");
+            mid.Append($"<a href=\"{H(_opt.PortalUrl)}\">{H(_opt.PortalUrl)}</a>");
+            mid.Append("</p>");
+
+            mid.Append("<p><strong>How to appeal?</strong></p>");
+            mid.Append("<ol>");
+            mid.Append($"<li>Click the link <a href=\"{H(_opt.PortalUrl)}\">{H(_opt.PortalUrl)}</a></li>");
+            mid.Append($"<li>Select <strong>{H(req.RollShortCode)}</strong> roll (on the navigation bar).</li>");
+            mid.Append("<li>Select Dashboard.</li>");
+            mid.Append("<li>If you are not already logged in, login using the same credentials used for objections.</li>");
+            mid.Append("<li>Click the appeal button under the 'Properties objected on' table.</li>");
+            mid.Append("<li>Select Property type and Appellant type.</li>");
+            mid.Append("<li>Fill in the appeal form and submit.</li>");
+            mid.Append("<li>Download the appeal acknowledgement for future references.</li>");
+            mid.Append("</ol>");
+
+            mid.Append(EnquiriesBlock());
+
+            mid.Append("<p>Regards,<br/>Municipal Valuer</p>");
+
+            return (subject, WrapHtml(req, mid.ToString()));
         }
     }
 }
