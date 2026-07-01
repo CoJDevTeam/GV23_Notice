@@ -7,5 +7,7 @@
 
         public Dictionary<string, string> ObjectionRootsByShortCode { get; set; } = new();
         public Dictionary<string, string> AppealRootsByShortCode { get; set; } = new();
+
+        public Dictionary<string, string> NoticeTypeFolders { get; set; } = new();
     }
 }

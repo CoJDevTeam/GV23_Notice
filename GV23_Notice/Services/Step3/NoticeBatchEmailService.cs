@@ -957,11 +957,11 @@ namespace GV23_Notice.Services.Email
             }
         }
         private static string BuildSentNoticeEmlFileName(
-      NoticeKind notice,
-      string? objectionNo,
-      string? appealNo,
-      string? propertyDesc,
-      string? recipientEmail)
+            NoticeKind notice,
+            string? objectionNo,
+            string? appealNo,
+            string? propertyDesc,
+            string? recipientEmail)
         {
             var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
@@ -971,43 +971,42 @@ namespace GV23_Notice.Services.Email
 
             if (notice == NoticeKind.S53Rev)
             {
-                var objectionKey = MakeSafeFilePart(objectionNo);
-
-                if (string.IsNullOrWhiteSpace(objectionKey))
-                    objectionKey = MakeSafeFilePart(propertyDesc);
-
-                if (string.IsNullOrWhiteSpace(objectionKey))
-                    objectionKey = "Notice";
-
-                return $"email_{objectionKey}_{email}_RevisedMVD_{stamp}.eml";
-            }
-
-            string key;
-
-            if (notice == NoticeKind.S49)
-            {
-                key = MakeSafeFilePart(propertyDesc);
-
-                if (string.IsNullOrWhiteSpace(key))
-                    key = "Property";
-            }
-            else
-            {
-                key = MakeSafeFilePart(objectionNo);
-
-                if (string.IsNullOrWhiteSpace(key))
-                    key = MakeSafeFilePart(appealNo);
+                var key = MakeSafeFilePart(objectionNo);
 
                 if (string.IsNullOrWhiteSpace(key))
                     key = MakeSafeFilePart(propertyDesc);
 
                 if (string.IsNullOrWhiteSpace(key))
                     key = "Notice";
+
+                return $"email_{key}_{email}_RevisedMVD_{stamp}.eml";
             }
 
-            return $"email_{key}_{email}_{stamp}.eml";
-        }
+            string normalKey;
 
+            if (notice == NoticeKind.S49)
+            {
+                normalKey = MakeSafeFilePart(propertyDesc);
+
+                if (string.IsNullOrWhiteSpace(normalKey))
+                    normalKey = "Property";
+            }
+            else
+            {
+                normalKey = MakeSafeFilePart(objectionNo);
+
+                if (string.IsNullOrWhiteSpace(normalKey))
+                    normalKey = MakeSafeFilePart(appealNo);
+
+                if (string.IsNullOrWhiteSpace(normalKey))
+                    normalKey = MakeSafeFilePart(propertyDesc);
+
+                if (string.IsNullOrWhiteSpace(normalKey))
+                    normalKey = "Notice";
+            }
+
+            return $"email_{normalKey}_{email}_{stamp}.eml";
+        }
         private static string MakeSafeFilePart(string? value)
         {
             if (string.IsNullOrWhiteSpace(value))

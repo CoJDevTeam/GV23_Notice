@@ -1,4 +1,6 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Rolls;
+using GV23_Notice.Domain.Storage;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Helpers;
@@ -16,6 +18,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Data;
 using System.Globalization;
 
@@ -34,6 +37,7 @@ namespace GV23_Notice.Services.Storage
         private readonly ILogger<NoticeBatchPrintService> _log;
         private readonly IConfiguration _config;
         private readonly INoticeSourceStatusService _sourceStatus;
+        private readonly StorageOptions _storage;
 
         public NoticeBatchPrintService(
             AppDbContext db,
@@ -42,10 +46,10 @@ namespace GV23_Notice.Services.Storage
             ISection49PdfBuilder s49Builder,
             ISection51PdfBuilder s51Builder,
             Section52PdfService s52Builder,
-            ISection53PdfService s53Builder,             // ← S53 added
+            ISection53PdfService s53Builder,             
             IWebHostEnvironment env,
             ILogger<NoticeBatchPrintService> log,
-            IConfiguration config,INoticeSourceStatusService sourceStatus)
+            IConfiguration config,INoticeSourceStatusService sourceStatus, IOptions<StorageOptions> storage)
         {
             _db = db;
             _paths = paths;
@@ -53,11 +57,12 @@ namespace GV23_Notice.Services.Storage
             _s49Builder = s49Builder;
             _s51Builder = s51Builder;
             _s52Builder = s52Builder;
-            _s53Builder = s53Builder;                    // ← S53 added
+            _s53Builder = s53Builder;                   
             _env = env;
             _log = log;
             _config = config;
             _sourceStatus = sourceStatus;
+            _storage = storage.Value;
         }
 
         // ── Print a single batch ────────────────────────────────────────────
@@ -348,23 +353,13 @@ namespace GV23_Notice.Services.Storage
                     ? "Owner"
                     : log.RecipientName.Trim();
 
-                if (settings.Notice == NoticeKind.S53Rev)
-                {
-                    pdfPath = BuildS53RevPdfPath(
-                        roll: roll,
-                        batchName: batch.BatchName,
-                        objectionNo: log.ObjectionNo,
-                        propertyDesc: propertyDesc,
-                        objectorType: objectorType);
-                }
-                else
-                {
-                    pdfPath = _paths.BuildS53PdfPath(
-                        roll: roll,
-                        objectionNo: log.ObjectionNo ?? propertyDesc,
-                        propertyDesc: propertyDesc,
-                        objectorType: objectorType);
-                }
+                pdfPath = BuildSection53PdfPath(
+                    roll: roll,
+                    notice: settings.Notice,
+                    batchName: batch.BatchName,
+                    objectorType: objectorType,
+                    objectionNo: log.ObjectionNo,
+                    propertyDesc: propertyDesc);
             }
             else
             {
@@ -789,20 +784,15 @@ namespace GV23_Notice.Services.Storage
                         var pairedDesc = pairedRow.PropertyDesc ?? propertyDesc;
                         var pairedBytes = _s53Builder.BuildNoticePdf(pairedRow, letterDate);
 
-                        var pairedPath = settings.Notice == NoticeKind.S53Rev
-                            ? BuildS53RevPdfPath(
-                                roll: roll,
-                                batchName: batch.BatchName,
-                                objectionNo: log.ObjectionNo,
-                                propertyDesc: pairedDesc,
-                                objectorType: pairedType)
-                            : _paths.BuildS53PdfPath(
-                                roll,
-                                log.ObjectionNo!,
-                                pairedDesc,
-                                pairedType);
+                    var pairedPath = BuildSection53PdfPath(
+   roll: roll,
+   notice: settings.Notice,
+   batchName: batch.BatchName,
+   objectorType: pairedType,
+   objectionNo: log.ObjectionNo,
+   propertyDesc: pairedDesc);
 
-                        SavePdf(pairedPath, pairedBytes);
+                    SavePdf(pairedPath, pairedBytes);
 
                         _log.LogInformation(
                             "S53 paired PDF saved: {ObjectionNo} {Type} → {Path}",
@@ -815,27 +805,79 @@ namespace GV23_Notice.Services.Storage
 
             return (pdfBytes, propertyDesc);
         }
-        private static string BuildS53RevPdfPath(
-    Domain.Rolls.RollRegistry roll,
-    string batchName,
-    string? objectionNo,
-    string propertyDesc,
-    string objectorType)
+        public string BuildSection53PdfPath(
+     RollRegistry roll,
+     NoticeKind notice,
+     string batchName,
+     string objectorType,
+     string? objectionNo,
+     string? propertyDesc)
         {
-            var root = Path.Combine(
-                @"C:\GV23_Notice",
-                SafeFile(roll.ShortCode ?? roll.Name ?? "ROLL"),
-                "Section53",
-                "RevisedMVD",
-                SafeFile(batchName),
-                SafeFile(objectorType));
+            var shortCode = roll.ShortCode ?? roll.Name ?? "UNKNOWN";
 
-            Directory.CreateDirectory(root);
+            if (!_storage.ObjectionRootsByShortCode.TryGetValue(shortCode, out var root))
+            {
+                throw new InvalidOperationException(
+                    $"No objection root folder configured for roll short code '{shortCode}'. Check Storage:ObjectionRootsByShortCode.");
+            }
 
-            var fileName = $"{SafeFile(objectionNo)}_{SafeFile(propertyDesc)}_RevisedMVD.pdf";
+            var noticeKey = notice == NoticeKind.S53Rev ? "S53Rev" : "S53";
 
-            return Path.Combine(root, fileName);
+            if (!_storage.NoticeTypeFolders.TryGetValue(noticeKey, out var noticeFolder))
+            {
+                throw new InvalidOperationException(
+                    $"No notice folder configured for notice '{noticeKey}'. Check Storage:NoticeTypeFolders.");
+            }
+
+            // Existing app structure:
+            // C:\Sup3Data\GV23-Sup3-44\Section 53 MVD
+            // C:\Sup3Data\GV23-Sup3-44\Section 53 Revised MVD
+            var folder = Path.Combine(
+                root,
+                SafeFile(objectionNo),
+                noticeFolder);
+
+            Directory.CreateDirectory(folder);
+
+            var suffix = notice == NoticeKind.S53Rev
+                ? "RevisedMVD"
+                : "MVD";
+
+            var roleSuffix = string.IsNullOrWhiteSpace(objectorType)
+                ? ""
+                : $"_{SafeFile(objectorType)}";
+
+            var fileName =
+                $"{SafeFile(objectionNo)}_{SafeFile(propertyDesc)}_{suffix}{roleSuffix}.pdf";
+
+            return Path.Combine(folder, fileName);
         }
+        public string BuildEmailCopyPathNextToPdf(
+            NoticeKind notice,
+            string pdfPath,
+            string? objectionNo,
+            string? recipientEmail)
+        {
+            var folder = Path.GetDirectoryName(pdfPath);
+
+            if (string.IsNullOrWhiteSpace(folder))
+                throw new InvalidOperationException("Cannot resolve PDF folder for email copy.");
+
+            Directory.CreateDirectory(folder);
+
+            var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
+            var suffix = notice == NoticeKind.S53Rev
+                ? "RevisedMVD"
+                : "MVD";
+
+            var fileName =
+                $"email_{SafeFile(objectionNo)}_{SafeFile(recipientEmail)}_{suffix}_{stamp}.eml";
+
+            return Path.Combine(folder, fileName);
+        }
+
+      
 
         private static string SafeFile(string? value)
         {
@@ -930,9 +972,12 @@ namespace GV23_Notice.Services.Storage
                 Addr5 = address.Addr5,
 
                 AppealCloseDate = DateVal("AppealCloseDate"),
+
+                OriginalS53BatchDate = DateVal("OriginalS53BatchDate"),
+                RevisedMvdBatchDate = DateVal("RevisedMvdBatchDate"),
+
                 Section52Review = Str("Section52Review"),
                 RollName = null,
-
                 Gv_Category = Str("GV_Category"),
                 Gv_Category2 = Str("GV_Category2"),
                 Gv_Category3 = Str("GV_Category3"),

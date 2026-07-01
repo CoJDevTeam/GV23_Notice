@@ -488,7 +488,16 @@
     color: #7a5200;
     border-color: rgba(230,176,0,.25);
 }
-
+.hm-chip-s53rev {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+.chip-s53rev {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
 .hm-chip-dj {
     background: rgba(236,72,153,.08);
     color: #9d174d;

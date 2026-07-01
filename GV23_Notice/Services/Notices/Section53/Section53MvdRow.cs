@@ -65,6 +65,9 @@
             public string? WEFMVD2 { get; set; }
             public string? WEFMVD3 { get; set; }
             public bool IsRevisedMvd { get; set; }
+
+            public DateTime? OriginalS53BatchDate { get; set; }
+            public DateTime? RevisedMvdBatchDate { get; set; }
         }
     }
 }

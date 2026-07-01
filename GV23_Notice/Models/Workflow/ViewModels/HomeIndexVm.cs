@@ -19,7 +19,9 @@ namespace GV23_Notice.Models.Workflow.ViewModels
 
             // ── Recent workflows (last 8 active) ─────────────────────
             public List<RecentWorkflowRow> RecentWorkflows { get; set; } = new();
-        }
+
+        public List<NoticeTypeStatVm> NoticeStats { get; set; } = new();
+    }
 
         public sealed class RecentWorkflowRow
         {
@@ -37,5 +39,22 @@ namespace GV23_Notice.Models.Workflow.ViewModels
             public int SentCount { get; set; }
             public Guid? WorkflowKey { get; set; }
         }
+
+    public class NoticeTypeStatVm
+    {
+        public NoticeKind Notice { get; set; }
+        public string NoticeName { get; set; } = "";
+
+        public int TotalWorkflows { get; set; }
+        public int Step1Confirmed { get; set; }
+        public int Step1Approved { get; set; }
+        public int PendingStep2 { get; set; }
+        public int Step2Approved { get; set; }
+
+        public int BatchCount { get; set; }
+        public int PrintedCount { get; set; }
+        public int SentCount { get; set; }
+        public int FailedCount { get; set; }
     }
+}
 

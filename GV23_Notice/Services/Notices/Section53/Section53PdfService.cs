@@ -1,4 +1,5 @@
-﻿using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
+﻿using DocumentFormat.OpenXml.Bibliography;
+using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
 using Microsoft.Extensions.Options;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -26,6 +27,7 @@ namespace GV23_Notice.Services.Notices.Section53
 
         public byte[] BuildPreviewPdf(Section53MvdRow dummyRow, DateOnly letterDate)
             => BuildPdf(new List<Section53MvdRow> { dummyRow }, letterDate, isPreview: true);
+    
 
         private byte[] BuildPdf(IReadOnlyList<Section53MvdRow> rows, DateOnly letterDate, bool isPreview)
         {
@@ -64,8 +66,11 @@ namespace GV23_Notice.Services.Notices.Section53
                 ? "the revised Municipal Valuer’s decision is as follows:"
                 : "the Municipal Valuer’s decision is as follows:";
 
-            var revisedNoticeText =
-                "Please ignore the previous Section 53 notice. This revised notice replaces the previous Municipal Valuer's Decision notice.";
+            var originalNoticeDateText = model.OriginalS53BatchDateText;
+
+            var revisedNoticeText = string.IsNullOrWhiteSpace(originalNoticeDateText)
+                ? "This revised notice supersedes the previous Section 53 Municipal Valuer’s Decision notice and must be regarded as the official Section 53 Revised Municipal Valuer’s Decision notice."
+                : $"This revised notice supersedes the Section 53 Municipal Valuer’s Decision notice dated {originalNoticeDateText} and must be regarded as the official Section 53 Revised Municipal Valuer’s Decision notice.";
             return Document.Create(container =>
             {
                 container.Page(page =>
@@ -167,15 +172,13 @@ namespace GV23_Notice.Services.Notices.Section53
                         if (model.IsRevisedMvd)
                         {
                             col.Item()
-                                .PaddingTop(2)
-                                .BorderLeft(3)
-                                .BorderColor(Colors.Orange.Darken2)
-                                .PaddingLeft(6)
+                                
+                                
+                                .PaddingLeft(3)
                                 .Text(revisedNoticeText)
                                 .Style(body9b)
-                                .FontColor(Colors.Orange.Darken4);
+                                .FontColor(Colors.Red.Darken2).SemiBold();
                         }
-
                         col.Item().PaddingTop(1);
 
                         col.Item().Text(t =>
@@ -475,6 +478,11 @@ namespace GV23_Notice.Services.Notices.Section53
             public string WEFMVD2 => First.WEFMVD2 ?? "";
 
             public string WEFMVD3 => First.WEFMVD3 ?? "";
+            public string OriginalS53BatchDateText =>
+    First.OriginalS53BatchDate.HasValue
+        ? First.OriginalS53BatchDate.Value.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("en-ZA"))
+        : "";
+
             public bool IsRevisedMvd => First.IsRevisedMvd;
         }
 

@@ -211,7 +211,11 @@ namespace GV23_Notice.Services.QA
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var sourceRows = await LoadObjPropertyInfoRowsAsync(roll.SourceDb, objectionNos, ct);
+            var sourceRows = await LoadObjPropertyInfoRowsAsync(
+    roll.SourceDb,
+    objectionNos,
+    settings.Notice,
+    ct);
 
             if (settings.Notice.IsSection53Family())
             {
@@ -410,9 +414,10 @@ namespace GV23_Notice.Services.QA
             }
         }
         private async Task<List<ObjPropertyInfoLite>> LoadObjPropertyInfoRowsAsync(
-            string sourceDb,
-            List<string> objectionNos,
-            CancellationToken ct)
+      string sourceDb,
+      List<string> objectionNos,
+      NoticeKind notice,
+      CancellationToken ct)
         {
             var rows = new List<ObjPropertyInfoLite>();
 
@@ -428,10 +433,32 @@ namespace GV23_Notice.Services.QA
             foreach (var no in objectionNos.Distinct(StringComparer.OrdinalIgnoreCase))
                 table.Rows.Add(no);
 
-            var sql = @"
+            var isRevisedMvd = notice == NoticeKind.S53Rev;
+
+            var sql = isRevisedMvd
+                ? @"
 SELECT
     p.Objection_No,
-   p.objection_Status,
+    p.objection_Status,
+    p.Property_Type,
+    p.Property_Desc,
+    p.Premise_id,
+
+    COALESCE(NULLIF(LTRIM(RTRIM(CAST(p.New_Category_ReviseMVD AS NVARCHAR(255)))), ''), 
+             CAST(p.New_Category_MVD AS NVARCHAR(255))) AS New_Category_MVD,
+
+    COALESCE(NULLIF(LTRIM(RTRIM(CAST(p.New2_Category_ReviseMVD AS NVARCHAR(255)))), ''), 
+             CAST(p.New2_Category_MVD AS NVARCHAR(255))) AS New2_Category_MVD,
+
+    COALESCE(NULLIF(LTRIM(RTRIM(CAST(p.New3_Category_ReviseMVD AS NVARCHAR(255)))), ''), 
+             CAST(p.New3_Category_MVD AS NVARCHAR(255))) AS New3_Category_MVD
+FROM dbo.Obj_Property_Info p
+INNER JOIN @ObjectionNos n
+    ON LTRIM(RTRIM(p.Objection_No)) = LTRIM(RTRIM(n.Value));"
+                : @"
+SELECT
+    p.Objection_No,
+    p.objection_Status,
     p.Property_Type,
     p.Property_Desc,
     p.Premise_id,
@@ -453,18 +480,17 @@ INNER JOIN @ObjectionNos n
 
             while (await rd.ReadAsync(ct))
             {
-               
-                   rows.Add(new ObjPropertyInfoLite
-{
+                rows.Add(new ObjPropertyInfoLite
+                {
                     ObjectionNo = ReadString(rd, "Objection_No") ?? "",
                     ObjectionStatus = ReadString(rd, "objection_Status"),
                     PropertyType = ReadString(rd, "Property_Type"),
                     PropertyDesc = ReadString(rd, "Property_Desc"),
                     PremiseId = ReadString(rd, "Premise_id"),
+
                     NewCategoryMvd = ReadString(rd, "New_Category_MVD"),
                     New2CategoryMvd = ReadString(rd, "New2_Category_MVD"),
                     New3CategoryMvd = ReadString(rd, "New3_Category_MVD")
-
                 });
             }
 
@@ -533,10 +559,17 @@ INNER JOIN @ObjectionNos n
 
             var v = value.Trim();
 
-            return v.Equals("Multiple Purposes", StringComparison.OrdinalIgnoreCase)
-                || v.Equals("Multipurpose", StringComparison.OrdinalIgnoreCase)
-                || v.Equals("Multi Purpose", StringComparison.OrdinalIgnoreCase)
-                || v.Equals("Multi-Purpose", StringComparison.OrdinalIgnoreCase);
+            v = v.Replace("*", "");
+            v = v.Replace(" ", "");
+            v = v.Replace("-", "");
+            v = v.Replace("_", "");
+
+            v = v.ToUpperInvariant();
+
+            return v == "MULTIPURPOSE"
+                || v == "MULTIPURPOSES"
+                || v == "MULTIPLEPURPOSE"
+                || v == "MULTIPLEPURPOSES";
         }
 
         private sealed class PrintedLogLite

@@ -889,3 +889,9 @@
 .ss-btn-approve.loading .ss-btn-spinner {
     display: block;
 }
+.ss-icon-s53rev,
+.ss-tag-s53rev {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fecaca;
+}

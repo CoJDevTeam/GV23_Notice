@@ -11,15 +11,16 @@
 
     // Notice type definitions
     var noticeTypes = new[]
-    {
-        ("S49","Section 49","Public Inspection"),
-        ("S51","Section 51","Objection Decision"),
-        ("S52","Section 52","Appeal Notice"),
-        ("S53","Section 53","MVD Decision"),
-        ("DJ", "Dear Johnny","Acknowledgement"),
-        ("IN", "Invalid",   "Invalid Notice"),
-        ("S78","Section 78","Query Notice"),
-    };
+{
+    ("S49", "Section 49", "Public Inspection"),
+    ("S51", "Section 51", "Objection Decision"),
+    ("S52", "Section 52", "Appeal Notice"),
+    ("S53", "Section 53", "MVD Decision"),
+    ("S53Rev", "Section 53 Revised MVD", "Revised MVD Decision"),
+    ("DJ", "Dear Johnny", "Acknowledgement"),
+    ("IN", "Invalid", "Invalid Notice"),
+    ("S78", "Section 78", "Query Notice"),
+};
 
     // Chart data — sent count per notice type
     var chartLabels = string.Join(",", noticeTypes.Select(n =>
@@ -50,7 +51,7 @@
                 </h1>
                 <p class="hm-hero-sub">
                     GV23 statutory notice processing — bulk generation, print and dispatch
-                    of Section 49, 51, 52, 53, Dear Johnny, Invalid and S78 notices.
+                    of Section 49, 51, 52, 53, Section 53 Revised MVD, Dear Johnny, Invalid and S78 notices.
                 </p>
                 <div class="hm-hero-badges">
                     <span class="hm-badge hm-badge-live">
@@ -327,10 +328,10 @@
             if (panel) panel.classList.add('on');
         }
         function switchTabById(id) {
-            var tabs = document.querySelectorAll('.hm-tab');
-            var labels = ['all','s49','s51','s52','s53','dj','in','s78'];
-            var idx = labels.indexOf(id);
-            if (idx >= 0 && tabs[idx]) switchTab(id, tabs[idx]);
+        var tabs = document.querySelectorAll('.hm-tab');
+        var labels = ['all','s49','s51','s52','s53','s53rev','dj','in','s78'];
+        var idx = labels.indexOf(id);
+        if (idx >= 0 && tabs[idx]) switchTab(id, tabs[idx]);
         }
 
         // ── Chart ──────────────────────────────────────────────────────────────

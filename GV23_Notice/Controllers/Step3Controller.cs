@@ -464,10 +464,10 @@ namespace GV23_Notice.Controllers
         [HttpPost("SendStatsEmail")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SendStatsEmail(
-            Guid key,
-            string toEmails,
-            string? ccEmails,
-            CancellationToken ct)
+      Guid key,
+      string toEmails,
+      string? ccEmails,
+      CancellationToken ct)
         {
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
@@ -477,14 +477,19 @@ namespace GV23_Notice.Controllers
             try
             {
                 await _stats.SendStatsEmailAsync(key, toEmails, ccEmails, user, ct);
+
                 TempData["Success"] = "Stats report sent to stakeholders successfully.";
+
+                // After successful send, go back to Home Dashboard
+                return RedirectToAction("Index", "Home");
             }
             catch (Exception ex)
             {
                 TempData["Error"] = ex.Message;
-            }
 
-            return RedirectToAction(nameof(SendStats), new { key });
+                // If it fails, stay on stats page so the user can fix emails/retry
+                return RedirectToAction(nameof(SendStats), new { key });
+            }
         }
     }
 }

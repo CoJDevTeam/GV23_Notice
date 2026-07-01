@@ -10,6 +10,7 @@
         NoticeKind.S51 => "Section 51 — Objection Decision",
         NoticeKind.S52 => "Section 52 — Appeal Notices",
         NoticeKind.S53 => "Section 53 — Municipal Valuation Decision",
+        NoticeKind.S53Rev => "Section 53 — Revised Municipal Valuer’s Decision",
         NoticeKind.DJ => "Dear Johnny — Acknowledgement Notice",
         NoticeKind.IN => "Invalid Notice",
         NoticeKind.S78 => "Section 78 — Property Verification Review",
@@ -23,6 +24,7 @@
         NoticeKind.S51 => "51",
         NoticeKind.S52 => "52",
         NoticeKind.S53 => "53",
+        NoticeKind.S53Rev => "53R",
         NoticeKind.DJ => "DJ",
         NoticeKind.IN => "IN",
         NoticeKind.S78 => "78",
@@ -32,6 +34,7 @@
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
     bool sigRequired = Model.Notice == NoticeKind.S49;
     bool canApprove = !sigRequired || hasSignature;
+    bool isS53Family = Model.Notice == NoticeKind.S53 || Model.Notice == NoticeKind.S53Rev;
 }
 
 
@@ -317,27 +320,62 @@
             }
 
             <!-- Section 53 details -->
-            @if (Model.Notice == NoticeKind.S53)
+            @if (isS53Family)
             {
+                var isRevisedMvd = Model.Notice == NoticeKind.S53Rev;
+
                 <div class="ss-card">
                     <div class="ss-card-header">
                         <div class="ss-card-header-left">
-                            <div class="ss-card-icon ss-icon-s53">53</div>
+                            <div class="ss-card-icon ss-icon-s53">
+                                @(isRevisedMvd ? "53R" : "53")
+                            </div>
                             <div>
-                                <div class="ss-card-title">Section 53 — Municipal Valuation Decision</div>
-                                <div class="ss-card-sub">Batch date and appeal close date</div>
+                                <div class="ss-card-title">
+                                    @(isRevisedMvd
+                                        ? "Section 53 — Revised Municipal Valuer’s Decision"
+                                        : "Section 53 — Municipal Valuation Decision")
+                                </div>
+                                <div class="ss-card-sub">
+                                    @(isRevisedMvd
+                                        ? "Revised MVD batch date and appeal close date"
+                                        : "Batch date and appeal close date")
+                                </div>
                             </div>
                         </div>
+
+                        @if (isRevisedMvd)
+                        {
+                            <div class="ss-notice-tag ss-tag-s53rev">
+                                Revised MVD
+                            </div>
+                        }
                     </div>
+
+                    @if (isRevisedMvd)
+                    {
+                        <div style="margin-bottom:12px;padding:10px 12px;border-radius:10px;background:#fff1f2;border:1px solid #fecdd3;color:#991b1b;font-size:13px;font-weight:700;">
+                            This configuration will generate Section 53 Revised MVD notices. The revised notice will supersede the previous Section 53 MVD notice.
+                        </div>
+                    }
+
                     <div class="ss-detail-grid">
                         <div class="ss-detail-row">
-                            <span class="ss-detail-label">Batch Date</span>
-                            <span class="ss-detail-value ss-mono">@(Model.BatchDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                            <span class="ss-detail-label">
+                                @(isRevisedMvd ? "Revised MVD Batch Date" : "Batch Date")
+                            </span>
+                            <span class="ss-detail-value ss-mono">
+                                @(Model.BatchDate?.ToString("dd MMMM yyyy") ?? "—")
+                            </span>
                         </div>
+
                         <div class="ss-detail-row">
                             <span class="ss-detail-label">Appeal Closes</span>
-                            <span class="ss-detail-value ss-mono ss-detail-strong">@(Model.AppealCloseDate?.ToString("dd MMMM yyyy") ?? "—")</span>
+                            <span class="ss-detail-value ss-mono ss-detail-strong">
+                                @(Model.AppealCloseDate?.ToString("dd MMMM yyyy") ?? "—")
+                            </span>
                         </div>
+
                         @if (!string.IsNullOrWhiteSpace(Model.AppealCloseOverrideReason))
                         {
                             <div class="ss-detail-row">
@@ -345,6 +383,7 @@
                                 <span class="ss-detail-value">@Model.AppealCloseOverrideReason</span>
                             </div>
                         }
+
                         <div class="ss-detail-row">
                             <span class="ss-detail-label">Override Evidence</span>
                             <span class="ss-detail-value">
@@ -354,15 +393,23 @@
                                 }
                                 else
                                 {
-
                                     <span style="color:var(--ss-mu);font-size:13px">—</span>
                                 }
                             </span>
                         </div>
+
+                        @if (isRevisedMvd)
+                        {
+                            <div class="ss-detail-row">
+                                <span class="ss-detail-label">Workflow Entry Status</span>
+                                <span class="ss-detail-value">
+                                    <span class="ss-badge ss-badge-warn">Revised-MVD</span>
+                                </span>
+                            </div>
+                        }
                     </div>
                 </div>
             }
-
         </div>
 
         <!-- ── RIGHT: checklist + approve ────────────────────── -->
@@ -407,12 +454,20 @@
                         </div>
                     }
 
-                    @if (Model.Notice == NoticeKind.S53)
+                    @if (isS53Family)
                     {
                         <div class="ss-check">
                             <div class="ss-check-dot ok">✓</div>
                             <span>Appeal close date — <strong>@(Model.AppealCloseDate?.ToString("dd MMM yyyy") ?? "not set")</strong></span>
                         </div>
+
+                        @if (Model.Notice == NoticeKind.S53Rev)
+                        {
+                            <div class="ss-check">
+                                <div class="ss-check-dot ok">✓</div>
+                                <span>Revised MVD details configured</span>
+                            </div>
+                        }
                     }
                 </div>
 
