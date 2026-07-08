@@ -4,6 +4,7 @@ using GV23_Notice.Domain.Storage;
 using GV23_Notice.Models.Security;
 using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
+using GV23_Notice.Services.Corrections;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Notices.DearJohnny;
@@ -156,6 +157,15 @@ builder.Services.AddScoped<INoticeStatsEmailService,NoticeStatsEmailService>();
 builder.Services.AddScoped<INoticeSendStatsService,NoticeSendStatsService>();
 builder.Services.AddScoped<INoticeStatsDashboardService,NoticeStatsDashboardService>();
 
+
+// ----------------------------------------------------
+// Corrections
+// ----------------------------------------------------
+builder.Services.AddScoped<INoticeCorrectionSourceService, NoticeCorrectionSourceService>();
+builder.Services.AddScoped<INoticeCorrectionBatchService, NoticeCorrectionBatchService>();
+builder.Services.AddScoped<INoticeCorrectionPrintService, NoticeCorrectionPrintService>();
+builder.Services.AddScoped<INoticeCorrectionEmailService, NoticeCorrectionEmailService>();
+
 // ----------------------------------------------------
 // Security
 // ----------------------------------------------------
@@ -165,6 +175,7 @@ builder.Services.AddTransient<IClaimsTransformation, UserClaimsTransformation>()
 
 builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme)
     .AddNegotiate();
+
 
 
 builder.Services.AddAuthorization(options =>

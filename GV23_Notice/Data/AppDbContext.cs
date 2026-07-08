@@ -52,6 +52,10 @@ namespace GV23_Notice.Data
 
         public DbSet<NoticeQaRun> NoticeQaRuns => Set<NoticeQaRun>();
         public DbSet<NoticeQaItem> NoticeQaItems => Set<NoticeQaItem>();
+
+        public DbSet<NoticeCorrectionBatch> NoticeCorrectionBatches => Set<NoticeCorrectionBatch>();
+        public DbSet<NoticeCorrectionItem> NoticeCorrectionItems => Set<NoticeCorrectionItem>();
+        public DbSet<NoticeCorrectionEmailTemplate> NoticeCorrectionEmailTemplates => Set<NoticeCorrectionEmailTemplate>();
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -305,6 +309,118 @@ namespace GV23_Notice.Data
                     .WithMany()
                     .HasForeignKey(x => x.NoticeRunLogId)
                     .OnDelete(DeleteBehavior.Restrict);
+            });
+            modelBuilder.Entity<NoticeCorrectionBatch>(entity =>
+            {
+                entity.ToTable("NoticeCorrectionBatches");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.CorrectionBatchName).HasMaxLength(150).IsRequired();
+                entity.Property(x => x.RollShortCode).HasMaxLength(50);
+                entity.Property(x => x.SourceDb).HasMaxLength(128);
+                entity.Property(x => x.NoticeKind).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.NoticeSubKind).HasMaxLength(100);
+                entity.Property(x => x.ReferenceType).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.ReferenceNo).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.CorrectionReason).HasMaxLength(500);
+                entity.Property(x => x.CreatedBy).HasMaxLength(100).IsRequired();
+                entity.Property(x => x.PrintedBy).HasMaxLength(100);
+                entity.Property(x => x.SentBy).HasMaxLength(100);
+                entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.SourceNoticeKind).HasMaxLength(50);
+                entity.Property(x => x.PrintNoticeKind).HasMaxLength(50);
+                entity.Property(x => x.PrintNoticeTitle).HasMaxLength(150);
+                entity.HasMany(x => x.Items)
+                    .WithOne(x => x.CorrectionBatch)
+                    .HasForeignKey(x => x.CorrectionBatchId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<NoticeCorrectionItem>(entity =>
+            {
+                entity.ToTable("NoticeCorrectionItems");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.RollShortCode).HasMaxLength(50);
+                entity.Property(x => x.SourceDb).HasMaxLength(128);
+                entity.Property(x => x.NoticeKind).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.NoticeSubKind).HasMaxLength(100);
+                entity.Property(x => x.ReferenceType).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.ReferenceNo).HasMaxLength(100).IsRequired();
+
+                entity.Property(x => x.ObjectionNo).HasMaxLength(100);
+                entity.Property(x => x.AppealNo).HasMaxLength(100);
+                entity.Property(x => x.QueryNo).HasMaxLength(100);
+                entity.Property(x => x.ReviewNo).HasMaxLength(100);
+
+                entity.Property(x => x.PremiseId).HasMaxLength(100);
+                entity.Property(x => x.UnitKey).HasMaxLength(100);
+                entity.Property(x => x.ValuationKey).HasMaxLength(100);
+
+                entity.Property(x => x.PropertyType).HasMaxLength(100);
+                entity.Property(x => x.RecipientRole).HasMaxLength(100);
+                entity.Property(x => x.RecipientName).HasMaxLength(255);
+                entity.Property(x => x.RecipientEmail).HasMaxLength(500);
+
+                entity.Property(x => x.ADDR1).HasMaxLength(255);
+                entity.Property(x => x.ADDR2).HasMaxLength(255);
+                entity.Property(x => x.ADDR3).HasMaxLength(255);
+                entity.Property(x => x.ADDR4).HasMaxLength(255);
+                entity.Property(x => x.ADDR5).HasMaxLength(255);
+
+                entity.Property(x => x.OldCategory).HasMaxLength(255);
+                entity.Property(x => x.OldCategory2).HasMaxLength(255);
+                entity.Property(x => x.OldCategory3).HasMaxLength(255);
+
+                entity.Property(x => x.OldMarketValue).HasMaxLength(100);
+                entity.Property(x => x.OldMarketValue2).HasMaxLength(100);
+                entity.Property(x => x.OldMarketValue3).HasMaxLength(100);
+
+                entity.Property(x => x.OldExtent).HasMaxLength(100);
+                entity.Property(x => x.OldExtent2).HasMaxLength(100);
+                entity.Property(x => x.OldExtent3).HasMaxLength(100);
+
+                entity.Property(x => x.NewCategory).HasMaxLength(255);
+                entity.Property(x => x.NewCategory2).HasMaxLength(255);
+                entity.Property(x => x.NewCategory3).HasMaxLength(255);
+
+                entity.Property(x => x.NewMarketValue).HasMaxLength(100);
+                entity.Property(x => x.NewMarketValue2).HasMaxLength(100);
+                entity.Property(x => x.NewMarketValue3).HasMaxLength(100);
+
+                entity.Property(x => x.NewExtent).HasMaxLength(100);
+                entity.Property(x => x.NewExtent2).HasMaxLength(100);
+                entity.Property(x => x.NewExtent3).HasMaxLength(100);
+
+                entity.Property(x => x.WEFDate).HasMaxLength(100);
+                entity.Property(x => x.WEFDate2).HasMaxLength(100);
+                entity.Property(x => x.WEFDate3).HasMaxLength(100);
+
+                entity.Property(x => x.Section51Pin).HasMaxLength(100);
+                entity.Property(x => x.Section52Review).HasMaxLength(50);
+
+                entity.Property(x => x.EmailSubject).HasMaxLength(500);
+                entity.Property(x => x.Status).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.EmailCc).HasMaxLength(1000);
+                entity.Property(x => x.SourceNoticeKind).HasMaxLength(50);
+                entity.Property(x => x.PrintNoticeKind).HasMaxLength(50);
+                entity.Property(x => x.PrintNoticeTitle).HasMaxLength(150);
+            });
+
+            modelBuilder.Entity<NoticeCorrectionEmailTemplate>(entity =>
+            {
+                entity.ToTable("NoticeCorrectionEmailTemplates");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.NoticeKind).HasMaxLength(50).IsRequired();
+                entity.Property(x => x.NoticeSubKind).HasMaxLength(100);
+                entity.Property(x => x.TemplateName).HasMaxLength(150).IsRequired();
+                entity.Property(x => x.SubjectTemplate).HasMaxLength(500).IsRequired();
+                entity.Property(x => x.CreatedBy).HasMaxLength(100);
+                entity.Property(x => x.CcTemplate).HasMaxLength(1000);
             });
         }
     }

@@ -1,5 +1,6 @@
 ﻿@model List<GV23_Notice.Models.Workflow.ViewModels.SettingsLibraryRowVm>
 @using GV23_Notice.Domain.Workflow
+@using GV23_Notice.Domain.Workflow.Entities
 @{
     ViewData["Title"] = "Settings Library";
 
@@ -26,8 +27,17 @@
         NoticeKind.S78 => "sl-chip-s78",
         _ => ""
     };
-}
 
+    var correctionBatches =
+        ViewBag.CorrectionBatches as List<NoticeCorrectionBatch>
+        ?? new List<NoticeCorrectionBatch>();
+
+    string CorrDisplay(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    string CorrDate(DateTime? value)
+        => value.HasValue ? value.Value.ToString("dd MMM yyyy HH:mm") : "—";
+}
 
 <link href="~/css/step2/settinglibrarycss.css" rel="stylesheet" />
 <div id="wf-loader" role="status">
@@ -204,7 +214,158 @@
         </div>
     </div>
 </div>
+<!-- Correction Batches -->
+<div class="sl-sec-head" style="margin-top:28px;">
+    <div class="sl-sec-left">
+        <div class="sl-sec-bar"></div>
+        <span class="sl-sec-title">Correction Batches</span>
+    </div>
+    <span style="font-size:11.5px;color:var(--sl-mu)">
+        Continue correction printing and emailing without creating duplicate records
+    </span>
+</div>
 
+<div class="sl-card">
+    <div class="sl-card-head">
+        <span class="sl-card-head-title">All Correction Batches</span>
+        <span class="sl-card-meta">Open an existing correction batch and continue from where you stopped</span>
+    </div>
+
+    @if (!correctionBatches.Any())
+    {
+        <div class="sl-empty">
+            <div class="sl-empty-icon">📭</div>
+            <p>No correction batches found.<br />Create one from Notice Corrections.</p>
+
+            <a class="sl-hero-btn sl-btn-gold"
+                   asp-controller="NoticeCorrection"
+                   asp-action="Index"
+                   style="margin-top:12px;">
+                Create Correction Batch
+            </a>
+        </div>
+    }
+    else
+    {
+        <div style="overflow-x:auto">
+            <table id="correctionBatchesTable" class="sl-table" style="width:100%">
+                <thead>
+                    <tr>
+                        <th>Batch</th>
+                        <th>Reference</th>
+                        <th>Source Notice</th>
+                        <th>Print Heading</th>
+                        <th>Items</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Printed</th>
+                        <th style="width:170px">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var batch in correctionBatches)
+                    {
+                        var itemCount = batch.Items?.Count ?? 0;
+
+                        var printedCount = batch.Items?.Count(x =>
+                            x.Status == "Printed" ||
+                            !string.IsNullOrWhiteSpace(x.PdfPath)) ?? 0;
+
+                        var failedCount = batch.Items?.Count(x =>
+                            x.Status == "Failed") ?? 0;
+
+                        var sentCount = batch.Items?.Count(x =>
+                            x.Status == "Sent" ||
+                            !string.IsNullOrWhiteSpace(x.EmlPath)) ?? 0;
+
+                        var statusClass = batch.Status switch
+                        {
+                            "Printed" => "sl-status sl-pip-step3",
+                            "Sent" => "sl-status sl-pip-step3",
+                            "Failed" => "sl-status sl-pip-sig",
+                            "Printed-With-Errors" => "sl-status sl-pip-sig",
+                            _ => "sl-status sl-pip-step2"
+                        };
+
+                        <tr>
+                            <td>
+                                <span class="sl-id">@CorrDisplay(batch.CorrectionBatchName)</span>
+                                <div class="sl-roll-code">@CorrDisplay(batch.RollShortCode)</div>
+                            </td>
+
+                            <td>
+                                <div class="sl-roll-name">@CorrDisplay(batch.ReferenceNo)</div>
+                                <span class="sl-roll-code">@CorrDisplay(batch.ReferenceType)</span>
+                            </td>
+
+                            <td>
+                                <span class="sl-notice-chip sl-chip-s53">
+                                    @CorrDisplay(batch.SourceNoticeKind)
+                                </span>
+                                <div class="sl-notice-name">
+                                    Data source
+                                </div>
+                            </td>
+
+                            <td>
+                                <span class="sl-notice-chip sl-chip-s53">
+                                    @CorrDisplay(batch.PrintNoticeKind)
+                                </span>
+                                <div class="sl-notice-name">
+                                    @CorrDisplay(batch.PrintNoticeTitle)
+                                </div>
+                            </td>
+
+                            <td>
+                                <strong>@itemCount</strong>
+                                <div style="font-size:11px;color:var(--sl-mu);line-height:1.5;">
+                                    Printed: @printedCount |
+                                    Failed: @failedCount |
+                                    Sent: @sentCount
+                                </div>
+                            </td>
+
+                            <td>
+                                <span class="@statusClass">
+                                    @CorrDisplay(batch.Status)
+                                </span>
+                            </td>
+
+                            <td style="font-size:12px;color:var(--sl-mu);font-variant-numeric:tabular-nums">
+                                @CorrDate(batch.CreatedAt)
+                                <div style="font-size:11px;color:var(--sl-mu)">
+                                    @CorrDisplay(batch.CreatedBy)
+                                </div>
+                            </td>
+
+                            <td style="font-size:12px;color:var(--sl-mu);font-variant-numeric:tabular-nums">
+                                @CorrDate(batch.PrintedAt)
+                                <div style="font-size:11px;color:var(--sl-mu)">
+                                    @CorrDisplay(batch.PrintedBy)
+                                </div>
+                            </td>
+
+                            <td>
+                                <div class="sl-actions">
+                                    <a class="sl-action sl-action-preview"
+                                           asp-controller="NoticeCorrection"
+                                           asp-action="PreviewBatch"
+                                           asp-route-id="@batch.Id">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                            <circle cx="12" cy="12" r="3" />
+                                        </svg>
+                                        Open Batch
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
 @section Scripts {
     <script>
         const WfToast = (() => {
@@ -236,8 +397,9 @@
                           document.getElementById("wf-loader").classList.add("active");},
             hide:()=>document.getElementById("wf-loader").classList.remove("active")
         };
-        document.addEventListener("DOMContentLoaded", () => {
+               document.addEventListener("DOMContentLoaded", () => {
             if (typeof $.fn.DataTable === "undefined") return;
+
             $('#settingsTable').DataTable({
                 pageLength:15, lengthMenu:[10,15,25,50,100], order:[[5,'desc']],
                 columnDefs:[{orderable:false,targets:7}],
@@ -249,6 +411,25 @@
                     WfToast.info(`${this.api().data().length} configuration(s) loaded.`, "Library Ready");
                 }
             });
+
+            if ($('#correctionBatchesTable').length) {
+                $('#correctionBatchesTable').DataTable({
+                    pageLength: 10,
+                    lengthMenu: [10, 15, 25, 50, 100],
+                    order: [[6, 'desc']],
+                    columnDefs: [{ orderable: false, targets: 8 }],
+                    language: {
+                        search: "",
+                        searchPlaceholder: "Search correction batches…",
+                        lengthMenu: "Show _MENU_ rows",
+                        info: "Showing _START_–_END_ of _TOTAL_",
+                        infoEmpty: "No correction batches found",
+                        paginate: { previous: "‹", next: "›" }
+                    },
+                    dom: "<'dt-toolbar'<'dataTables_length'l><'dataTables_filter'f>>t<'row'<'col-sm-6'i><'col-sm-6'p>>"
+                });
+            }
+
             document.querySelectorAll(".sl-action").forEach(a =>
                 a.addEventListener("click", function() {
                     const label = this.textContent.trim();

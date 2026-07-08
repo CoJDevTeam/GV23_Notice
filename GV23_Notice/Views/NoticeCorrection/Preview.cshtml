@@ -1,0 +1,468 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.CorrectionPreviewVm
+
+@{
+    ViewData["Title"] = "Correction Preview";
+
+    string DateText(DateTime? value)
+        => value.HasValue ? value.Value.ToString("dd MMMM yyyy") : "—";
+
+    string Display(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    var firstItem = Model.Items.FirstOrDefault();
+}
+
+<style>
+    .corr-root {
+        padding: 24px;
+        background: #f4f4f4;
+        min-height: calc(100vh - 70px);
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .corr-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 4px solid #d4a500;
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+    }
+
+    .corr-title {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .corr-sub {
+        margin-top: 8px;
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        color: #ddd;
+        font-size: .75rem;
+    }
+
+    .corr-sub b {
+        color: #d4a500;
+    }
+
+    .corr-alert {
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        font-size: .8rem;
+        font-weight: 700;
+    }
+
+    .corr-alert-ok {
+        background: #e8f8ef;
+        color: #1a6a3a;
+        border: 1px solid #b2dfcc;
+    }
+
+    .corr-alert-err {
+        background: #fff0f0;
+        color: #8a1a1a;
+        border: 1px solid #f0b0b0;
+    }
+
+    .corr-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+    }
+
+    .corr-btn {
+        border: none;
+        border-radius: 10px;
+        padding: 11px 16px;
+        font-size: .78rem;
+        font-weight: 900;
+        text-decoration: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+    }
+
+    .corr-btn-dark {
+        background: #111;
+        color: #fff;
+    }
+
+    .corr-btn-gold {
+        background: #d4a500;
+        color: #111;
+    }
+
+    .corr-btn-green {
+        background: #1a8a4a;
+        color: #fff;
+    }
+
+    .corr-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(170px, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .corr-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        padding: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+
+    .corr-card-label {
+        color: #777;
+        font-size: .65rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        margin-bottom: 6px;
+    }
+
+    .corr-card-value {
+        color: #111;
+        font-size: .85rem;
+        font-weight: 800;
+        word-break: break-word;
+    }
+
+    .corr-panel {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        margin-bottom: 18px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+
+    .corr-panel-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 3px solid #d4a500;
+        padding: 13px 16px;
+        font-size: .78rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+    }
+
+    .corr-panel-body {
+        padding: 16px;
+    }
+
+    .corr-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .76rem;
+    }
+
+    .corr-table th {
+        background: #f7f7f7;
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+        font-size: .65rem;
+        color: #777;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+    }
+
+    .corr-table td {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        vertical-align: top;
+    }
+
+    .corr-section {
+        font-weight: 900;
+        color: #111;
+    }
+
+    .corr-value {
+        word-break: break-word;
+    }
+
+    .corr-form-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .corr-field label {
+        display: block;
+        font-size: .68rem;
+        font-weight: 900;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        margin-bottom: 6px;
+    }
+
+    .corr-input,
+    .corr-textarea {
+        width: 100%;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        padding: 11px 12px;
+        font-size: .82rem;
+        outline: none;
+        background: #fff;
+    }
+
+    .corr-textarea {
+        min-height: 90px;
+        resize: vertical;
+    }
+
+    .corr-input:focus,
+    .corr-textarea:focus {
+        border-color: #d4a500;
+        box-shadow: 0 0 0 3px rgba(212,165,0,.15);
+    }
+
+    .corr-warning {
+        background: #fff8e1;
+        border: 1px solid #f4d36a;
+        border-radius: 12px;
+        padding: 14px;
+        font-size: .78rem;
+        color: #5f4700;
+        line-height: 1.6;
+        margin-bottom: 18px;
+    }
+
+    .corr-warning strong {
+        color: #111;
+    }
+
+    @@media(max-width: 1100px) {
+        .corr-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media(max-width: 700px) {
+        .corr-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="corr-root">
+
+    <div class="corr-head">
+        <h1 class="corr-title">Correction Preview</h1>
+        <div class="corr-sub">
+            <span>Roll: <b>@Model.RollShortCode — @Model.RollName</b></span>
+            <span>Notice: <b>@Model.NoticeText</b></span>
+            <span>Reference: <b>@Model.ReferenceType — @Model.ReferenceNo</b></span>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="corr-alert corr-alert-ok">@TempData["Success"]</div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="corr-alert corr-alert-err">@TempData["Error"]</div>
+    }
+
+    <div class="corr-actions">
+        <a class="corr-btn corr-btn-dark"
+           asp-controller="NoticeCorrection"
+           asp-action="Index">
+            Back to Search
+        </a>
+    </div>
+
+    <div class="corr-warning">
+        <strong>Review carefully before creating the correction batch.</strong>
+        The values below are pulled from the corrected source database.
+        Creating the correction batch will save a correction snapshot only.
+        It will not update the normal notice workflow tables.
+    </div>
+
+    <div class="corr-grid">
+        <div class="corr-card">
+            <div class="corr-card-label">Reference No</div>
+            <div class="corr-card-value">@Display(Model.ReferenceNo)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Property Description</div>
+            <div class="corr-card-value">@Display(firstItem?.PropertyDesc)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Recipient Email</div>
+            <div class="corr-card-value">@Display(firstItem?.RecipientEmail)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Appeal Close Date</div>
+            <div class="corr-card-value">@DateText(firstItem?.AppealCloseDate)</div>
+        </div>
+    </div>
+
+    <div class="corr-panel">
+        <div class="corr-panel-head">Correction Data Preview</div>
+        <div class="corr-panel-body">
+            <table class="corr-table">
+                <thead>
+                    <tr>
+                        <th>Section</th>
+                        <th>Field</th>
+                        <th>Corrected / Current Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (Model.Fields.Any())
+                    {
+                        foreach (var row in Model.Fields)
+                        {
+                            <tr>
+                                <td class="corr-section">@row.Section</td>
+                                <td>@row.Field</td>
+                                <td class="corr-value">@Display(row.Value)</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="3">No preview fields found.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <form asp-controller="NoticeCorrection"
+          asp-action="CreateBatch"
+          method="post">
+
+        @Html.AntiForgeryToken()
+
+        <input type="hidden" asp-for="RollId" />
+        <input type="hidden" asp-for="RollShortCode" />
+        <input type="hidden" asp-for="RollName" />
+        <input type="hidden" asp-for="SourceDb" />
+
+        <input type="hidden" asp-for="SourceNotice" />
+        <input type="hidden" asp-for="PrintNotice" />
+        <input type="hidden" asp-for="SourceNoticeText" />
+        <input type="hidden" asp-for="PrintNoticeText" />
+
+        <input type="hidden" asp-for="Notice" />
+        <input type="hidden" asp-for="NoticeText" />
+        <input type="hidden" asp-for="NoticeSubKind" />
+
+        <input type="hidden" asp-for="ReferenceType" />
+        <input type="hidden" asp-for="ReferenceNo" />
+
+        @for (var i = 0; i < Model.Items.Count; i++)
+        {
+            <input type="hidden" asp-for="Items[i].ObjectionNo" />
+            <input type="hidden" asp-for="Items[i].AppealNo" />
+            <input type="hidden" asp-for="Items[i].QueryNo" />
+            <input type="hidden" asp-for="Items[i].ReviewNo" />
+
+            <input type="hidden" asp-for="Items[i].PremiseId" />
+            <input type="hidden" asp-for="Items[i].UnitKey" />
+            <input type="hidden" asp-for="Items[i].ValuationKey" />
+
+            <input type="hidden" asp-for="Items[i].PropertyDesc" />
+            <input type="hidden" asp-for="Items[i].PropertyType" />
+
+            <input type="hidden" asp-for="Items[i].RecipientRole" />
+            <input type="hidden" asp-for="Items[i].RecipientName" />
+            <input type="hidden" asp-for="Items[i].RecipientEmail" />
+
+            <input type="hidden" asp-for="Items[i].ADDR1" />
+            <input type="hidden" asp-for="Items[i].ADDR2" />
+            <input type="hidden" asp-for="Items[i].ADDR3" />
+            <input type="hidden" asp-for="Items[i].ADDR4" />
+            <input type="hidden" asp-for="Items[i].ADDR5" />
+
+            <input type="hidden" asp-for="Items[i].OldCategory" />
+            <input type="hidden" asp-for="Items[i].OldCategory2" />
+            <input type="hidden" asp-for="Items[i].OldCategory3" />
+
+            <input type="hidden" asp-for="Items[i].OldMarketValue" />
+            <input type="hidden" asp-for="Items[i].OldMarketValue2" />
+            <input type="hidden" asp-for="Items[i].OldMarketValue3" />
+
+            <input type="hidden" asp-for="Items[i].OldExtent" />
+            <input type="hidden" asp-for="Items[i].OldExtent2" />
+            <input type="hidden" asp-for="Items[i].OldExtent3" />
+
+            <input type="hidden" asp-for="Items[i].NewCategory" />
+            <input type="hidden" asp-for="Items[i].NewCategory2" />
+            <input type="hidden" asp-for="Items[i].NewCategory3" />
+
+            <input type="hidden" asp-for="Items[i].NewMarketValue" />
+            <input type="hidden" asp-for="Items[i].NewMarketValue2" />
+            <input type="hidden" asp-for="Items[i].NewMarketValue3" />
+
+            <input type="hidden" asp-for="Items[i].NewExtent" />
+            <input type="hidden" asp-for="Items[i].NewExtent2" />
+            <input type="hidden" asp-for="Items[i].NewExtent3" />
+
+            <input type="hidden" asp-for="Items[i].WEFDate" />
+            <input type="hidden" asp-for="Items[i].WEFDate2" />
+            <input type="hidden" asp-for="Items[i].WEFDate3" />
+
+            <input type="hidden" asp-for="Items[i].BatchDate" />
+            <input type="hidden" asp-for="Items[i].LetterDate" />
+            <input type="hidden" asp-for="Items[i].ClosingDate" />
+            <input type="hidden" asp-for="Items[i].AppealStartDate" />
+            <input type="hidden" asp-for="Items[i].AppealCloseDate" />
+
+            <input type="hidden" asp-for="Items[i].Section51Pin" />
+            <input type="hidden" asp-for="Items[i].Section52Review" />
+
+            <input type="hidden" asp-for="Items[i].SnapshotJson" />
+        }
+
+        <div class="corr-panel">
+            <div class="corr-panel-head">Correction Reason</div>
+            <div class="corr-panel-body">
+                <div class="corr-form-grid">
+                    <div class="corr-field">
+                        <label>Reason for Correction</label>
+                        <textarea asp-for="CorrectionReason"
+                                  class="corr-textarea"
+                                  placeholder="Example: Previous system generated PDF did not reflect the Municipal Valuer’s full decision."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="corr-actions">
+            <a class="corr-btn corr-btn-dark"
+                   asp-controller="NoticeCorrection"
+                   asp-action="Index">
+                Cancel
+            </a>
+
+            <button type="submit" class="corr-btn corr-btn-green">
+                Create Correction Batch
+            </button>
+        </div>
+    </form>
+
+</div>

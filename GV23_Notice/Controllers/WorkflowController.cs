@@ -413,7 +413,14 @@ namespace GV23_Notice.Controllers
                     r.RollName = rr.Name;
                 }
             }
+            var correctionBatches = await _db.NoticeCorrectionBatches
+    .AsNoTracking()
+    .Include(x => x.Items)
+    .OrderByDescending(x => x.CreatedAt)
+    .Take(100)
+    .ToListAsync(ct);
 
+            ViewBag.CorrectionBatches = correctionBatches;
             return View(list);
         }
 

@@ -1,0 +1,568 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.CorrectionEmailComposeVm
+
+@{
+    ViewData["Title"] = "Compose Correction Email";
+
+    string Display(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    string FileName(string? path)
+        => string.IsNullOrWhiteSpace(path) ? "—" : System.IO.Path.GetFileName(path);
+
+    var recipientCount = Model.Recipients?.Count ?? 0;
+}
+
+<link href="~/css/step2/settinglibrarycss.css" rel="stylesheet" />
+
+<style>
+    .em-note {
+        background: #eef4ff;
+        color: #1c4f8f;
+        border: 1px solid #bfd4f5;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: .78rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+    }
+
+    .em-field {
+        margin-bottom: 14px;
+    }
+
+        .em-field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 900;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            margin-bottom: 6px;
+        }
+
+    .em-input,
+    .em-textarea {
+        width: 100%;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: .85rem;
+        outline: none;
+        background: #fff;
+    }
+
+    .em-input-readonly {
+        background: #f7f7f7;
+        color: #333;
+        font-weight: 700;
+    }
+
+    .em-textarea {
+        min-height: 240px;
+        resize: vertical;
+        line-height: 1.6;
+    }
+
+    .em-help {
+        margin-top: 6px;
+        color: #777;
+        font-size: 11px;
+        line-height: 1.4;
+    }
+
+    .em-required {
+        color: #a00;
+        font-size: 12px;
+        font-weight: 700;
+        margin-top: 4px;
+        display: block;
+    }
+
+    .em-email {
+        font-weight: 900;
+        color: #111;
+        word-break: break-word;
+    }
+
+    .em-file {
+        font-weight: 900;
+        color: #111;
+        word-break: break-word;
+    }
+
+    .em-path {
+        margin-top: 4px;
+        color: #777;
+        font-size: 11px;
+        word-break: break-all;
+        line-height: 1.4;
+    }
+
+    .em-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: #e8f8ef;
+        color: #1a6a3a;
+        border: 1px solid #b2dfcc;
+        font-weight: 900;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+
+    @@keyframes epulse {
+        0%, 100% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: .5;
+        }
+    }
+
+    @@keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .ep-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.72);
+        z-index: 9999;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(3px);
+    }
+
+        .ep-overlay.active {
+            display: flex;
+        }
+
+    .ep-modal {
+        background: #fff;
+        border-radius: 14px;
+        padding: 32px 36px;
+        width: 480px;
+        max-width: 92vw;
+        box-shadow: 0 24px 64px rgba(0,0,0,.45);
+        font-family: 'Poppins',sans-serif;
+    }
+
+    .ep-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+
+    .ep-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        background: linear-gradient(135deg,#1a8a4a,#2ebd6c);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        flex-shrink: 0;
+    }
+
+    .ep-title {
+        font-size: .95rem;
+        font-weight: 800;
+        color: #0d0d0d;
+    }
+
+    .ep-sub {
+        font-size: .7rem;
+        color: #9a9a9a;
+        margin-top: 2px;
+    }
+
+    .ep-bar-wrap {
+        height: 14px;
+        background: #f0f0f0;
+        border-radius: 99px;
+        overflow: hidden;
+        margin-bottom: 10px;
+    }
+
+    .ep-bar-fill {
+        height: 100%;
+        border-radius: 99px;
+        background: linear-gradient(90deg,#1a8a4a,#2ebd6c);
+        width: 0%;
+        animation: loaderGrow 2.5s ease-in-out infinite;
+    }
+
+    @@keyframes loaderGrow {
+        0% {
+            width: 10%;
+        }
+
+        50% {
+            width: 78%;
+        }
+
+        100% {
+            width: 96%;
+        }
+    }
+
+    .ep-pct-wrap {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-bottom: 18px;
+    }
+
+    .ep-pct {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #0d0d0d;
+        letter-spacing: -.05em;
+        line-height: 1;
+    }
+
+    .ep-counts {
+        font-size: .7rem;
+        color: #9a9a9a;
+        text-align: right;
+        line-height: 1.8;
+    }
+
+        .ep-counts strong {
+            color: #1a1a1a;
+        }
+
+    .ep-chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+
+    .ep-chip {
+        flex: 1;
+        min-width: 80px;
+        background: #f9f9f9;
+        border: 1px solid #ebebeb;
+        border-radius: 8px;
+        padding: 8px 10px;
+        text-align: center;
+    }
+
+    .ep-chip-num {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #1a1a1a;
+        line-height: 1;
+    }
+
+        .ep-chip-num.green {
+            color: #1a8a4a;
+        }
+
+        .ep-chip-num.gold {
+            color: #D4A500;
+        }
+
+    .ep-chip-lbl {
+        font-size: .56rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+        color: #9a9a9a;
+        margin-top: 3px;
+    }
+
+    .ep-path {
+        background: #f5f5f5;
+        border-radius: 7px;
+        padding: 8px 12px;
+        font-size: .67rem;
+        color: #555;
+        word-break: break-all;
+        margin-bottom: 18px;
+    }
+
+        .ep-path code {
+            color: #2ebd6c;
+            font-weight: 700;
+        }
+
+    .ep-working {
+        text-align: center;
+        font-size: .72rem;
+        color: #9a9a9a;
+        margin-bottom: 6px;
+    }
+
+    .ep-pulse {
+        animation: epulse 1.5s ease-in-out infinite;
+        display: inline-block;
+    }
+
+    .em-spin {
+        display: inline-block;
+        width: 13px;
+        height: 13px;
+        border: 2px solid rgba(255,255,255,.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin .7s linear infinite;
+    }
+</style>
+
+<div class="wf-wrap">
+
+    <div class="sl-hero">
+        <div class="sl-hero-left">
+            <div class="sl-logo-mark">EM</div>
+            <div class="sl-hero-div"></div>
+            <div>
+                <div class="sl-hero-title">Compose Correction Email</div>
+                <div class="sl-hero-sub">
+                    Recipient emails and PDF attachments are pulled from the correction batch items only.
+                </div>
+            </div>
+        </div>
+
+        <div class="sl-hero-right">
+            <a class="sl-hero-btn sl-btn-outline"
+                   asp-controller="NoticeCorrection"
+                   asp-action="PreviewBatch"
+                   asp-route-id="@Model.BatchId">
+                ← Back to Batch
+            </a>
+        </div>
+    </div>
+
+    <div class="sl-body">
+
+        <div class="em-note">
+            QA has been approved. Enter the email body below. The recipient email comes from
+            <strong>[Notice_DB].[dbo].[NoticeCorrectionItems].[RecipientEmail]</strong>, and the attached file comes from
+            <strong>[Notice_DB].[dbo].[NoticeCorrectionItems].[PdfPath]</strong>.
+        </div>
+
+        <form id="correctionEmailForm"
+              asp-controller="NoticeCorrection"
+              asp-action="SendCorrectionEmail"
+              method="post">
+
+            @Html.AntiForgeryToken()
+            <input type="hidden" asp-for="BatchId" />
+            <input type="hidden" asp-for="Subject" />
+            <input type="hidden" asp-for="Cc" />
+
+            <div class="sl-card">
+                <div class="sl-card-head">
+                    <span class="sl-card-head-title">Email Details</span>
+                    <span class="sl-card-meta">Only the email body must be typed by the user</span>
+                </div>
+
+                <div style="padding:16px;">
+
+                    <div class="em-field">
+                        <label>Subject</label>
+                        <input asp-for="Subject"
+                               readonly
+                               required
+                               class="em-input em-input-readonly" />
+
+                        <span asp-validation-for="Subject" class="em-required"></span>
+
+                        <div class="em-help">
+                            The subject is generated from the selected notice heading, roll, property description and reference number.
+                        </div>
+                    </div>
+
+                    <div class="em-field">
+                        <label>CC</label>
+                        <input asp-for="Cc"
+                               readonly
+                               class="em-input em-input-readonly" />
+
+                        <div class="em-help">
+                            ValuationEnquiries@joburg.org.za will always be included.
+                        </div>
+                    </div>
+
+                    <div class="em-field">
+                        <label>Email Body <span style="color:#a00;">*</span></label>
+                        <textarea asp-for="Body"
+                                  required
+                                  class="em-textarea"
+                                  placeholder="Type the correction email body here..."></textarea>
+
+                        <span asp-validation-for="Body" class="em-required"></span>
+
+                        <div class="em-help">
+                            This body will be used for all correction emails in this batch and saved as the latest correction email template.
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="sl-card" style="margin-top:18px;">
+                <div class="sl-card-head">
+                    <span class="sl-card-head-title">Recipients and Attachments</span>
+                    <span class="sl-card-meta">Recipient emails are pulled from NoticeCorrectionItems only</span>
+                </div>
+
+                <div style="overflow-x:auto">
+                    <table class="sl-table" style="width:100%">
+                        <thead>
+                            <tr>
+                                <th>Reference</th>
+                                <th>Property</th>
+                                <th>Objector Type</th>
+                                <th>Recipient Email</th>
+                                <th>CC</th>
+                                <th>Attached PDF</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (Model.Recipients != null && Model.Recipients.Any())
+                            {
+                                @for (var i = 0; i < Model.Recipients.Count; i++)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@Display(Model.Recipients[i].ReferenceNo)</strong>
+
+                                            <input type="hidden" asp-for="Recipients[i].ItemId" />
+                                            <input type="hidden" asp-for="Recipients[i].ReferenceNo" />
+                                        </td>
+
+                                        <td>
+                                            @Display(Model.Recipients[i].PropertyDesc)
+                                            <input type="hidden" asp-for="Recipients[i].PropertyDesc" />
+                                        </td>
+
+                                        <td>
+                                            <span class="em-badge">@Display(Model.Recipients[i].RecipientRole)</span>
+                                            <input type="hidden" asp-for="Recipients[i].RecipientRole" />
+                                        </td>
+
+                                        <td>
+                                            <div class="em-email">@Display(Model.Recipients[i].RecipientEmail)</div>
+                                            <input type="hidden" asp-for="Recipients[i].RecipientEmail" />
+                                        </td>
+
+                                        <td>
+                                            @Display(Model.Cc)
+                                        </td>
+
+                                        <td>
+                                            <div class="em-file">@FileName(Model.Recipients[i].PdfPath)</div>
+                                            <div class="em-path">@Display(Model.Recipients[i].PdfPath)</div>
+                                            <input type="hidden" asp-for="Recipients[i].PdfPath" />
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="6">
+                                        No recipients found for this correction batch.
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;">
+                <a class="sl-hero-btn sl-btn-outline"
+                       asp-controller="NoticeCorrection"
+                       asp-action="PreviewBatch"
+                       asp-route-id="@Model.BatchId">
+                    Cancel
+                </a>
+
+                <button type="submit" id="sendCorrectionBtn" class="sl-hero-btn sl-btn-gold">
+                    Send Correction Email
+                </button>
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+<div class="ep-overlay" id="correctionEmailOverlay">
+    <div class="ep-modal">
+        <div class="ep-header">
+            <div class="ep-icon">📧</div>
+            <div>
+                <div class="ep-title">Sending correction emails…</div>
+                <div class="ep-sub">Please wait — do not close this page</div>
+            </div>
+        </div>
+
+        <div class="ep-bar-wrap">
+            <div class="ep-bar-fill"></div>
+        </div>
+
+        <div class="ep-pct-wrap">
+            <div class="ep-pct">Sending</div>
+            <div class="ep-counts">
+                <div>Total Recipients: <strong>@recipientCount</strong></div>
+                <div>Status: <strong>In progress</strong></div>
+            </div>
+        </div>
+
+        <div class="ep-chips">
+            <div class="ep-chip">
+                <div class="ep-chip-num gold">@recipientCount</div>
+                <div class="ep-chip-lbl">Emails</div>
+            </div>
+            <div class="ep-chip">
+                <div class="ep-chip-num green">@recipientCount</div>
+                <div class="ep-chip-lbl">PDF Attachments</div>
+            </div>
+        </div>
+
+        <div class="ep-path">
+            📁 .eml copies:
+            <code>same correction print folder as each attached PDF</code>
+        </div>
+
+        <div class="ep-working">
+            <span class="ep-pulse">✉️ Sending correction emails and saving .eml copies…</span>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        (function () {
+            const form = document.getElementById('correctionEmailForm');
+            const overlay = document.getElementById('correctionEmailOverlay');
+            const btn = document.getElementById('sendCorrectionBtn');
+
+            if (!form || !overlay || !btn) return;
+
+            form.addEventListener('submit', function (e) {
+                if (!form.checkValidity()) {
+                    return;
+                }
+
+                overlay.classList.add('active');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="em-spin"></span> Sending…';
+            });
+        })();
+    </script>
+}

@@ -1,0 +1,498 @@
+﻿@model GV23_Notice.Domain.Workflow.Entities.NoticeCorrectionBatch
+
+@{
+    ViewData["Title"] = "Correction Batch";
+
+    string Display(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    string DateText(DateTime? value)
+        => value.HasValue ? value.Value.ToString("dd MMMM yyyy HH:mm") : "—";
+
+    var hasItems = Model.Items != null && Model.Items.Any();
+
+    var allPrinted = hasItems &&
+        Model.Items.All(x => !string.IsNullOrWhiteSpace(x.PdfPath));
+
+    var hasFailed = hasItems &&
+        Model.Items.Any(x => string.Equals(x.Status, "Failed", StringComparison.OrdinalIgnoreCase));
+
+    var canQa = hasItems && allPrinted && !hasFailed;
+
+    var canSendEmail = hasItems &&
+        Model.Items.All(x => string.Equals(x.Status, "QA-Approved", StringComparison.OrdinalIgnoreCase));
+
+    string StatusClass(string? status)
+    {
+        return status switch
+        {
+            "Batch-Created" => "corr-status corr-status-blue",
+            "Printed" => "corr-status corr-status-blue",
+            "QA-Pending" => "corr-status corr-status-orange",
+            "QA-Pending-With-Errors" => "corr-status corr-status-orange",
+            "QA-Approved" => "corr-status corr-status-green",
+            "QA-Rejected" => "corr-status corr-status-red",
+            "Email-Ready" => "corr-status corr-status-blue",
+            "Sent" => "corr-status corr-status-green",
+            "Failed" => "corr-status corr-status-red",
+            _ => "corr-status"
+        };
+    }
+}
+
+<style>
+    .corr-root {
+        padding: 24px;
+        background: #f4f4f4;
+        min-height: calc(100vh - 70px);
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .corr-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 4px solid #1a8a4a;
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+    }
+
+    .corr-title {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .corr-sub {
+        margin-top: 8px;
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        color: #ddd;
+        font-size: .75rem;
+    }
+
+        .corr-sub b {
+            color: #1ee078;
+        }
+
+    .corr-alert {
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        font-size: .8rem;
+        font-weight: 700;
+    }
+
+    .corr-alert-ok {
+        background: #e8f8ef;
+        color: #1a6a3a;
+        border: 1px solid #b2dfcc;
+    }
+
+    .corr-alert-err {
+        background: #fff0f0;
+        color: #8a1a1a;
+        border: 1px solid #f0b0b0;
+    }
+
+    .corr-alert-info {
+        background: #eef4ff;
+        color: #1c4f8f;
+        border: 1px solid #bfd4f5;
+    }
+
+    .corr-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+    }
+
+    .corr-btn {
+        border: none;
+        border-radius: 10px;
+        padding: 11px 16px;
+        font-size: .78rem;
+        font-weight: 900;
+        text-decoration: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+    }
+
+        .corr-btn:disabled,
+        .corr-btn-disabled {
+            opacity: .55;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+    .corr-btn-dark {
+        background: #111;
+        color: #fff;
+    }
+
+    .corr-btn-gold {
+        background: #d4a500;
+        color: #111;
+    }
+
+    .corr-btn-green {
+        background: #1a8a4a;
+        color: #fff;
+    }
+
+    .corr-btn-red {
+        background: #8a1a1a;
+        color: #fff;
+    }
+
+    .corr-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(170px, 1fr));
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+
+    .corr-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        padding: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+
+    .corr-card-label {
+        color: #777;
+        font-size: .65rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        margin-bottom: 6px;
+    }
+
+    .corr-card-value {
+        color: #111;
+        font-size: .85rem;
+        font-weight: 800;
+        word-break: break-word;
+    }
+
+    .corr-panel {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        margin-bottom: 18px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,.05);
+    }
+
+    .corr-panel-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 3px solid #1a8a4a;
+        padding: 13px 16px;
+        font-size: .78rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+    }
+
+    .corr-panel-body {
+        padding: 16px;
+    }
+
+    .corr-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .76rem;
+    }
+
+        .corr-table th {
+            background: #f7f7f7;
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            font-size: .65rem;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+        }
+
+        .corr-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+        }
+
+    .corr-status {
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 9px;
+        border-radius: 999px;
+        background: #eee;
+        color: #333;
+        border: 1px solid #ddd;
+        font-weight: 900;
+        font-size: .68rem;
+        white-space: nowrap;
+    }
+
+    .corr-status-green {
+        background: #e8f8ef;
+        color: #1a6a3a;
+        border-color: #b2dfcc;
+    }
+
+    .corr-status-blue {
+        background: #eef4ff;
+        color: #1c4f8f;
+        border-color: #bfd4f5;
+    }
+
+    .corr-status-orange {
+        background: #fff4e5;
+        color: #8a5200;
+        border-color: #f1c98b;
+    }
+
+    .corr-status-red {
+        background: #fff0f0;
+        color: #8a1a1a;
+        border-color: #f0b0b0;
+    }
+
+    .corr-small {
+        color: #777;
+        font-size: .68rem;
+        line-height: 1.5;
+    }
+
+    .corr-flow {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 18px;
+    }
+
+    .corr-flow-step {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: .72rem;
+        font-weight: 900;
+        color: #555;
+    }
+
+        .corr-flow-step.active {
+            background: #e8f8ef;
+            border-color: #b2dfcc;
+            color: #1a6a3a;
+        }
+
+    @@media(max-width: 1100px) {
+        .corr-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media(max-width: 700px) {
+        .corr-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="corr-root">
+
+    <div class="corr-head">
+        <h1 class="corr-title">Correction Batch</h1>
+        <div class="corr-sub">
+            <span>Batch: <b>@Display(Model.CorrectionBatchName)</b></span>
+            <span>Roll: <b>@Display(Model.RollShortCode)</b></span>
+            <span>Source: <b>@Display(Model.SourceNoticeKind)</b></span>
+            <span>Print: <b>@Display(Model.PrintNoticeKind)</b></span>
+            <span>Status: <b>@Display(Model.Status)</b></span>
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="corr-alert corr-alert-ok">@TempData["Success"]</div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="corr-alert corr-alert-err">@TempData["Error"]</div>
+    }
+
+    <div class="corr-flow">
+        <span class="corr-flow-step @(Model.Status == "Batch-Created" ? "active" : "")">1. Batch Created</span>
+        <span class="corr-flow-step @(allPrinted || Model.Status == "QA-Pending" || Model.Status == "QA-Approved" || Model.Status == "Email-Ready" || Model.Status == "Sent" ? "active" : "")">2. Printed</span>
+        <span class="corr-flow-step @(Model.Status == "QA-Pending" ? "active" : "")">3. QA Required</span>
+        <span class="corr-flow-step @(Model.Status == "QA-Approved" || Model.Status == "Email-Ready" || Model.Status == "Sent" ? "active" : "")">4. QA Approved</span>
+        <span class="corr-flow-step @(Model.Status == "Email-Ready" || Model.Status == "Sent" ? "active" : "")">5. Email</span>
+    </div>
+
+    <div class="corr-actions">
+        <a class="corr-btn corr-btn-dark"
+               asp-controller="Workflow"
+               asp-action="SettingsLibrary">
+            Back to Library
+        </a>
+
+        <a class="corr-btn corr-btn-dark"
+               asp-controller="NoticeCorrection"
+               asp-action="Index">
+            New Correction Search
+        </a>
+
+        <form asp-controller="NoticeCorrection"
+              asp-action="PrintBatch"
+              asp-route-id="@Model.Id"
+              method="post"
+              style="display:inline;">
+            @Html.AntiForgeryToken()
+
+            <button type="submit" class="corr-btn corr-btn-gold">
+                Print Correction PDFs
+            </button>
+        </form>
+
+        @if (canQa)
+        {
+            <a class="corr-btn corr-btn-dark"
+                   asp-controller="NoticeCorrection"
+                   asp-action="QaReview"
+                   asp-route-id="@Model.Id">
+                QA Review
+            </a>
+        }
+        else
+        {
+            <button type="button" class="corr-btn corr-btn-dark" disabled>
+                QA Review - Print Required
+            </button>
+        }
+
+        @if (canSendEmail)
+        {
+            <a class="corr-btn corr-btn-green"
+                   asp-controller="NoticeCorrection"
+                   asp-action="ComposeCorrectionEmail"
+                   asp-route-id="@Model.Id">
+                Compose / Send Correction Email
+            </a>
+        }
+        else
+        {
+            <button type="button" class="corr-btn corr-btn-green" disabled>
+                Send Email - QA Required
+            </button>
+        }
+    </div>
+
+    @if (!canSendEmail)
+    {
+        <div class="corr-alert corr-alert-info">
+            Email is locked until QA is approved. The email subject and body will be entered on the email screen, not on this batch review page.
+        </div>
+    }
+
+    <div class="corr-grid">
+        <div class="corr-card">
+            <div class="corr-card-label">Reference No</div>
+            <div class="corr-card-value">@Display(Model.ReferenceNo)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Reference Type</div>
+            <div class="corr-card-value">@Display(Model.ReferenceType)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Created By</div>
+            <div class="corr-card-value">@Display(Model.CreatedBy)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Created At</div>
+            <div class="corr-card-value">@DateText(Model.CreatedAt)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Printed By</div>
+            <div class="corr-card-value">@Display(Model.PrintedBy)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Printed At</div>
+            <div class="corr-card-value">@DateText(Model.PrintedAt)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Sent By</div>
+            <div class="corr-card-value">@Display(Model.SentBy)</div>
+        </div>
+
+        <div class="corr-card">
+            <div class="corr-card-label">Status</div>
+            <div class="corr-card-value">
+                <span class="@StatusClass(Model.Status)">@Display(Model.Status)</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="corr-panel">
+        <div class="corr-panel-head">Correction Items</div>
+        <div class="corr-panel-body">
+            <table class="corr-table">
+                <thead>
+                    <tr>
+                        <th>Reference</th>
+                        <th>Property</th>
+                        <th>Objector Type</th>
+                        <th>Email From Correction Table</th>
+                        <th>Status</th>
+                        <th>PDF</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (hasItems)
+                    {
+                        foreach (var x in Model.Items)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@Display(x.ObjectionNo ?? x.ReferenceNo)</strong>
+                                    <div class="corr-small">@Display(x.ValuationKey)</div>
+                                </td>
+                                <td>@Display(x.PropertyDesc)</td>
+                                <td>@Display(x.RecipientRole)</td>
+                                <td>@Display(x.RecipientEmail)</td>
+                                <td><span class="@StatusClass(x.Status)">@Display(x.Status)</span></td>
+                                <td style="font-size:.68rem;word-break:break-all;">@Display(x.PdfPath)</td>
+                                <td style="font-size:.68rem;color:#8a1a1a;">@Display(x.ErrorMessage)</td>
+                            </tr>
+                        }
+                    }
+                    else
+                    {
+                        <tr>
+                            <td colspan="7">No correction items found.</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>

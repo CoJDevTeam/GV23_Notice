@@ -1,0 +1,275 @@
+﻿@model GV23_Notice.Models.Workflow.ViewModels.CorrectionSearchVm
+@using GV23_Notice.Domain.Workflow
+
+@{
+    ViewData["Title"] = "Notice Corrections";
+}
+
+<style>
+    .corr-root {
+        padding: 24px;
+        background: #f4f4f4;
+        min-height: calc(100vh - 70px);
+        font-family: 'Poppins', sans-serif;
+    }
+
+    .corr-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 4px solid #d4a500;
+        border-radius: 14px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+    }
+
+    .corr-title {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+    }
+
+    .corr-sub {
+        margin-top: 6px;
+        color: #ddd;
+        font-size: .78rem;
+    }
+
+    .corr-alert {
+        padding: 12px 14px;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        font-size: .8rem;
+        font-weight: 700;
+    }
+
+    .corr-alert-ok {
+        background: #e8f8ef;
+        color: #1a6a3a;
+        border: 1px solid #b2dfcc;
+    }
+
+    .corr-alert-err {
+        background: #fff0f0;
+        color: #8a1a1a;
+        border: 1px solid #f0b0b0;
+    }
+
+    .corr-card {
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,.05);
+        overflow: hidden;
+        margin-bottom: 18px;
+    }
+
+    .corr-card-head {
+        background: #111;
+        color: #fff;
+        border-bottom: 3px solid #d4a500;
+        padding: 13px 16px;
+        font-size: .78rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+    }
+
+    .corr-card-body {
+        padding: 18px;
+    }
+
+    .corr-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(260px, 1fr));
+        gap: 14px;
+    }
+
+    .corr-field label {
+        display: block;
+        font-size: .68rem;
+        font-weight: 900;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        margin-bottom: 6px;
+    }
+
+    .corr-input,
+    .corr-select {
+        width: 100%;
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        padding: 11px 12px;
+        font-size: .82rem;
+        outline: none;
+        background: #fff;
+    }
+
+    .corr-input:focus,
+    .corr-select:focus {
+        border-color: #d4a500;
+        box-shadow: 0 0 0 3px rgba(212,165,0,.15);
+    }
+
+    .corr-help {
+        margin-top: 6px;
+        font-size: .68rem;
+        color: #888;
+        line-height: 1.4;
+    }
+
+    .corr-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 18px;
+        flex-wrap: wrap;
+    }
+
+    .corr-btn {
+        border: none;
+        border-radius: 10px;
+        padding: 11px 16px;
+        font-size: .78rem;
+        font-weight: 900;
+        text-decoration: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 7px;
+    }
+
+    .corr-btn-dark {
+        background: #111;
+        color: #fff;
+    }
+
+    .corr-btn-gold {
+        background: #d4a500;
+        color: #111;
+    }
+
+    .corr-info {
+        background: #fff8e1;
+        border: 1px solid #f4d36a;
+        border-radius: 12px;
+        padding: 14px;
+        font-size: .78rem;
+        color: #5f4700;
+        line-height: 1.6;
+        margin-bottom: 18px;
+    }
+
+    .corr-info strong {
+        color: #111;
+    }
+
+    @@media(max-width: 900px) {
+        .corr-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<div class="corr-root">
+
+    <div class="corr-head">
+        <h1 class="corr-title">Notice Corrections</h1>
+        <div class="corr-sub">
+            Search the corrected source data, preview the property values, then create a correction batch.
+        </div>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="corr-alert corr-alert-ok">@TempData["Success"]</div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="corr-alert corr-alert-err">@TempData["Error"]</div>
+    }
+
+    <div class="corr-info">
+        <strong>Important:</strong> this correction function does not update the normal notice workflow tables.
+        It only reads the corrected source data and creates a separate correction batch for printing and emailing.
+    </div>
+
+    <div class="corr-card">
+        <div class="corr-card-head">Search Correction Notice</div>
+
+        <div class="corr-card-body">
+            <form asp-controller="NoticeCorrection" asp-action="Search" method="post">
+                @Html.AntiForgeryToken()
+
+                <div class="corr-grid">
+                    <div class="corr-field">
+                        <label>Roll</label>
+                        <select asp-for="RollId" asp-items="Model.Rolls" class="corr-select">
+                            <option value="">-- Select Roll --</option>
+                        </select>
+                        <div class="corr-help">
+                            Select the roll where the corrected data is stored.
+                        </div>
+                    </div>
+
+                    <div class="corr-field">
+                        <label>Source Notice</label>
+                        <select asp-for="SourceNotice" asp-items="Model.SourceNoticeTypes" class="corr-select">
+                            <option value="">-- Select Source Notice --</option>
+                        </select>
+                        <div class="corr-help">
+                            Select where the corrected data must be pulled from.
+                        </div>
+                    </div>
+
+                    <div class="corr-field">
+                        <label>Print Notice Heading</label>
+                        <select asp-for="PrintNotice" asp-items="Model.PrintNoticeTypes" class="corr-select">
+                            <option value="">-- Select Print Notice Heading --</option>
+                        </select>
+                        <div class="corr-help">
+                            Select which notice heading/template must be used when printing.
+                        </div>
+                    </div>
+
+                    <div class="corr-field">
+                        <label>Reference Type</label>
+                        <select asp-for="ReferenceType" asp-items="Model.ReferenceTypes" class="corr-select">
+                            <option value="">-- Select Reference Type --</option>
+                        </select>
+                        <div class="corr-help">
+                            For Section 53 use Objection No. For Section 49 use Premise ID or Valuation Key.
+                        </div>
+                    </div>
+
+                    <div class="corr-field">
+                        <label>Reference Number</label>
+                        <input asp-for="ReferenceNo"
+                               class="corr-input"
+                               placeholder="Example: GV23-Sup2-469" />
+                        <div class="corr-help">
+                            Enter the Objection No, Appeal No, Premise ID, Valuation Key, Query No or Review No.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="corr-actions">
+                    <a class="corr-btn corr-btn-dark"
+                           asp-controller="Home"
+                           asp-action="Index">
+                        Back to Home
+                    </a>
+
+                    <button type="submit" class="corr-btn corr-btn-gold">
+                        Search Correction Data
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>

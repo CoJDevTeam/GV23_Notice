@@ -1,0 +1,291 @@
+﻿@model GV23_Notice.Domain.Workflow.Entities.NoticeCorrectionBatch
+
+@{
+    ViewData["Title"] = "Correction QA Review";
+
+    string Display(string? value)
+        => string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    string DateText(DateTime? value)
+        => value.HasValue ? value.Value.ToString("dd MMM yyyy HH:mm") : "—";
+
+    string FileName(string? path)
+        => string.IsNullOrWhiteSpace(path) ? "—" : System.IO.Path.GetFileName(path);
+
+    var hasItems = Model.Items != null && Model.Items.Any();
+
+    var allPdfsReady = hasItems &&
+        Model.Items.All(x => !string.IsNullOrWhiteSpace(x.PdfPath));
+
+    var missingPdfCount = hasItems
+        ? Model.Items.Count(x => string.IsNullOrWhiteSpace(x.PdfPath))
+        : 0;
+}
+
+<link href="~/css/step2/settinglibrarycss.css" rel="stylesheet" />
+
+<style>
+    .qa-note {
+        background: #eef4ff;
+        color: #1c4f8f;
+        border: 1px solid #bfd4f5;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: .78rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+    }
+
+    .qa-warning {
+        background: #fff4e5;
+        color: #8a5200;
+        border: 1px solid #f1c98b;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: .78rem;
+        font-weight: 700;
+        margin-bottom: 16px;
+    }
+
+    .qa-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .qa-btn {
+        border: none;
+        border-radius: 9px;
+        padding: 8px 11px;
+        font-size: .7rem;
+        font-weight: 900;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .qa-btn-view {
+        background: #111;
+        color: #fff;
+    }
+
+    .qa-btn-download {
+        background: #d4a500;
+        color: #111;
+    }
+
+    .qa-btn-disabled {
+        opacity: .5;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    .qa-file {
+        font-weight: 900;
+        color: #111;
+        word-break: break-word;
+    }
+
+    .qa-path {
+        margin-top: 4px;
+        color: #777;
+        font-size: 11px;
+        word-break: break-all;
+        line-height: 1.4;
+    }
+
+    .qa-status-ok {
+        color: #1a6a3a;
+        font-weight: 900;
+    }
+
+    .qa-status-missing {
+        color: #a00;
+        font-weight: 900;
+    }
+</style>
+
+<div class="wf-wrap">
+
+    <div class="sl-hero">
+        <div class="sl-hero-left">
+            <div class="sl-logo-mark">QA</div>
+            <div class="sl-hero-div"></div>
+            <div>
+                <div class="sl-hero-title">Correction QA Review</div>
+                <div class="sl-hero-sub">
+                    Open or download each printed correction PDF before approving QA.
+                </div>
+            </div>
+        </div>
+
+        <div class="sl-hero-right">
+            <a class="sl-hero-btn sl-btn-outline"
+                   asp-controller="NoticeCorrection"
+                   asp-action="PreviewBatch"
+                   asp-route-id="@Model.Id">
+                ← Back to Batch
+            </a>
+        </div>
+    </div>
+
+    <div class="sl-body">
+
+        <div class="qa-note">
+            QA must review the actual printed PDF. Use <strong>View PDF</strong> to open it in the browser or
+            <strong>Download PDF</strong> to save a copy before approving.
+        </div>
+
+        @if (!allPdfsReady)
+        {
+            <div class="qa-warning">
+                QA approval is blocked because @missingPdfCount correction PDF(s) are missing. Print the batch again before QA.
+            </div>
+        }
+
+        <div class="sl-card">
+            <div class="sl-card-head">
+                <span class="sl-card-head-title">@Display(Model.CorrectionBatchName)</span>
+                <span class="sl-card-meta">@Display(Model.Status)</span>
+            </div>
+
+            <div style="overflow-x:auto">
+                <table class="sl-table" style="width:100%">
+                    <thead>
+                        <tr>
+                            <th>Reference</th>
+                            <th>Property</th>
+                            <th>Objector</th>
+                            <th>Recipient Email</th>
+                            <th>Status</th>
+                            <th>Printed PDF</th>
+                            <th style="width:190px;">QA File Check</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (hasItems)
+                        {
+                            foreach (var item in Model.Items)
+                            {
+                                var hasPdf = !string.IsNullOrWhiteSpace(item.PdfPath);
+
+                                <tr>
+                                    <td>
+                                        <strong>@Display(item.ObjectionNo ?? item.ReferenceNo)</strong>
+                                        <div class="sl-roll-code">@Display(item.ValuationKey)</div>
+                                    </td>
+
+                                    <td>@Display(item.PropertyDesc)</td>
+
+                                    <td>@Display(item.RecipientRole)</td>
+
+                                    <td>@Display(item.RecipientEmail)</td>
+
+                                    <td>
+                                        <span class="sl-status sl-pip-step2">
+                                            @Display(item.Status)
+                                        </span>
+                                    </td>
+
+                                    <td>
+                                        @if (hasPdf)
+                                        {
+                                            <div class="qa-file">@FileName(item.PdfPath)</div>
+                                            <div class="qa-path">@Display(item.PdfPath)</div>
+                                        }
+                                        else
+                                        {
+                                            <span class="qa-status-missing">Missing PDF</span>
+                                        }
+                                    </td>
+
+                                    <td>
+                                        @if (hasPdf)
+                                        {
+                                            <div class="qa-actions">
+                                                <a class="qa-btn qa-btn-view"
+                                                       asp-controller="NoticeCorrection"
+                                                       asp-action="ViewCorrectionPdf"
+                                                       asp-route-itemId="@item.Id"
+                                                       target="_blank">
+                                                    View PDF
+                                                </a>
+
+                                                <a class="qa-btn qa-btn-download"
+                                                       asp-controller="NoticeCorrection"
+                                                       asp-action="DownloadCorrectionPdf"
+                                                       asp-route-itemId="@item.Id">
+                                                    Download
+                                                </a>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <span class="qa-status-missing">Cannot QA</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            <tr>
+                                <td colspan="7">No correction items found.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="padding:16px;">
+                <form asp-controller="NoticeCorrection"
+                      asp-action="ApproveQa"
+                      asp-route-id="@Model.Id"
+                      method="post"
+                      style="margin-bottom:14px;">
+
+                    @Html.AntiForgeryToken()
+
+                    <label style="font-size:12px;font-weight:800;">QA Comment</label>
+                    <textarea name="qaComment"
+                              style="width:100%;min-height:90px;border:1px solid #ccc;border-radius:10px;padding:10px;"
+                              placeholder="Optional approval comment"></textarea>
+
+                    @if (allPdfsReady)
+                    {
+                        <button type="submit" class="sl-hero-btn sl-btn-gold" style="margin-top:10px;">
+                            Approve QA
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="sl-hero-btn sl-btn-gold" style="margin-top:10px;opacity:.5;cursor:not-allowed;" disabled>
+                            Approve QA - PDF Missing
+                        </button>
+                    }
+                </form>
+
+                <form asp-controller="NoticeCorrection"
+                      asp-action="RejectQa"
+                      asp-route-id="@Model.Id"
+                      method="post">
+
+                    @Html.AntiForgeryToken()
+
+                    <label style="font-size:12px;font-weight:800;">Rejection Comment</label>
+                    <textarea name="qaComment"
+                              required
+                              style="width:100%;min-height:90px;border:1px solid #ccc;border-radius:10px;padding:10px;"
+                              placeholder="Required if rejecting"></textarea>
+
+                    <button type="submit" class="sl-hero-btn sl-btn-outline" style="margin-top:10px;">
+                        Reject QA
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+</div>
