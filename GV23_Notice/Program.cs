@@ -25,6 +25,7 @@ using GV23_Notice.Services.SnapShotStep2;
 using GV23_Notice.Services.Stats;
 using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.Storage;
+using GV23_Notice.Services.ThirdPartyApplications;
 using GV23_Notice.Services.Workflow;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Negotiate;
@@ -165,6 +166,11 @@ builder.Services.AddScoped<INoticeCorrectionSourceService, NoticeCorrectionSourc
 builder.Services.AddScoped<INoticeCorrectionBatchService, NoticeCorrectionBatchService>();
 builder.Services.AddScoped<INoticeCorrectionPrintService, NoticeCorrectionPrintService>();
 builder.Services.AddScoped<INoticeCorrectionEmailService, NoticeCorrectionEmailService>();
+
+// ----------------------------------------------------
+// THIRD PARTY APPEAL DATE CONFIGURATION
+// ----------------------------------------------------
+builder.Services.AddScoped<IThirdPartyAppealDateConfigurationService, ThirdPartyAppealDateConfigurationService>();
 
 // ----------------------------------------------------
 // Security

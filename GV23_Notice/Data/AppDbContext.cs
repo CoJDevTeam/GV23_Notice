@@ -56,6 +56,7 @@ namespace GV23_Notice.Data
         public DbSet<NoticeCorrectionBatch> NoticeCorrectionBatches => Set<NoticeCorrectionBatch>();
         public DbSet<NoticeCorrectionItem> NoticeCorrectionItems => Set<NoticeCorrectionItem>();
         public DbSet<NoticeCorrectionEmailTemplate> NoticeCorrectionEmailTemplates => Set<NoticeCorrectionEmailTemplate>();
+        public DbSet<ThirdPartyAppealApplicationNotice> ThirdPartyAppealApplicationNotices { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -421,6 +422,60 @@ namespace GV23_Notice.Data
                 entity.Property(x => x.SubjectTemplate).HasMaxLength(500).IsRequired();
                 entity.Property(x => x.CreatedBy).HasMaxLength(100);
                 entity.Property(x => x.CcTemplate).HasMaxLength(1000);
+            });
+            modelBuilder.Entity<ThirdPartyAppealApplicationNotice>(entity =>
+            {
+                entity.ToTable("ThirdPartyAppealApplicationNotices", "dbo");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.Appeal_No)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(x => x.Objection_No).HasMaxLength(100);
+                entity.Property(x => x.Premise_ID).HasMaxLength(100);
+                entity.Property(x => x.Valuation_Key).HasMaxLength(100);
+                entity.Property(x => x.Unit_Key).HasMaxLength(100);
+                entity.Property(x => x.Property_ID).HasMaxLength(100);
+
+                entity.Property(x => x.RollShortCode).HasMaxLength(50);
+                entity.Property(x => x.ValuationPeriod).HasMaxLength(250);
+
+                entity.Property(x => x.Appeal_Type).HasMaxLength(100);
+                entity.Property(x => x.Appeal_Status).HasMaxLength(100);
+                entity.Property(x => x.Property_Type).HasMaxLength(100);
+                entity.Property(x => x.Township).HasMaxLength(250);
+
+                entity.Property(x => x.OwnerName).HasMaxLength(300);
+                entity.Property(x => x.OwnerEmail).HasMaxLength(300);
+                entity.Property(x => x.OwnerCell).HasMaxLength(100);
+
+                entity.Property(x => x.ThirdPartyName).HasMaxLength(300);
+                entity.Property(x => x.ThirdPartyEmail).HasMaxLength(300);
+                entity.Property(x => x.ThirdPartyCell).HasMaxLength(100);
+
+                entity.Property(x => x.AdminName).HasMaxLength(300);
+                entity.Property(x => x.AdminEmail).HasMaxLength(300);
+
+                entity.Property(x => x.EmailTo).HasMaxLength(300);
+                entity.Property(x => x.EmailCc).HasMaxLength(1000);
+
+                entity.Property(x => x.Status)
+                    .HasMaxLength(80)
+                    .HasDefaultValue("Pending");
+
+                entity.Property(x => x.CreatedAt)
+                    .HasDefaultValueSql("GETDATE()");
+
+                entity.HasIndex(x => x.Appeal_No)
+                    .HasDatabaseName("IX_ThirdPartyAppealApplicationNotices_AppealNo");
+
+                entity.HasIndex(x => x.Status)
+                    .HasDatabaseName("IX_ThirdPartyAppealApplicationNotices_Status");
+
+                entity.HasIndex(x => new { x.RollId, x.Status })
+                    .HasDatabaseName("IX_ThirdPartyAppealApplicationNotices_Roll_Status");
             });
         }
     }
