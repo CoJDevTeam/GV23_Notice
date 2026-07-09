@@ -1,9 +1,15 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
 @using GV23_Notice.Domain.Workflow
 @{
-    ViewData["Title"] = "Step 3 — Batch Dashboard";
+    bool isTpa = Model.IsThirdPartyAppealApplication || Model.Notice == NoticeKind.TPA;
+
+    ViewData["Title"] = isTpa
+        ? "Step 3 — Third-Party Appeal Print"
+        : "Step 3 — Batch Dashboard";
+
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
 
+   
     string noticeLabel = Model.Notice switch
     {
         NoticeKind.S49 => "Section 49 — Public Inspection & Objections",
@@ -14,6 +20,7 @@
         NoticeKind.DJ => "Dear Johnny Notice",
         NoticeKind.IN => Model.IsInvalidOmission == true ? "Invalid — Omission" : "Invalid — Objection",
         NoticeKind.S78 => "Section 78 — Review Period",
+        NoticeKind.TPA => "Application to the Valuation Appeal",
         _ => Model.Notice.ToString()
     };
     string noticeCode = Model.Notice.ToString();
@@ -81,7 +88,8 @@
         </div>
     </div>
 }
-
+@if (!isTpa)
+{
 @* ── Create Batch Modal ── *@
 <div class="cb-overlay" id="cbModal">
     <div class="cb-modal">
@@ -130,7 +138,7 @@
         </div>
     </div>
 </div>
-
+}
 <div class="dash-page">
 
     <!-- Hero -->
@@ -139,9 +147,11 @@
             <div class="dash-vns">VNS</div>
             <div class="dash-div"></div>
             <div>
-                <div class="dash-title">Batch Dashboard</div>
-                <div class="dash-sub">Step 3 — @Model.RollShortCode · @Model.RollName</div>
-            </div>
+                <div class="dash-title">@(isTpa ? "Third-Party Appeal Print Dashboard" : "Batch Dashboard")</div>
+                <div class="dash-sub">
+                    Step 3 — @(isTpa ? "Direct Print · No Batches" : $"{Model.RollShortCode} · {Model.RollName}")
+                </div>
+             </div>
         </div>
         <div class="dash-hero-right">
             <a class="dash-hero-link" href="@Url.Action("Index", "Step3")">← All Workflows</a>
@@ -190,85 +200,148 @@
             </div>
         }
 
-        <!-- Stat strip -->
         <div class="dash-stats">
-            <div class="dash-stat stat-green">
-                <div class="dash-stat-lbl">Batches Created</div>
-                <div class="dash-stat-num">@Model.CreatedBatches.Count</div>
-                <div class="dash-stat-sub">For this workflow</div>
-            </div>
-            <div class="dash-stat">
-                <div class="dash-stat-lbl">Total Records</div>
-                <div class="dash-stat-num">@totalRecords.ToString("N0")</div>
-                <div class="dash-stat-sub">Across all batches</div>
-            </div>
-            <div class="dash-stat stat-gold">
-                <div class="dash-stat-lbl">Next Batch</div>
-                <div class="dash-stat-num" style="font-size:15px;font-family:monospace!important">@Model.NextBatchCode</div>
-                <div class="dash-stat-sub">Auto-assigned code</div>
-            </div>
-            <div class="dash-stat">
-                <div class="dash-stat-lbl">Records per Batch</div>
-                <div class="dash-stat-num">500</div>
-                <div class="dash-stat-sub">Fixed per run</div>
-            </div>
+            @if (isTpa)
+            {
+                <div class="dash-stat stat-green">
+                    <div class="dash-stat-lbl">Print Mode</div>
+                    <div class="dash-stat-num" style="font-size:15px">Direct</div>
+                    <div class="dash-stat-sub">No batch creation</div>
+                </div>
+
+                <div class="dash-stat">
+                    <div class="dash-stat-lbl">Response Period</div>
+                    <div class="dash-stat-num">@(Model.ThirdPartyResponseDays ?? 51)</div>
+                    <div class="dash-stat-sub">Calendar days</div>
+                </div>
+
+                <div class="dash-stat stat-gold">
+                    <div class="dash-stat-lbl">Estimated Send Date</div>
+                    <div class="dash-stat-num" style="font-size:15px">
+                        @(Model.ThirdPartyEstimatedSendDate?.ToString("dd MMM yyyy") ?? "—")
+                    </div>
+                    <div class="dash-stat-sub">Final date recalculated on send</div>
+                </div>
+
+                <div class="dash-stat">
+                    <div class="dash-stat-lbl">Estimated Due Date</div>
+                    <div class="dash-stat-num" style="font-size:15px">
+                        @(Model.ThirdPartyEstimatedResponseDueDate?.ToString("dd MMM yyyy") ?? "—")
+                    </div>
+                    <div class="dash-stat-sub">Owner response due date</div>
+                </div>
+            }
+            else
+            {
+                <div class="dash-stat stat-green">
+                    <div class="dash-stat-lbl">Batches Created</div>
+                    <div class="dash-stat-num">@Model.CreatedBatches.Count</div>
+                    <div class="dash-stat-sub">For this workflow</div>
+                </div>
+
+                <div class="dash-stat">
+                    <div class="dash-stat-lbl">Total Records</div>
+                    <div class="dash-stat-num">@totalRecords.ToString("N0")</div>
+                    <div class="dash-stat-sub">Across all batches</div>
+                </div>
+
+                <div class="dash-stat stat-gold">
+                    <div class="dash-stat-lbl">Next Batch</div>
+                    <div class="dash-stat-num" style="font-size:15px;font-family:monospace!important">@Model.NextBatchCode</div>
+                    <div class="dash-stat-sub">Auto-assigned code</div>
+                </div>
+
+                <div class="dash-stat">
+                    <div class="dash-stat-lbl">Records per Batch</div>
+                    <div class="dash-stat-num">500</div>
+                    <div class="dash-stat-sub">Fixed per run</div>
+                </div>
+            }
         </div>
 
         <!-- Section header with action buttons -->
         <div class="dash-sec">
             <div class="dash-sec-left">
                 <div class="dash-sec-bar"></div>
-                <span class="dash-sec-title">Batch History</span>
+                <span class="dash-sec-title">@(isTpa ? "Third-Party Appeal Application" : "Batch History")</span>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                @if (Model.CreatedBatches.Count > 0)
+                @if (isTpa)
                 {
-                    <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
-                       style="font-size:12.5px;font-weight:700;padding:7px 15px;border-radius:8px;
-                                  background:var(--surf);border:1.5px solid var(--bord);color:var(--tx);
-                                  text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .13s"
-                       onmouseover="this.style.borderColor='var(--gold-r)';this.style.background='var(--gold-p)'"
-                       onmouseout="this.style.borderColor='var(--bord)';this.style.background='var(--surf)'">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <a class="btn-new-batch"
+                           href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                             <polyline points="6 9 6 2 18 2 18 9" />
                             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                             <rect x="6" y="14" width="12" height="8" />
                         </svg>
-                        Print Dashboard
+                        Go to Print
                     </a>
-                    <a href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })"
-                       style="font-size:12.5px;font-weight:700;padding:7px 15px;border-radius:8px;
-                                  background:var(--surf);border:1.5px solid var(--bord);color:var(--tx);
-                                  text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .13s"
-                       onmouseover="this.style.borderColor='var(--gold-r)';this.style.background='var(--gold-p)'"
-                       onmouseout="this.style.borderColor='var(--bord)';this.style.background='var(--surf)'">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+
+                    <a class="btn-new-batch"
+                           href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })"
+                           style="background:var(--surf);border:1.5px solid var(--bord);color:var(--tx)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                             <line x1="22" y1="2" x2="11" y2="13" />
                             <polygon points="22 2 15 22 11 13 2 9 22 2" />
                         </svg>
                         Send Email
                     </a>
                 }
-                @if (!Model.IsS52)
+                else
                 {
-                    <button class="btn-new-batch" onclick="openCbModal()">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                            <line x1="12" y1="5" x2="12" y2="19" />
-                            <line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                        Create New Batch
-                    </button>
-                }
-                @if (Model.IsS52)
-                {
-                    <a class="btn-new-batch" href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                            <polyline points="6 9 6 2 18 2 18 9" />
-                            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                            <rect x="6" y="14" width="12" height="8" />
-                        </svg>
-                        Go to Print (@Model.S52RangeCount.ToString("N0") records)
-                    </a>
+                    @if (Model.CreatedBatches.Count > 0)
+                    {
+                        <a href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
+                               style="font-size:12.5px;font-weight:700;padding:7px 15px;border-radius:8px;
+                            background:var(--surf);border:1.5px solid var(--bord);color:var(--tx);
+                            text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .13s"
+                               onmouseover="this.style.borderColor='var(--gold-r)';this.style.background='var(--gold-p)'"
+                               onmouseout="this.style.borderColor='var(--bord)';this.style.background='var(--surf)'">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <polyline points="6 9 6 2 18 2 18 9" />
+                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                                <rect x="6" y="14" width="12" height="8" />
+                            </svg>
+                            Print Dashboard
+                        </a>
+
+                        <a href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })"
+                               style="font-size:12.5px;font-weight:700;padding:7px 15px;border-radius:8px;
+                            background:var(--surf);border:1.5px solid var(--bord);color:var(--tx);
+                            text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .13s"
+                               onmouseover="this.style.borderColor='var(--gold-r)';this.style.background='var(--gold-p)'"
+                               onmouseout="this.style.borderColor='var(--bord)';this.style.background='var(--surf)'">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <line x1="22" y1="2" x2="11" y2="13" />
+                                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                            </svg>
+                            Send Email
+                        </a>
+                    }
+
+                    @if (!Model.IsS52)
+                    {
+                        <button class="btn-new-batch" onclick="openCbModal()">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <line x1="12" y1="5" x2="12" y2="19" />
+                                <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                            Create New Batch
+                        </button>
+                    }
+
+                    @if (Model.IsS52)
+                    {
+                        <a class="btn-new-batch" href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <polyline points="6 9 6 2 18 2 18 9" />
+                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                                <rect x="6" y="14" width="12" height="8" />
+                            </svg>
+                            Go to Print (@Model.S52RangeCount.ToString("N0") records)
+                        </a>
+                    }
                 }
             </div>
         </div>
@@ -277,21 +350,70 @@
         <div class="dash-card">
             <div class="dash-card-head">
                 <span class="dash-card-title">
-                    @if (Model.CreatedBatches.Count == 0)
+                    @if (isTpa)
+                    {
+                        <text>Direct print workflow</text>
+                    }
+                    else if (Model.CreatedBatches.Count == 0)
                     {
                         <text>No batches created yet</text>
                     }
                     else
                     {
-
                         <text>@Model.CreatedBatches.Count batch@(Model.CreatedBatches.Count == 1 ? "" : "es") created</text>
                     }
                 </span>
                 <span style="font-size:11.5px;color:var(--mu)">v @Model.Version · @Model.RollShortCode</span>
             </div>
 
-            @if (Model.CreatedBatches.Count == 0)
-            {
+           @if (isTpa)
+{
+    <div class="dash-empty">
+        <div class="dash-empty-icon">🖨</div>
+        <div class="dash-empty-title">No Batch Required</div>
+        <div class="dash-empty-sub">
+            Application to the Valuation Appeal notices are printed directly from
+            <strong>ThirdPartyAppealApplicationNotices</strong>.<br />
+            No batch is created for this notice type.
+        </div>
+
+        <a class="btn-new-batch"
+           href="@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })"
+           style="font-size:14px;padding:11px 24px;text-decoration:none">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <polyline points="6 9 6 2 18 2 18 9" />
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+                <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            Continue to Print
+        </a>
+    </div>
+}
+else if (Model.CreatedBatches.Count == 0)
+{
+    <div class="dash-empty">
+        <div class="dash-empty-icon">📦</div>
+        <div class="dash-empty-title">No Batches Yet</div>
+        <div class="dash-empty-sub">
+            Click <strong>Create New Batch</strong> above to create the first batch for<br />
+            @noticeLabel on roll @Model.RollShortCode.
+        </div>
+        @if (!Model.IsS52)
+        {
+            <button class="btn-new-batch" onclick="openCbModal()" style="font-size:14px;padding:11px 24px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Create First Batch
+            </button>
+        }
+    </div>
+}
+else
+{
+    // keep your existing batch table here
+
                 <div class="dash-empty">
                     <div class="dash-empty-icon">📦</div>
                     <div class="dash-empty-title">No Batches Yet</div>
@@ -381,6 +503,9 @@
                     </table>
                 </div>
             }
+     
+        
+        
         </div>
 
     </div>
@@ -388,52 +513,92 @@
 
 @section Scripts {
     <script>
-        /* Create Batch modal */
+        const IS_TPA = @(isTpa.ToString().ToLowerInvariant());
+
         function openCbModal() {
-            document.getElementById('cbModal').classList.add('open');
+            if (IS_TPA) {
+                window.location.href = '@Url.Action("Print", "Step3", new { key = Model.ApprovalKey })';
+                return;
+            }
+
+            const modal = document.getElementById('cbModal');
+            const input = document.getElementById('cbDateInput');
+
+            if (!modal) return;
+
+            modal.classList.add('open');
             document.body.style.overflow = 'hidden';
-            document.getElementById('cbDateInput').focus();
+
+            if (input) input.focus();
         }
+
         function closeCbModal() {
-            document.getElementById('cbModal').classList.remove('open');
+            const modal = document.getElementById('cbModal');
+
+            if (!modal) return;
+
+            modal.classList.remove('open');
             document.body.style.overflow = '';
         }
-        document.getElementById('cbModal').addEventListener('click', function(e) {
-            if (e.target === this) closeCbModal();
-        });
-        document.getElementById('cbForm').addEventListener('submit', function() {
-            var btn = document.getElementById('cbSubmitBtn');
-            btn.disabled = true;
-            btn.innerHTML = '<span style="display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:cbspin .7s linear infinite"></span> Creating…';
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const cbModal = document.getElementById('cbModal');
+            const cbForm = document.getElementById('cbForm');
+
+            if (cbModal) {
+                cbModal.addEventListener('click', function (e) {
+                    if (e.target === this) closeCbModal();
+                });
+            }
+
+            if (cbForm) {
+                cbForm.addEventListener('submit', function () {
+                    const btn = document.getElementById('cbSubmitBtn');
+
+                    if (!btn) return;
+
+                    btn.disabled = true;
+                    btn.innerHTML =
+                        '<span style="display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:cbspin .7s linear infinite"></span> Creating…';
+                });
+            }
+
+            @if (Model.FromStep2 && !Model.IsThirdPartyAppealApplication)
+            {
+                        <text>
+                            const s2Modal = document.getElementById('s2Modal');
+
+                            if (s2Modal) {
+                                s2Modal.classList.add('open');
+                                document.body.style.overflow = 'hidden';
+
+                                s2Modal.addEventListener('click', function (e) {
+                                    if (e.target === this) closeS2Modal();
+                                });
+                            }
+                        </text>
+            }
         });
 
-        @if (Model.FromStep2)
-        {
-                <text>
-            /* FromStep2 welcome modal */
-            function closeS2Modal() {
-                document.getElementById('s2Modal').classList.remove('open');
-                document.body.style.overflow = '';
-            }
-            function closeS2AndOpenCreate() {
-                closeS2Modal();
-                setTimeout(openCbModal, 160);
-            }
-            document.addEventListener('DOMContentLoaded', function() {
-                var m = document.getElementById('s2Modal');
-                if (m) { m.classList.add('open'); document.body.style.overflow = 'hidden'; }
-            });
-            document.getElementById('s2Modal').addEventListener('click', function(e) {
-                if (e.target === this) closeS2Modal();
-            });
-                </text>
+        function closeS2Modal() {
+            const modal = document.getElementById('s2Modal');
+
+            if (!modal) return;
+
+            modal.classList.remove('open');
+            document.body.style.overflow = '';
         }
 
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') { closeCbModal(); @(Model.FromStep2 ? "closeS2Modal();" : "") }
+        function closeS2AndOpenCreate() {
+            closeS2Modal();
+            setTimeout(openCbModal, 160);
+        }
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeCbModal();
+                closeS2Modal();
+            }
         });
     </script>
-    <style>
-     
-    </style>
 }

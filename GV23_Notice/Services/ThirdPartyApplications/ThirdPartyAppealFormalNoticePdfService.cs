@@ -1,5 +1,4 @@
-﻿
-using GV23_Notice.Domain.Workflow.Entities;
+﻿using GV23_Notice.Domain.Workflow.Entities;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -9,6 +8,13 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 {
     public sealed class ThirdPartyAppealFormalNoticePdfService : IThirdPartyAppealFormalNoticePdfService
     {
+        private readonly IWebHostEnvironment _env;
+
+        public ThirdPartyAppealFormalNoticePdfService(IWebHostEnvironment env)
+        {
+            _env = env;
+        }
+
         public byte[] BuildPdf(
             NoticeSettings settings,
             ThirdPartyAppealApplicationNotice notice)
@@ -19,211 +25,436 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             if (notice == null)
                 throw new ArgumentNullException(nameof(notice));
 
+            QuestPDF.Settings.License = LicenseType.Community;
+
             var letterDate = notice.LetterDate ?? DateTime.Today;
-            var valuationPeriod = !string.IsNullOrWhiteSpace(notice.ValuationPeriod)
-                ? notice.ValuationPeriod
-                : settings.ValuationPeriodCode ?? "GENERAL VALUATION ROLL 2023";
+
+            var valuationPeriod = FirstNonEmpty(
+                notice.ValuationPeriod,
+                settings.ValuationPeriodCode,
+                settings.RollName,
+                "GENERAL VALUATION ROLL 2023");
+
+            var responseDays = 51;
+
+            var headerPath = ResolveHeaderImagePath();
+
+            var title12 = TextStyle.Default.FontFamily("Arial").FontSize(12).SemiBold();
+            var body9 = TextStyle.Default.FontFamily("Arial").FontSize(9);
+            var body9b = TextStyle.Default.FontFamily("Arial").FontSize(9).SemiBold();
+            var body10b = TextStyle.Default.FontFamily("Arial").FontSize(10).SemiBold();
+
+            var value9 = TextStyle.Default.FontFamily("Arial").FontSize(9).SemiBold().FontColor(Colors.Black);
+            var value10b = TextStyle.Default.FontFamily("Arial").FontSize(10).SemiBold().FontColor(Colors.Black);
+            var muted9 = TextStyle.Default.FontFamily("Arial").FontSize(9).FontColor(Colors.Grey.Darken3);
+
+
+            var small7 = TextStyle.Default.FontFamily("Arial").FontSize(7).FontColor(Colors.Grey.Darken2);
+            var footerRef7 = TextStyle.Default.FontFamily("Arial").FontSize(7).SemiBold().FontColor(Colors.Grey.Darken3);
 
             return Document.Create(container =>
             {
                 container.Page(page =>
                 {
                     page.Size(PageSizes.A4);
-                    page.Margin(35);
-                    page.DefaultTextStyle(x => x.FontSize(9).FontFamily("Arial"));
+                    page.MarginLeft(30);
+                    page.MarginRight(30);
+                    page.MarginTop(10);
+                    page.MarginBottom(10);
+                    page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(9.5f));
 
-                    page.Header().Column(col =>
-                    {
-                        col.Item().Text("City of Johannesburg")
-                            .Bold()
-                            .FontSize(14);
-
-                        col.Item().Text("Finance: Property Branch");
-                        col.Item().Text("1st Floor, East Wing, Jorissen Place");
-                        col.Item().Text("66 Jorissen Street, Braamfontein");
-                        col.Item().Text("PO Box 1450, Johannesburg, South Africa, 2000");
-                        col.Item().Text("www.joburg.org.za | Tel +27(0) 11 407 6402 (O)");
-                        col.Item().PaddingTop(8).LineHorizontal(1);
-                    });
-
-                    page.Content().PaddingTop(12).Column(col =>
-                    {
-                        col.Spacing(8);
-
-                        col.Item().Text($"TO: {BuildOwnerLine(notice)}").Bold();
-                        col.Item().Text($"Cc: {BuildThirdPartyLine(notice)}").Bold();
-                        col.Item().Text($"DATE: {letterDate:dd MMMM yyyy}").Bold();
-
-                        col.Item().PaddingTop(8).Text("Dear Property Owner,");
-
-                        col.Item().PaddingTop(8)
-                            .Text($"NOTICE TO PROPERTY OWNER OF THIRD-PARTY APPEAL APPLICATION TO THE VALUATION APPEAL BOARD [{valuationPeriod}]")
-                            .Bold()
-                            .FontSize(10);
-
-                        col.Item().Text(text =>
+                    page.Footer()
+                        .PaddingTop(8)
+                        .AlignCenter()
+                        .Text(t =>
                         {
-                            text.Span("This letter serves to formally notify you that an appeal has been lodged by ");
-                            text.Span(Display(notice.ThirdPartyName)).Bold();
-                            text.Span(" concerning the municipal property valuation of your property namely, ");
-                            text.Span(Display(notice.Property_Description)).Bold();
-                            text.Span(".");
+                            t.Line("_______________________________________________").Style(small7);
+                            t.Line("This is an official document generated by the City of Johannesburg Valuation Services Department")
+                                .Style(small7);
+                            t.Line($"Generated on: {letterDate:dd MMMM yyyy}")
+                                .Style(small7);
+                            t.Line(FirstNonEmpty(notice.Appeal_No, notice.Objection_No, notice.Valuation_Key, "")).Style(footerRef7);
                         });
 
-                        col.Item().Text(text =>
-                        {
-                            text.Span("The appeal was lodged by the third party on ");
-                            text.Span(FormatDate(notice.DateAdded)).Bold();
-                            text.Span(" in terms of section 54 of the Municipal Property Rates Act, 2004 (as amended), following an objection contemplated in section 50(1)(c) of the Act, which permits a person other than the owner to object to the property valuation.");
-                        });
+                    page.Content().Column(col =>
+                    {
+                        col.Spacing(7);
 
-                        col.Item().PaddingTop(8).Text("Property Details").Bold();
+                        AddHeaderImage(col, headerPath, body9b);
 
-                        col.Item().Table(table =>
+                        col.Item().PaddingTop(6);
+
+                        col.Item().Row(r =>
                         {
-                            table.ColumnsDefinition(columns =>
+                            r.RelativeItem().Column(left =>
                             {
-                                columns.RelativeColumn(2.2f);
-                                columns.RelativeColumn();
-                                columns.RelativeColumn();
-                                columns.RelativeColumn();
+                                left.Item().Text(t =>
+                                {
+                                    t.Span("TO: ").Style(body10b);
+                                    t.Span(BuildOwnerLine(notice)).Style(value10b);
+                                });
+
+                                left.Item().Text(t =>
+                                {
+                                    t.Span("Cc: ").Style(body10b);
+                                    t.Span(BuildThirdPartyLine(notice)).Style(value10b);
+                                });
                             });
 
-                            HeaderCell(table, "");
-                            HeaderCell(table, $"{valuationPeriod} Value");
-                            HeaderCell(table, $"Objection Outcome {notice.Objection_No}");
-                            HeaderCell(table, $"Appellant Request {notice.Appeal_No}");
-
-                            Row(table, "Property Market Value / Property Valuation",
-                                Money(notice.RollMarketValue1),
-                                Money(notice.ObjectionOutcomeMarketValue1),
-                                Money(notice.AppellantRequestMarketValue1));
-
-                            Row(table, "Category",
-                                notice.RollCategory1,
-                                notice.ObjectionOutcomeCategory1,
-                                notice.AppellantRequestCategory1);
-
-                            Row(table, "Extent",
-                                notice.RollExtent1,
-                                notice.ObjectionOutcomeExtent1,
-                                notice.AppellantRequestExtent1);
-
-                            if (notice.IsMultipurpose)
+                            r.ConstantItem(190).AlignRight().Text(t =>
                             {
-                                Row(table, "Property Market Value / Property Valuation 2",
-                                    Money(notice.RollMarketValue2),
-                                    Money(notice.ObjectionOutcomeMarketValue2),
-                                    Money(notice.AppellantRequestMarketValue2));
-
-                                Row(table, "Category 2",
-                                    notice.RollCategory2,
-                                    notice.ObjectionOutcomeCategory2,
-                                    notice.AppellantRequestCategory2);
-
-                                Row(table, "Extent 2",
-                                    notice.RollExtent2,
-                                    notice.ObjectionOutcomeExtent2,
-                                    notice.AppellantRequestExtent2);
-
-                                Row(table, "Property Market Value / Property Valuation 3",
-                                    Money(notice.RollMarketValue3),
-                                    Money(notice.ObjectionOutcomeMarketValue3),
-                                    Money(notice.AppellantRequestMarketValue3));
-
-                                Row(table, "Category 3",
-                                    notice.RollCategory3,
-                                    notice.ObjectionOutcomeCategory3,
-                                    notice.AppellantRequestCategory3);
-
-                                Row(table, "Extent 3",
-                                    notice.RollExtent3,
-                                    notice.ObjectionOutcomeExtent3,
-                                    notice.AppellantRequestExtent3);
-                            }
+                                t.Span("DATE: ").Style(body10b);
+                                t.Span(letterDate.ToString("dd MMMM yyyy", CultureInfo.GetCultureInfo("en-ZA")))
+                                    .Style(value9);
+                            });
                         });
 
-                        col.Item().PaddingTop(8).Text("Reasons for Appeal by the third party are the following:").Bold();
-                        col.Item().Text(Display(notice.AppReason));
+                        col.Item().PaddingTop(20).Text("Dear Property Owner,").Style(body9b);
 
-                        col.Item().PaddingTop(8).Text("Third-party submission relevant to this appeal application and supporting documents are attached for your consideration.");
-
-                        col.Item().Text(text =>
+                        col.Item().PaddingTop(8).AlignCenter().Text(t =>
                         {
-                            text.Span("Upon consideration as mentioned above, you are hereby requested to electronically file submissions to the VAB Secretariat within ");
-                            text.Span("51 calendar days").Bold();
-                            text.Span(". Details of electronic filing are ");
-                            text.Span("valuationenquiries@joburg.org.za").Bold();
-                            text.Span(" and ");
-                            text.Span(Display(notice.AdminEmail)).Bold();
-                            text.Span(", alternatively physically file at COJ offices, 1st Floor East Wing, Jorissen Place, 66 Jorissen Street, Braamfontein.");
+                            t.Span("NOTICE TO PROPERTY OWNER OF THIRD-PARTY APPEAL APPLICATION TO THE VALUATION APPEAL BOARD ")
+                                .Style(title12);
+                            t.Span(valuationPeriod.ToUpperInvariant()).Style(title12);
+                            
                         });
 
-                        col.Item().Text(text =>
+                        col.Item().PaddingTop(10).Text(t =>
                         {
-                            text.Span("The appeal hearing shall be held on ");
-                            text.Span(FormatDate(notice.ScheduleDate ?? notice.HearingDate)).Bold();
-                            text.Span(" virtually via Microsoft Teams. Meeting link will be sent to you to join the meeting should you so wish.");
+                            t.Span("This letter serves to formally notify you that an appeal has been lodged by ")
+                                .Style(body9);
+                            t.Span(Display(notice.ThirdPartyName)).Style(value9);
+                            t.Span(" concerning the municipal property valuation of your property namely, ")
+                                .Style(body9);
+                            t.Span(Display(notice.Property_Description)).Style(value9);
+                            t.Span(".").Style(body9);
                         });
 
-                        col.Item().Text("Please take note that the hearing shall proceed as scheduled, regardless of your contribution and/or adherence to the above procedure.");
+                        col.Item().Text(t =>
+                        {
+                            t.Span("The appeal was lodged by the third party, ")
+                                .Style(body9);
+                            t.Span(Display(notice.ThirdPartyName)).Style(value9);
+                            t.Span(" on the ")
+                                .Style(body9);
+                            t.Span(FormatDate(notice.DateAdded)).Style(value9);
+                            t.Span(" in terms of section 54 of the Municipal Property Rates Act, 2004 (as amended), following an objection contemplated in section 50(1)(c) of the Act, which permits a person other than the owner to object to the property valuation.")
+                                .Style(body9);
+                        });
 
-                        col.Item().PaddingTop(8).Text("For enquiries kindly contact valuationenquiries@joburg.org.za");
+                        col.Item().PaddingTop(8).Element(e => BuildPropertyDetailsTable(e, notice, valuationPeriod));
 
-                        col.Item().PaddingTop(12).Text("Regards,");
-                        col.Item().Text("Valuation Appeal Board Secretariat");
-                        col.Item().Text("City of Johannesburg");
+                        col.Item().PaddingTop(10).Text("Reasons for Appeal by the third party are the following:")
+                            .Style(body9b);
 
-                        col.Item().PaddingTop(8).Text("Attached: Annexure A").Bold();
-                    });
+                        col.Item().Element(e => BuildReasonBox(e, notice.AppReason));
 
-                    page.Footer().AlignCenter().Text(x =>
-                    {
-                        x.Span("Page ");
-                        x.CurrentPageNumber();
-                        x.Span(" of ");
-                        x.TotalPages();
+                        col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+
+                        col.Item().PaddingTop(18).Text("Third-party submission relevant to this appeal application and supporting documents are attached for your consideration.")
+                            .Style(body9)
+                            .Justify();
+
+                        col.Item().PaddingTop(14).AlignCenter().Text("2").Style(body9b);
+
+                        col.Item().PaddingTop(14).Text(t =>
+                        {
+                            t.Span("Upon consideration as mentioned above, you are hereby requested to electronically file submissions to the VAB Secretariat within ")
+                                .Style(body9);
+                            t.Span($"{responseDays} calendar days").Style(body9b);
+                            t.Span(". Details of electronic filing are ")
+                                .Style(body9);
+                            t.Span("valuationenquiries@joburg.org.za").Style(value9);
+                            t.Span(" and ")
+                                .Style(body9);
+                            t.Span(Display(notice.AdminEmail)).Style(value9);
+                            t.Span(", alternatively physically file at COJ offices, 1st Floor East Wing, Jorissen Place, 66 Jorissen Street, Braamfontein.")
+                                .Style(body9);
+                        });
+
+                        col.Item().PaddingTop(8).Text(t =>
+                        {
+                            t.Span("The appeal hearing shall be held on ")
+                                .Style(body9);
+                            t.Span(FormatDate(notice.ScheduleDate ?? notice.HearingDate)).Style(value9);
+                            t.Span(" virtually via Microsoft Teams, meeting link will be sent to you to join the meeting should you so wish. This is a further invitation for you to inform the COJ secretariat within 7 days before the hearing date of your intention to attend the hearing and make oral representations at the Valuation Appeal Board hearing.")
+                                .Style(body9);
+                        });
+
+                        col.Item().PaddingTop(8).Text("Please take note that the hearing shall proceed as scheduled, regardless of your contribution and/or adherence to the above procedure.")
+                            .Style(body9)
+                            .Justify();
+
+                        col.Item().PaddingTop(8).Text(t =>
+                        {
+                            t.Span("For enquiries kindly contact ").Style(body9);
+                            t.Span("valuationenquiries@joburg.org.za").Style(value9);
+                        });
+
+                        col.Item().PaddingTop(14).Text("Regards,").Style(body9);
+
+                        col.Item().PaddingTop(26).Text("Valuation Appeal Board Secretariat").Style(body9);
+
+                        col.Item().PaddingTop(8).Text("Attached: Annexure A").Style(body9b);
                     });
                 });
             }).GeneratePdf();
         }
 
-        private static void HeaderCell(TableDescriptor table, string value)
+        private void AddHeaderImage(ColumnDescriptor col, string headerPath, TextStyle body9b)
         {
-            table.Cell()
+            if (!string.IsNullOrWhiteSpace(headerPath) && File.Exists(headerPath))
+            {
+                col.Item().Image(headerPath, ImageScaling.FitWidth);
+                return;
+            }
+
+            col.Item()
                 .Border(1)
-                .Background(Colors.Grey.Lighten2)
-                .Padding(4)
-                .Text(value)
-                .Bold();
+                .Padding(6)
+                .Background(Colors.Grey.Lighten4)
+                .Text(t =>
+                {
+                    t.Span("HEADER IMAGE NOT FOUND").Style(body9b);
+                    t.Line($"Expected: {headerPath}");
+                    t.Line($"WebRoot: {_env.WebRootPath ?? "(null)"}");
+                });
         }
 
-        private static void Cell(TableDescriptor table, string? value)
+        private static void BuildPropertyDetailsTable(
+        IContainer container,
+        ThirdPartyAppealApplicationNotice notice,
+        string valuationPeriod)
         {
-            table.Cell()
-                .Border(1)
-                .Padding(4)
-                .Text(Display(value));
+            container.Table(t =>
+            {
+                t.ColumnsDefinition(c =>
+                {
+                    c.ConstantColumn(150);
+                    c.RelativeColumn();
+                    c.RelativeColumn();
+                    c.RelativeColumn();
+                });
+
+                t.Header(h =>
+                {
+                    h.Cell().Element(HeaderCell).Text("Property Details")
+                        .FontFamily("Arial").FontSize(9).SemiBold();
+
+                    h.Cell().Element(HeaderCell).Text($"{BuildRollHeader(valuationPeriod)} Value")
+                        .FontFamily("Arial").FontSize(9).SemiBold();
+
+                    h.Cell().Element(HeaderCell).Text($"Objection Outcome:{Display(notice.Objection_No)}")
+                        .FontFamily("Arial").FontSize(9).SemiBold();
+
+                    h.Cell().Element(HeaderCell).Text($"Appellant Request:{Display(notice.Appeal_No)}")
+                        .FontFamily("Arial").FontSize(9).SemiBold();
+                });
+
+                DataRow(
+                    t,
+                    "Property Market Value/\nProperty Valuation",
+                    FormatRand(notice.RollMarketValue1),
+                    FormatRand(notice.ObjectionOutcomeMarketValue1),
+                    FormatRand(notice.AppellantRequestMarketValue1));
+
+                DataRow(
+                    t,
+                    "Category",
+                    SafeText(notice.RollCategory1),
+                    SafeText(notice.ObjectionOutcomeCategory1),
+                    SafeText(notice.AppellantRequestCategory1));
+
+                DataRow(
+                    t,
+                    "Extent",
+                    FormatExtent(notice.RollExtent1),
+                    FormatExtent(notice.ObjectionOutcomeExtent1),
+                    FormatExtent(notice.AppellantRequestExtent1));
+
+                if (notice.IsMultipurpose)
+                {
+                    EmptyRow(t);
+
+                    DataRow(
+                        t,
+                        "Property Market Value Split 1",
+                        FormatRand(notice.RollMarketValue2),
+                        FormatRand(notice.ObjectionOutcomeMarketValue2),
+                        FormatRand(notice.AppellantRequestMarketValue2));
+
+                    DataRow(
+                        t,
+                        "Category Split 1",
+                        SafeText(notice.RollCategory2),
+                        SafeText(notice.ObjectionOutcomeCategory2),
+                        SafeText(notice.AppellantRequestCategory2));
+
+                    DataRow(
+                        t,
+                        "Extent Split 1",
+                        FormatExtent(notice.RollExtent2),
+                        FormatExtent(notice.ObjectionOutcomeExtent2),
+                        FormatExtent(notice.AppellantRequestExtent2));
+
+                    EmptyRow(t);
+
+                    DataRow(
+                        t,
+                        "Property Market Value Split 2",
+                        FormatRand(notice.RollMarketValue3),
+                        FormatRand(notice.ObjectionOutcomeMarketValue3),
+                        FormatRand(notice.AppellantRequestMarketValue3));
+
+                    DataRow(
+                        t,
+                        "Category Split 2",
+                        SafeText(notice.RollCategory3),
+                        SafeText(notice.ObjectionOutcomeCategory3),
+                        SafeText(notice.AppellantRequestCategory3));
+
+                    DataRow(
+                        t,
+                        "Extent Split 2",
+                        FormatExtent(notice.RollExtent3),
+                        FormatExtent(notice.ObjectionOutcomeExtent3),
+                        FormatExtent(notice.AppellantRequestExtent3));
+                }
+            });
+
+            static void DataRow(
+                TableDescriptor t,
+                string label,
+                string? roll,
+                string? objection,
+                string? appellant)
+            {
+                t.Cell().Element(LabelCell).Text(label)
+                    .FontFamily("Arial").FontSize(9).SemiBold();
+
+                t.Cell().Element(ValueCell).Text(roll ?? "")
+                    .FontFamily("Arial").FontSize(9);
+
+                t.Cell().Element(ValueCell).Text(objection ?? "")
+                    .FontFamily("Arial").FontSize(9);
+
+                t.Cell().Element(ValueCell).Text(appellant ?? "")
+                    .FontFamily("Arial").FontSize(9);
+            }
+
+            static void EmptyRow(TableDescriptor t)
+            {
+                t.Cell().Element(CellBase).Text("");
+                t.Cell().Element(CellBase).Text("");
+                t.Cell().Element(CellBase).Text("");
+                t.Cell().Element(CellBase).Text("");
+            }
         }
 
-        private static void Row(
-            TableDescriptor table,
-            string label,
-            string? roll,
-            string? objection,
-            string? appellant)
+        private static void BuildReasonBox(IContainer container, string? reason)
         {
-            Cell(table, label);
-            Cell(table, roll);
-            Cell(table, objection);
-            Cell(table, appellant);
+            var lines = SplitReason(reason).ToList();
+
+            container.Table(t =>
+            {
+                t.ColumnsDefinition(c =>
+                {
+                    c.RelativeColumn();
+                });
+
+                if (lines.Count == 0)
+                {
+                    for (var i = 0; i < 4; i++)
+                        t.Cell().Element(CellBase).Text("");
+
+                    return;
+                }
+
+                foreach (var line in lines.Take(4))
+                {
+                    t.Cell().Element(CellBase).Text(line)
+                        .FontFamily("Arial")
+                        .FontSize(9)
+                        .SemiBold()
+                        .FontColor(Colors.Black);
+                }
+
+                var remaining = 4 - lines.Take(4).Count();
+
+                for (var i = 0; i < remaining; i++)
+                    t.Cell().Element(CellBase).Text("");
+            });
         }
 
-        private static string Display(string? value)
-            => string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
+        private static IEnumerable<string> SplitReason(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                yield break;
 
-        private static string FormatDate(DateTime? value)
-            => value.HasValue ? value.Value.ToString("dd MMMM yyyy") : "—";
+            foreach (var part in value
+                         .Replace("\r", "\n")
+                         .Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var clean = part.Trim();
+
+                if (!string.IsNullOrWhiteSpace(clean))
+                    yield return clean;
+            }
+        }
+
+        private string ResolveHeaderImagePath()
+        {
+            var candidates = new[]
+            {
+                Path.Combine(_env.WebRootPath ?? "", "Images", "Obj_Header.PNG"),
+                Path.Combine(_env.WebRootPath ?? "", "images", "Obj_Header.PNG"),
+                Path.Combine(_env.WebRootPath ?? "", "img", "Obj_Header.PNG"),
+                Path.Combine(_env.WebRootPath ?? "", "Images", "Obj_Header.png"),
+                Path.Combine(_env.WebRootPath ?? "", "images", "Obj_Header.png"),
+                Path.Combine(_env.WebRootPath ?? "", "img", "Obj_Header.png")
+            };
+
+            return candidates.FirstOrDefault(File.Exists) ?? candidates[0];
+        }
+
+        private static IContainer HeaderCell(IContainer c) =>
+            c.Border(0.8f)
+             .BorderColor(Colors.Grey.Darken2)
+             .Background(Colors.Grey.Lighten3)
+             .PaddingVertical(5)
+             .PaddingHorizontal(4);
+
+        private static IContainer LabelCell(IContainer c) =>
+            c.Border(0.8f)
+             .BorderColor(Colors.Grey.Darken2)
+             .Background(Colors.Grey.Lighten4)
+             .PaddingVertical(5)
+             .PaddingHorizontal(4);
+
+        private static IContainer ValueCell(IContainer c) =>
+            c.Border(0.8f)
+             .BorderColor(Colors.Grey.Darken2)
+             .PaddingVertical(5)
+             .PaddingHorizontal(4);
+
+        private static IContainer CellBase(IContainer c) =>
+            c.Border(0.8f)
+             .BorderColor(Colors.Grey.Darken2)
+             .PaddingVertical(5)
+             .PaddingHorizontal(4);
+
+        private static string BuildRollHeader(string valuationPeriod)
+        {
+            var v = valuationPeriod.Trim();
+
+            if (v.Contains("2023", StringComparison.OrdinalIgnoreCase))
+                return "2023 General Valuation Roll";
+
+            if (v.Contains("GENERAL VALUATION", StringComparison.OrdinalIgnoreCase))
+                return v;
+
+            return v;
+        }
 
         private static string BuildOwnerLine(ThirdPartyAppealApplicationNotice n)
         {
@@ -236,7 +467,8 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 n.OwnerAddress4,
                 n.OwnerAddress5
             }
-            .Where(x => !string.IsNullOrWhiteSpace(x));
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim());
 
             return string.Join(", ", parts);
         }
@@ -252,24 +484,77 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 n.ThirdPartyAddress4,
                 n.ThirdPartyAddress5
             }
-            .Where(x => !string.IsNullOrWhiteSpace(x));
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!.Trim());
 
             return string.Join(", ", parts);
         }
 
-        private static string Money(string? value)
+        private static string FirstNonEmpty(params string?[] values)
         {
-            if (string.IsNullOrWhiteSpace(value))
-                return "—";
+            foreach (var value in values)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                    return value.Trim();
+            }
 
-            var cleaned = value.Replace("R", "", StringComparison.OrdinalIgnoreCase)
-                .Replace(",", "")
-                .Trim();
+            return "";
+        }
 
-            if (decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
-                return $"R{amount:N0}";
+        private static string Display(string? value)
+            => string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
 
-            return value;
+        private static string SafeText(string? value)
+            => string.IsNullOrWhiteSpace(value) ? "" : value.Trim();
+
+        private static string FormatDate(DateTime? value)
+            => value.HasValue
+                ? value.Value.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("en-ZA"))
+                : "—";
+
+        private static string FormatRand(object? value)
+        {
+            if (value is null)
+                return "";
+
+            var raw = value.ToString()?.Trim() ?? "";
+
+            if (raw.Length == 0)
+                return "";
+
+            raw = raw.Replace("R", "", StringComparison.OrdinalIgnoreCase)
+                     .Replace(",", "")
+                     .Trim();
+
+            raw = new string(raw.Where(ch => char.IsDigit(ch) || ch == '.' || ch == '-').ToArray());
+
+            if (decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var amount))
+                return "R " + amount.ToString("#,##0", CultureInfo.InvariantCulture).Replace(",", " ");
+
+            return value.ToString()?.Trim() ?? "";
+        }
+
+        private static string FormatExtent(object? value)
+        {
+            if (value is null)
+                return "";
+
+            var raw = value.ToString()?.Trim() ?? "";
+
+            if (raw.Length == 0)
+                return "";
+
+            raw = raw.Replace(",", "").Trim();
+
+            if (decimal.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+            {
+                if (parsed == Math.Truncate(parsed))
+                    return parsed.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+
+                return parsed.ToString("N2", CultureInfo.InvariantCulture).Replace(",", " ");
+            }
+
+            return value.ToString()?.Trim() ?? "";
         }
     }
 }

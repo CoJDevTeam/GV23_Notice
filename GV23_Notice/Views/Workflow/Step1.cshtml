@@ -160,7 +160,9 @@
 
                         <div class="s1-row s1-row-3">
                             <div class="s1-field" id="field-RollId">
-                                <label class="s1-label">Roll <span class="s1-req-star">*</span></label>
+                                <label class="s1-label">
+                                    Roll <span class="s1-req-star" id="rollRequiredStar">*</span>
+                                </label>
                                 <select asp-for="RollId" asp-items="rolls"
                                         id="rollSelect" class="s1-select">
                                     <option value="0">— Select roll —</option>
@@ -703,15 +705,22 @@
                     return v && v !== '';
                 }
             },
-            {
-                id: 'field-RollId',
-                errId: 'err-RollId',
-                label: 'Roll',
-                check: () => {
-                    const v = document.getElementById('rollSelect')?.value;
-                    return v && v !== '0' && v !== '';
+                    {
+            id: 'field-RollId',
+            errId: 'err-RollId',
+            label: 'Roll',
+            check: () => {
+                const notice = document.getElementById('noticeSelect')?.value;
+
+                // TPA / Application to Valuation Appeal does not require roll.
+                if (notice === 'TPA') {
+                    return true;
                 }
-            },
+
+                const v = document.getElementById('rollSelect')?.value;
+                return v && v !== '0' && v !== '';
+            }
+        },
             {
                 id: 'field-Notice',
                 errId: 'err-Notice',
@@ -808,6 +817,38 @@
 
         function showBlocks() {
             const notice = document.getElementById('noticeSelect')?.value || 'S49';
+                    const rollField = document.getElementById('field-RollId');
+        const rollSelect = document.getElementById('rollSelect');
+        const rollStar = document.getElementById('rollRequiredStar');
+
+        if (notice === 'TPA') {
+            if (rollField) {
+                rollField.style.display = 'none';
+            }
+
+            if (rollSelect) {
+                rollSelect.value = '0';
+                rollSelect.disabled = true;
+            }
+
+            if (rollStar) {
+                rollStar.style.display = 'none';
+            }
+
+            setFieldErr('field-RollId', 'err-RollId', null);
+        } else {
+            if (rollField) {
+                rollField.style.display = '';
+            }
+
+            if (rollSelect) {
+                rollSelect.disabled = false;
+            }
+
+            if (rollStar) {
+                rollStar.style.display = '';
+            }
+        }
             const mode = document.getElementById('modeSelect')?.value || '2';
 
             const noticeHidden = document.getElementById('noticeHidden');

@@ -32,7 +32,8 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public bool S52IsReview { get; set; }
         public DateTime? BulkFromDate { get; set; }
         public DateTime? BulkToDate { get; set; }
-
+        public int Mode { get; set; }
+        public int? Version { get; set; }
         public List<Step3PrintBatchRowVm> Batches { get; set; } = new();
     }
 

@@ -8,10 +8,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             Guid key,
             CancellationToken ct);
 
-        Task<ThirdPartyAppealPrintResultVm> PrintAsync(
-            Guid key,
-            string printedBy,
-            CancellationToken ct);
+        Task<ThirdPartyAppealPrintResultVm> PrintAsync(Guid key, string printedBy, bool forceReprint, CancellationToken ct);
 
         Task<ThirdPartyAppealPrintProgressVm> GetProgressAsync(
             Guid key,

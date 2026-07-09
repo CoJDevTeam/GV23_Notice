@@ -1260,15 +1260,24 @@ else if (isTpa && tpa != null)
         </button>
 
         <form id="tpaPrintForm" action="/Step3/PrintThirdPartyAppealApplications" method="post" style="display:none">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="key" value="@key" />
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="key" value="@key" />
+                            <input type="hidden" name="forceReprint" value="false" />
         </form>
     }
     else if (tpaAllDone)
     {
-        <div class="btn-gold disabled" style="opacity:.5">
-            ✓ All Third-Party Appeal Notices Printed
-        </div>
+     
+                            <button type="button" class="btn-gold" onclick="submitTpaReprint(this)">
+                                🖨 Reprint Third-Party Appeal Notices
+                            </button>
+
+                            <form id="tpaReprintForm" action="/Step3/PrintThirdPartyAppealApplications" method="post" style="display:none">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="key" value="@key" />
+                                <input type="hidden" name="forceReprint" value="true" />
+                            </form>
+   
     }
     else
     {
@@ -1447,7 +1456,7 @@ else
             </div>
                 @if (isTpa && tpa != null)
                 {
-                    <span class="sp-badge-info">@tpa.Items.Count record@(tpa.Items.Count == 1 ? "" : "s")</span>
+                    <span class="sp-badge-info">@tpa.TotalRecords.ToString("N0") record@(tpa.TotalRecords == 1 ? "" : "s")</span>
                 }
                 else
                 {
@@ -1457,7 +1466,7 @@ else
         <div class="sp-rb">
                 @if (isTpa && tpa != null)
                 {
-                    if (!tpa.Items.Any())
+                    if (tpa.TotalRecords <= 0)
                     {
                         <div class="sp-empty">
                             <div class="sp-empty-icon">📭</div>
@@ -1475,93 +1484,55 @@ else
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>Appeal No</th>
-                                    <th>Property</th>
-                                    <th>Owner Email</th>
-                                    <th>Status</th>
-                                    <th>PDF</th>
-                                    <th>Error</th>
+                                    <th>Group</th>
+                                    <th>Total Records</th>
+                                    <th>Pending Print</th>
+                                    <th>Printed</th>
+                                    <th>Failed</th>
+                                    <th>Missing Owner Email</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @{
-                                    int tpaRow = 0;
+                                    int groupRow = 0;
                                 }
 
-                                @foreach (var item in tpa.Items)
+                                @foreach (var group in tpa.Groups)
                                 {
-                                    tpaRow++;
+                                    groupRow++;
 
                                     <tr>
-                                        <td class="sp-dt" style="color:#bbb;width:30px">@tpaRow</td>
-
+                                        <td class="sp-dt" style="color:#bbb;width:30px">@groupRow</td>
                                         <td>
-                                            <span class="sp-code">@item.AppealNo</span>
-                                            @if (!string.IsNullOrWhiteSpace(item.ObjectionNo))
-                                            {
-                                                <div class="sp-meta-sub">Obj: @item.ObjectionNo</div>
-                                            }
+                                            <span class="sp-code">@group.GroupName</span>
                                         </td>
-
                                         <td>
-                                            <div style="font-weight:700;max-width:420px">
-                                                @item.PropertyDescription
-                                            </div>
-                                            <div class="sp-meta-sub">@item.PropertyType</div>
+                                            <strong>@group.Total.ToString("N0")</strong>
                                         </td>
-
                                         <td>
-                                            @if (!string.IsNullOrWhiteSpace(item.OwnerEmail))
+                                            <span class="sp-badge-warn">@group.PendingPrint.ToString("N0") pending</span>
+                                        </td>
+                                        <td>
+                                            <span class="sp-badge-ok">@group.Printed.ToString("N0") printed</span>
+                                        </td>
+                                        <td>
+                                            @if (group.PrintFailed > 0)
                                             {
-                                                @item.OwnerEmail
+                                                <span class="sp-badge-red">@group.PrintFailed.ToString("N0") failed</span>
                                             }
                                             else
                                             {
-                                                <span class="sp-badge-warn">Missing</span>
+                                                <span style="color:#bbb">0</span>
                                             }
                                         </td>
-
                                         <td>
-                                            @if (item.Status == "Printed" || item.Status == "Sent")
+                                            @if (group.MissingOwnerEmail > 0)
                                             {
-                                                <span class="sp-badge-ok">✓ @item.Status</span>
-                                            }
-                                            else if (item.Status == "Print-Failed")
-                                            {
-                                                <span class="sp-badge-red">✗ Print Failed</span>
+                                                <span class="sp-badge-warn">@group.MissingOwnerEmail.ToString("N0") missing</span>
                                             }
                                             else
                                             {
-                                                <span class="sp-badge-warn">@item.Status</span>
-                                            }
-                                        </td>
-
-                                        <td>
-                                            @if (!string.IsNullOrWhiteSpace(item.PdfPath))
-                                            {
-                                                <a class="btn-outline-gold"
-                                                       style="padding:6px 10px;font-size:.68rem"
-                                                       target="_blank"
-                                                       href="@Url.Action("OpenThirdPartyPdf", "Step3", new { id = item.Id })">
-                                                    Open PDF
-                                                </a>
-                                            }
-                                            else
-                                            {
-                                                <span style="color:#bbb">—</span>
-                                            }
-                                        </td>
-
-                                        <td>
-                                            @if (!string.IsNullOrWhiteSpace(item.ErrorMessage))
-                                            {
-                                                <span style="color:#c0392b;font-size:.7rem">
-                                                    @item.ErrorMessage
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span style="color:#bbb">—</span>
+                                                <span class="sp-badge-ok">0</span>
                                             }
                                         </td>
                                     </tr>
@@ -1948,5 +1919,36 @@ else
             .catch(() => {
                 // keep polling on temporary errors
             });
+    }
+        function submitTpaReprint(btn) {
+        if (!confirm('These notices are already printed. Do you want to reprint and overwrite the PDFs?')) {
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="sp-spin"></span> Starting reprint…';
+
+        document.getElementById('ppOverlay').classList.add('active');
+        document.getElementById('ppTitle').textContent = 'Reprinting Third-Party Appeal notices…';
+        document.getElementById('ppBatchName').textContent = 'Direct reprint — no batches';
+        document.getElementById('ppWorking').style.display = '';
+        document.getElementById('ppDoneBanner').classList.remove('active');
+        document.getElementById('ppCloseBtn').classList.remove('active');
+
+        document.getElementById('ppTotal').textContent = '@(tpa?.TotalRecords ?? 0)';
+        document.getElementById('ppRemaining').textContent = '@(tpa?.TotalRecords ?? 0)';
+        document.getElementById('ppChipGen').textContent = '@(tpa?.TotalRecords ?? 0)';
+        document.getElementById('ppChipDone').textContent = '0';
+        document.getElementById('ppChipFail').textContent = '0';
+        document.getElementById('ppBarFill').style.width = '0%';
+        document.getElementById('ppBarFill').classList.remove('done');
+        document.getElementById('ppPct').textContent = '0';
+
+        document.getElementById('ppPath').textContent =
+            '[Appeal Root]\\[Appeal_No]\\THIRD-PARTY APPLICATION\\Valuation Appeal Board formal notice[Appeal_No].pdf';
+
+        _pollTimer = setInterval(pollTpaPrintProgress, 700);
+
+        document.getElementById('tpaReprintForm').submit();
     }
 </script>

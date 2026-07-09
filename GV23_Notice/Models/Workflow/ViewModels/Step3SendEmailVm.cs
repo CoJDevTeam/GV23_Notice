@@ -19,6 +19,8 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public DateTime? ExtensionDate { get; set; }
         public string? SignaturePath { get; set; }
 
+        public int SettingsId { get; set; }
+        public int Version { get; set; }
         // Email stats
         public int TotalBatches { get; set; }
         public int TotalPrinted { get; set; }   // eligible to send

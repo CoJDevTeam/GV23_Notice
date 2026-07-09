@@ -14,6 +14,7 @@ using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.S
 using GV23_Notice.Services.Notices.Section78;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
+using GV23_Notice.Services.ThirdPartyApplications;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using System.Xml.Linq;
@@ -33,6 +34,7 @@ namespace GV23_Notice.Services.Notices
         private readonly ISection53PdfService _s53;
         private readonly IDearJonnyPdfService _dj;
         private readonly IInvalidNoticePdfService _inv;
+        private readonly IThirdPartyAppealFormalNoticePdfService _tpaPdf;
 
         public NoticePreviewService(
             AppDbContext db,
@@ -44,6 +46,7 @@ namespace GV23_Notice.Services.Notices
             ISection53PdfService s53,
             IDearJonnyPdfService dj,
             IInvalidNoticePdfService inv,
+            IThirdPartyAppealFormalNoticePdfService tpaPdf,
             INoticeEmailTemplateService email)
         {
             _db = db;
@@ -57,14 +60,15 @@ namespace GV23_Notice.Services.Notices
             _dj = dj;
             _inv = inv;
             _email = email;
+            _tpaPdf = tpaPdf;
         }
 
         public async Task<NoticePreviewResult> BuildPreviewAsync(
-      int settingsId,
-      PreviewVariant variant,
-      PreviewMode mode,
-      string? appealNo,
-      CancellationToken ct)
+    int settingsId,
+    PreviewVariant variant,
+    PreviewMode mode,
+    string? appealNo,
+    CancellationToken ct)
         {
             var settings = await _db.NoticeSettings
                 .AsNoTracking()
@@ -76,20 +80,30 @@ namespace GV23_Notice.Services.Notices
             if (!settings.IsApproved)
                 throw new InvalidOperationException("Step1 settings must be approved before Step2 preview.");
 
+            var isTpa = settings.Notice == NoticeKind.TPA;
+
             var roll = await _db.RollRegistry
                 .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.RollId == settings.RollId, ct);
-            var rollName = roll?.Name ?? settings.RollName ?? "Valuation Roll";
 
-            if (roll is null)
+            /*
+             * Normal notices still require RollRegistry.
+             * TPA / Application to the Valuation Appeal does not require the user to select a roll.
+             */
+            if (roll is null && !isTpa)
                 throw new InvalidOperationException("RollRegistry not found.");
+
+            var rollName = roll?.Name ?? settings.RollName ?? "Valuation Roll";
+            var rollShortCode = roll?.ShortCode ?? "GV23";
+            var rollId = roll?.RollId ?? settings.RollId;
 
             var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
 
             // Mode flags
             var isSplitPdf = mode == PreviewMode.SplitPdf;
             var isEmailMulti = mode == PreviewMode.EmailMulti;
-            var rollNames = settings.RollName ?? roll.Name ?? "Valuation Roll";
+            var rollNames = settings.RollName ?? rollName;
+
             // =========================
             // 1) Load DB data per notice
             // =========================
@@ -104,16 +118,15 @@ namespace GV23_Notice.Services.Notices
             string sampleObjectionNo = "";
             string sampleAppealNo = "";
             string valuationKey = "";
-            string samplePropertyDesc = ""; // ✅ NEW
+            string samplePropertyDesc = "";
 
             switch (settings.Notice)
             {
                 case NoticeKind.S49:
                     {
-                        var db = await _previewDb.S49PreviewDbDataAsync(roll.RollId, split: isSplitPdf, ct);
+                        var db = await _previewDb.S49PreviewDbDataAsync(rollId, split: isSplitPdf, ct);
 
                         valuationKey = db.ValuationKey ?? "";
-                        // ✅ S49 doesn't have PropertyDesc, use addresses as "property"
                         samplePropertyDesc = FirstNonEmpty(db.PropertyDesc, db.LisStreetAddress, "");
 
                         var ctx = new Section49NoticeContext
@@ -125,13 +138,13 @@ namespace GV23_Notice.Services.Notices
                             InspectionEndDate = settings.ObjectionEndDate ?? settings.LetterDate.AddDays(30),
                             ExtendedEndDate = settings.ExtensionDate,
                             FinancialYearsText = settings.FinancialYearsText ?? "",
-                            RollHeaderText = rollNames   // ← ADD THIS
+                            RollHeaderText = rollNames
                         };
 
                         var data = MapS49ToPdf(db, forceFourRows: isSplitPdf);
 
                         pdfBytes = _s49.BuildNotice(data, ctx);
-                        pdfFileName = $"{roll.ShortCode}_S49_PREVIEW.pdf";
+                        pdfFileName = $"{rollShortCode}_S49_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
@@ -144,25 +157,27 @@ namespace GV23_Notice.Services.Notices
                 case NoticeKind.S51:
                     {
                         var preferMulti = isSplitPdf;
-                        var db = await _previewDb.S51PreviewDbDataAsync(roll.RollId, preferMulti, ct);
+                        var db = await _previewDb.S51PreviewDbDataAsync(rollId, preferMulti, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
-                        valuationKey = ""; // add later if in query
-                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
+                        valuationKey = "";
+                        samplePropertyDesc = db.PropertyDesc ?? "";
 
                         var ctx = new Section51NoticeContext
                         {
                             HeaderImagePath = headerPath,
                             LetterDate = settings.LetterDate,
-                            SubmissionsCloseDate = (settings.EvidenceCloseDate ?? settings.LetterDate.AddDays(30)),
-                            PortalUrl = string.IsNullOrWhiteSpace(settings.PortalUrl) ? "https://objections.joburg.org.za/" : settings.PortalUrl,
+                            SubmissionsCloseDate = settings.EvidenceCloseDate ?? settings.LetterDate.AddDays(30),
+                            PortalUrl = string.IsNullOrWhiteSpace(settings.PortalUrl)
+                                ? "https://objections.joburg.org.za/"
+                                : settings.PortalUrl,
                             SignOffName = "S. Faiaz",
                             SignOffTitle = "Municipal Valuer"
                         };
 
-                        var data = MapS51ToPdf(db, roll.Name ?? "");
+                        var data = MapS51ToPdf(db, rollName);
                         pdfBytes = _s51.BuildNotice(data, ctx);
-                        pdfFileName = $"{roll.ShortCode}_S51_PREVIEW.pdf";
+                        pdfFileName = $"{rollShortCode}_S51_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
@@ -173,16 +188,18 @@ namespace GV23_Notice.Services.Notices
 
                 case NoticeKind.S52:
                     {
-                        var isReview = (variant == PreviewVariant.S52ReviewDecision);
+                        var isReview = variant == PreviewVariant.S52ReviewDecision;
 
-                        // appealNo may be blank when using date-range preview (backlog flow).
-                        // PreviewDbDataService routes to the ByRange SPs automatically when blank.
-                        var db = await _previewDb.S52PreviewDbDataAsync(roll.RollId, appealNo ?? "", isReview, ct);
+                        var db = await _previewDb.S52PreviewDbDataAsync(
+                            rollId,
+                            appealNo ?? "",
+                            isReview,
+                            ct);
 
                         sampleAppealNo = db.AppealNo ?? appealNo ?? "";
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
-                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
+                        samplePropertyDesc = db.PropertyDesc ?? "";
 
                         var ctx = new Section52PdfContext
                         {
@@ -191,8 +208,9 @@ namespace GV23_Notice.Services.Notices
                         };
 
                         var row = MapS52ToAppealDecisionRow(db);
+
                         pdfBytes = _s52.BuildNotice(row, ctx);
-                        pdfFileName = $"{roll.ShortCode}_S52_PREVIEW.pdf";
+                        pdfFileName = $"{rollShortCode}_S52_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
@@ -203,7 +221,7 @@ namespace GV23_Notice.Services.Notices
                 case NoticeKind.S53:
                     {
                         var preferMulti = isSplitPdf;
-                        var db = await _previewDb.S53PreviewDbDataAsync(roll.RollId, preferMulti, ct);
+                        var db = await _previewDb.S53PreviewDbDataAsync(rollId, preferMulti, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
@@ -216,7 +234,7 @@ namespace GV23_Notice.Services.Notices
                             isRevisedMvd: false);
 
                         pdfBytes = _s53.BuildNoticePdf(row, DateOnly.FromDateTime(settings.LetterDate));
-                        pdfFileName = $"{roll.ShortCode}_S53_PREVIEW.pdf";
+                        pdfFileName = $"{rollShortCode}_S53_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
@@ -229,7 +247,7 @@ namespace GV23_Notice.Services.Notices
                 case NoticeKind.S53Rev:
                     {
                         var preferMulti = isSplitPdf;
-                        var db = await _previewDb.S53RevPreviewDbDataAsync(roll.RollId, preferMulti, ct);
+                        var db = await _previewDb.S53RevPreviewDbDataAsync(rollId, preferMulti, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
                         valuationKey = db.ValuationKey ?? "";
@@ -242,7 +260,7 @@ namespace GV23_Notice.Services.Notices
                             isRevisedMvd: true);
 
                         pdfBytes = _s53.BuildNoticePdf(row, DateOnly.FromDateTime(settings.LetterDate));
-                        pdfFileName = $"{roll.ShortCode}_S53_REVISED_MVD_PREVIEW.pdf";
+                        pdfFileName = $"{rollShortCode}_S53_REVISED_MVD_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
@@ -254,11 +272,11 @@ namespace GV23_Notice.Services.Notices
 
                 case NoticeKind.DJ:
                     {
-                        var db = await _previewDb.DJPreviewDbDataAsync(roll.RollId, ct);
+                        var db = await _previewDb.DJPreviewDbDataAsync(rollId, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
-                        valuationKey = ""; // add later if in source
-                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
+                        valuationKey = db.ValuationKey ?? "";
+                        samplePropertyDesc = db.PropertyDesc ?? "";
 
                         var ctx = new DearJonnyPdfContext
                         {
@@ -268,7 +286,7 @@ namespace GV23_Notice.Services.Notices
 
                         var data = new DearJonnyPdfData
                         {
-                            RollName = roll.Name ?? "",
+                            RollName = rollName,
                             ObjectionNo = db.ObjectionNo ?? "",
                             PropertyDescription = db.PropertyDesc ?? "",
                             Addr1 = db.Addr1 ?? "",
@@ -276,11 +294,11 @@ namespace GV23_Notice.Services.Notices
                             Addr3 = db.Addr3 ?? "",
                             Addr4 = db.Addr4 ?? "",
                             Addr5 = db.Addr5 ?? "",
-                            ValuationKey = db.ValuationKey ?? "",
+                            ValuationKey = db.ValuationKey ?? ""
                         };
 
                         pdfBytes = _dj.BuildNotice(data, ctx);
-                        pdfFileName = $"{roll.ShortCode}_DJ_PREVIEW.pdf";
+                        pdfFileName = $"{rollShortCode}_DJ_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Property Owner");
                         recipientEmail = db.Email ?? "";
@@ -292,13 +310,13 @@ namespace GV23_Notice.Services.Notices
 
                 case NoticeKind.IN:
                     {
-                        var isOmission = (variant == PreviewVariant.InvalidOmission);
+                        var isOmission = variant == PreviewVariant.InvalidOmission;
 
-                        var db = await _previewDb.InvalidPreviewDbDataAsync(roll.RollId, isOmission, ct);
+                        var db = await _previewDb.InvalidPreviewDbDataAsync(rollId, isOmission, ct);
 
                         sampleObjectionNo = db.ObjectionNo ?? "";
-                        valuationKey = ""; // add later if in source
-                        samplePropertyDesc = db.PropertyDesc ?? ""; // ✅ NEW
+                        valuationKey = db.ValuationKey ?? "";
+                        samplePropertyDesc = db.PropertyDesc ?? "";
 
                         var ctx = new InvalidNoticePdfContext
                         {
@@ -308,16 +326,18 @@ namespace GV23_Notice.Services.Notices
 
                         var data = new InvalidNoticePdfData
                         {
-                            Kind = isOmission ? Invalidity.InvalidNoticeKind.InvalidOmission : Invalidity.InvalidNoticeKind.InvalidObjection,
+                            Kind = isOmission
+                                ? Invalidity.InvalidNoticeKind.InvalidOmission
+                                : Invalidity.InvalidNoticeKind.InvalidObjection,
                             ObjectionNo = db.ObjectionNo ?? "",
                             PropertyDescription = db.PropertyDesc ?? "",
                             RecipientName = db.Addr1 ?? "",
                             RecipientAddress = BuildAddrLine(db.Addr1, db.Addr2, db.Addr3, db.Addr4, db.Addr5),
-                            ValuationKey=db.ValuationKey ??"",
+                            ValuationKey = db.ValuationKey ?? ""
                         };
 
                         pdfBytes = _inv.BuildNotice(data, ctx);
-                        pdfFileName = $"{roll.ShortCode}_IN_PREVIEW.pdf";
+                        pdfFileName = $"{rollShortCode}_IN_PREVIEW.pdf";
 
                         recipientName = FirstNonEmpty(db.Addr1, "Sir/Madam");
                         recipientEmail = db.Email ?? "";
@@ -327,12 +347,60 @@ namespace GV23_Notice.Services.Notices
                         break;
                     }
 
+                case NoticeKind.TPA:
+                    {
+                        /*
+                         * Application to the Valuation Appeal / Third-Party Appeal Application.
+                         * No batches.
+                         * No user-selected roll required.
+                         * Preview comes directly from ThirdPartyAppealApplicationNotices.
+                         */
+
+                        var preferMulti = isSplitPdf || isEmailMulti;
+
+                        var db = await LoadThirdPartyAppealPreviewRowAsync(
+                            preferMulti,
+                            ct);
+
+                        if (db == null)
+                            throw new InvalidOperationException("No Third-Party Appeal Application records found for preview.");
+
+                        sampleAppealNo = db.AppealNo ?? "";
+                        sampleObjectionNo = db.ObjectionNo ?? "";
+                        valuationKey = db.ValuationKey ?? "";
+                        samplePropertyDesc = db.PropertyDescription ?? "";
+
+                        /*
+                         * Use your TPA PDF builder.
+                         *
+                         * This assumes you added:
+                         * private readonly IThirdPartyAppealFormalNoticePdfService _tpaPdf;
+                         *
+                         * and the method:
+                         * byte[] BuildPdf(NoticeSettings settings, ThirdPartyAppealApplicationNotice notice)
+                         */
+                        pdfBytes = _tpaPdf.BuildPdf(settings, db.Entity);
+
+                        pdfFileName = $"{rollShortCode}_TPA_PREVIEW_{sampleAppealNo}.pdf";
+
+                        recipientName = FirstNonEmpty(db.OwnerName, "Property Owner");
+                        recipientEmail = db.OwnerEmail ?? "";
+                        addressLine = BuildAddrLine(
+                            db.OwnerAddress1,
+                            db.OwnerAddress2,
+                            db.OwnerAddress3,
+                            db.OwnerAddress4,
+                            db.OwnerAddress5);
+
+                        break;
+                    }
+
                 default:
                     throw new NotSupportedException($"Preview not implemented for notice {settings.Notice}.");
             }
 
             // =========================
-            // 2) Email preview (real DB context)
+            // 2) Email preview
             // =========================
             var emailReq = BuildEmailReqFromReal(
                 settings,
@@ -341,7 +409,7 @@ namespace GV23_Notice.Services.Notices
                 recipientEmail,
                 sampleObjectionNo,
                 sampleAppealNo,
-                samplePropertyDesc,  // ✅ NEW
+                samplePropertyDesc,
                 valuationKey,
                 variant,
                 isEmailMulti);
@@ -351,9 +419,9 @@ namespace GV23_Notice.Services.Notices
             return new NoticePreviewResult
             {
                 SettingsId = settings.Id,
-                RollId = roll.RollId,
-                RollShortCode = roll.ShortCode,
-                RollName = roll.Name,
+                RollId = rollId,
+                RollShortCode = rollShortCode,
+                RollName = rollName,
                 Notice = settings.Notice,
                 Mode = settings.Mode,
                 Version = settings.Version,
@@ -533,7 +601,51 @@ namespace GV23_Notice.Services.Notices
                 PropertyRows = rows
             };
         }
+        private async Task<ThirdPartyAppealPreviewLite?> LoadThirdPartyAppealPreviewRowAsync(
+    bool preferMulti,
+    CancellationToken ct)
+        {
+            var query = _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .Where(x => !string.IsNullOrWhiteSpace(x.Appeal_No));
 
+            if (preferMulti)
+            {
+                query = query.Where(x =>
+                    x.Property_Type == "Multi" ||
+                    x.Property_Type == "Multipurpose"
+                   );
+            }
+            else
+            {
+                query = query.Where(x =>
+                    x.Property_Type != "Multi" &&
+                    x.Property_Type != "Multipurpose");
+            }
+
+            return await query
+                .OrderBy(x => x.Appeal_No)
+                .Select(x => new ThirdPartyAppealPreviewLite
+                {
+                    Entity = x,
+
+                    AppealNo = x.Appeal_No,
+                    ObjectionNo = x.Objection_No,
+                    PremiseId = x.Premise_ID,
+                    ValuationKey = x.Valuation_Key,
+                    PropertyType = x.Property_Type,
+                    PropertyDescription = x.Property_Description,
+
+                    OwnerName = x.OwnerName,
+                    OwnerEmail = x.OwnerEmail,
+                    OwnerAddress1 = x.OwnerAddress1,
+                    OwnerAddress2 = x.OwnerAddress2,
+                    OwnerAddress3 = x.OwnerAddress3,
+                    OwnerAddress4 = x.OwnerAddress4,
+                    OwnerAddress5 = x.OwnerAddress5
+                })
+                .FirstOrDefaultAsync(ct);
+        }
         private static Section51NoticeData MapS51ToPdf(S51PreviewDbData db, string rollName)
         {
             string Money(decimal? v) => v.HasValue ? v.Value.ToString(CultureInfo.InvariantCulture) : "";
@@ -741,6 +853,25 @@ namespace GV23_Notice.Services.Notices
                 return $"Valuation Key: {vk}";
 
             return "";
+        }
+        private sealed class ThirdPartyAppealPreviewLite
+        {
+            public ThirdPartyAppealApplicationNotice Entity { get; set; } = default!;
+
+            public string? AppealNo { get; set; }
+            public string? ObjectionNo { get; set; }
+            public string? PremiseId { get; set; }
+            public string? ValuationKey { get; set; }
+            public string? PropertyType { get; set; }
+            public string? PropertyDescription { get; set; }
+
+            public string? OwnerName { get; set; }
+            public string? OwnerEmail { get; set; }
+            public string? OwnerAddress1 { get; set; }
+            public string? OwnerAddress2 { get; set; }
+            public string? OwnerAddress3 { get; set; }
+            public string? OwnerAddress4 { get; set; }
+            public string? OwnerAddress5 { get; set; }
         }
     }
 }

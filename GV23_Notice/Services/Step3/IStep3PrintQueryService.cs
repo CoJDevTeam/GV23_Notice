@@ -25,6 +25,9 @@ namespace GV23_Notice.Services.Step3
         {
             var (s, roll) = await ResolveAsync(workflowKey, ct);
 
+            if (s.Notice == NoticeKind.TPA)
+                return await BuildTpaPrintVmAsync(s, roll, workflowKey, ct);
+
             var batches = await _db.NoticeBatches.AsNoTracking()
                 .Where(b => b.WorkflowKey == workflowKey
                          && b.RollId == s.RollId
@@ -35,7 +38,6 @@ namespace GV23_Notice.Services.Step3
 
             var batchIds = batches.Select(b => b.Id).ToList();
 
-            // Load run log status counts per batch in one query
             var statusCounts = await _db.NoticeRunLogs.AsNoTracking()
                 .Where(r => batchIds.Contains(r.NoticeBatchId))
                 .GroupBy(r => new { r.NoticeBatchId, r.Status })
@@ -45,6 +47,7 @@ namespace GV23_Notice.Services.Step3
             var rows = batches.Select(b =>
             {
                 var counts = statusCounts.Where(x => x.NoticeBatchId == b.Id).ToList();
+
                 return new Step3PrintBatchRowVm
                 {
                     BatchId = b.Id,
@@ -57,7 +60,7 @@ namespace GV23_Notice.Services.Step3
                     GeneratedCount = counts.FirstOrDefault(x => x.Status == RunStatus.Generated)?.Count ?? 0,
                     PrintedCount = counts.FirstOrDefault(x => x.Status == RunStatus.Printed)?.Count ?? 0,
                     FailedCount = counts.FirstOrDefault(x => x.Status == RunStatus.Failed)?.Count ?? 0,
-                    SentCount = counts.FirstOrDefault(x => x.Status == RunStatus.Sent)?.Count ?? 0,
+                    SentCount = counts.FirstOrDefault(x => x.Status == RunStatus.Sent)?.Count ?? 0
                 };
             }).ToList();
 
@@ -66,32 +69,36 @@ namespace GV23_Notice.Services.Step3
                 WorkflowKey = workflowKey,
                 SettingsId = s.Id,
                 RollId = s.RollId,
-                RollShortCode = roll.ShortCode ?? "",
-                RollName = roll.Name ?? "",
+                RollShortCode = roll?.ShortCode ?? "",
+                RollName = roll?.Name ?? s.RollName ?? "",
                 Notice = s.Notice,
-                VersionText = s.Version.ToString(),
+                VersionText = $"V{s.Version}",
                 LetterDate = s.LetterDate,
                 FinancialYearsText = s.FinancialYearsText,
                 ObjectionStartDate = s.ObjectionStartDate,
                 ObjectionEndDate = s.ObjectionEndDate,
                 ExtensionDate = s.ExtensionDate,
                 SignaturePath = s.SignaturePath,
+
                 TotalBatches = batches.Count,
                 TotalRecordsBatched = batches.Sum(b => b.NumberOfRecords),
                 TotalPrinted = rows.Sum(r => r.PrintedCount),
                 TotalFailed = rows.Sum(r => r.FailedCount),
                 Batches = rows,
-                // S52 fields
+
                 IsS52 = s.Notice == NoticeKind.S52,
                 S52IsReview = s.IsSection52Review,
                 BulkFromDate = s.BulkFromDate,
-                BulkToDate = s.BulkToDate,
+                BulkToDate = s.BulkToDate
             };
         }
 
         public async Task<Step3SendEmailVm> BuildEmailVmAsync(Guid workflowKey, CancellationToken ct)
         {
             var (s, roll) = await ResolveAsync(workflowKey, ct);
+
+            if (s.Notice == NoticeKind.TPA)
+                return await BuildTpaEmailVmAsync(s, roll, workflowKey, ct);
 
             var batches = await _db.NoticeBatches.AsNoTracking()
                 .Where(b => b.WorkflowKey == workflowKey
@@ -112,6 +119,7 @@ namespace GV23_Notice.Services.Step3
             var rows = batches.Select(b =>
             {
                 var counts = statusCounts.Where(x => x.NoticeBatchId == b.Id).ToList();
+
                 return new Step3EmailBatchRowVm
                 {
                     BatchId = b.Id,
@@ -122,35 +130,156 @@ namespace GV23_Notice.Services.Step3
                     PrintedCount = counts.FirstOrDefault(x => x.Status == RunStatus.Printed)?.Count ?? 0,
                     SentCount = counts.FirstOrDefault(x => x.Status == RunStatus.Sent)?.Count ?? 0,
                     FailedCount = counts.FirstOrDefault(x => x.Status == RunStatus.Failed)?.Count ?? 0,
-                    NoEmailCount = counts.FirstOrDefault(x => x.Status == RunStatus.NoEmail)?.Count ?? 0,
+                    NoEmailCount = counts.FirstOrDefault(x => x.Status == RunStatus.NoEmail)?.Count ?? 0
                 };
             }).ToList();
 
             return new Step3SendEmailVm
             {
                 WorkflowKey = workflowKey,
+                SettingsId = s.Id,
                 RollId = s.RollId,
-                RollShortCode = roll.ShortCode ?? "",
-                RollName = roll.Name ?? "",
+                RollShortCode = roll?.ShortCode ?? "",
+                RollName = roll?.Name ?? s.RollName ?? "",
                 Notice = s.Notice,
-                VersionText = s.Version.ToString(),
+                VersionText = $"V{s.Version}",
                 LetterDate = s.LetterDate,
                 FinancialYearsText = s.FinancialYearsText,
                 ObjectionStartDate = s.ObjectionStartDate,
                 ObjectionEndDate = s.ObjectionEndDate,
                 ExtensionDate = s.ExtensionDate,
                 SignaturePath = s.SignaturePath,
+
                 TotalBatches = batches.Count,
                 TotalPrinted = rows.Sum(r => r.PrintedCount),
                 TotalSent = rows.Sum(r => r.SentCount),
                 MaxEmailsPerSend = 2000,
-                Batches = rows
+                Batches = rows,
+
+                IsS52 = s.Notice == NoticeKind.S52,
+                S52IsReview = s.IsSection52Review
             };
         }
 
-        // ── Shared resolver ─────────────────────────────────────────────────
-        private async Task<(NoticeSettings s, Domain.Rolls.RollRegistry roll)> ResolveAsync(
-            Guid workflowKey, CancellationToken ct)
+        private async Task<Step3PrintVm> BuildTpaPrintVmAsync(
+            NoticeSettings s,
+            Domain.Rolls.RollRegistry? roll,
+            Guid workflowKey,
+            CancellationToken ct)
+        {
+            var totalRecords = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x => x.NoticeSettingsId == s.Id, ct);
+
+            var totalPendingPrint = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == s.Id &&
+                    (x.Status == null ||
+                     x.Status == "" ||
+                     x.Status == "Pending" ||
+                     x.Status == "Print-Failed"),
+                    ct);
+
+            var totalPrinted = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == s.Id &&
+                    (x.Status == "Printed" || x.Status == "Sent") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "",
+                    ct);
+
+            var totalFailed = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == s.Id &&
+                    x.Status == "Print-Failed",
+                    ct);
+
+            return new Step3PrintVm
+            {
+                WorkflowKey = workflowKey,
+                SettingsId = s.Id,
+                RollId = s.RollId,
+                RollShortCode = roll?.ShortCode ?? "GV23",
+                RollName = roll?.Name ?? s.RollName ?? "General Valuation Roll 2023",
+
+                Notice = s.Notice,
+                VersionText = $"V{s.Version}",
+                LetterDate = s.LetterDate,
+                FinancialYearsText = s.FinancialYearsText,
+                ObjectionStartDate = s.ObjectionStartDate,
+                ObjectionEndDate = s.ObjectionEndDate,
+                ExtensionDate = s.ExtensionDate,
+                SignaturePath = s.SignaturePath,
+
+                TotalBatches = 0,
+                TotalRecordsBatched = totalRecords,
+                TotalPrinted = totalPrinted,
+                TotalFailed = totalFailed,
+                Batches = new(),
+
+                IsS52 = false,
+                S52IsReview = false,
+                BulkFromDate = s.BulkFromDate,
+                BulkToDate = s.BulkToDate
+            };
+        }
+
+        private async Task<Step3SendEmailVm> BuildTpaEmailVmAsync(
+            NoticeSettings s,
+            Domain.Rolls.RollRegistry? roll,
+            Guid workflowKey,
+            CancellationToken ct)
+        {
+            var totalReady = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == s.Id &&
+                    (x.Status == "Printed" || x.Status == "Email-Failed") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "",
+                    ct);
+
+            var totalSent = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == s.Id &&
+                    x.Status == "Sent",
+                    ct);
+
+            return new Step3SendEmailVm
+            {
+                WorkflowKey = workflowKey,
+                SettingsId = s.Id,
+                RollId = s.RollId,
+                RollShortCode = roll?.ShortCode ?? "GV23",
+                RollName = roll?.Name ?? s.RollName ?? "General Valuation Roll 2023",
+
+                Notice = s.Notice,
+                VersionText = $"V{s.Version}",
+                LetterDate = s.LetterDate,
+                FinancialYearsText = s.FinancialYearsText,
+                ObjectionStartDate = s.ObjectionStartDate,
+                ObjectionEndDate = s.ObjectionEndDate,
+                ExtensionDate = s.ExtensionDate,
+                SignaturePath = s.SignaturePath,
+
+                TotalBatches = 0,
+                TotalPrinted = totalReady,
+                TotalSent = totalSent,
+                MaxEmailsPerSend = 999999,
+                Batches = new(),
+
+                IsS52 = false,
+                S52IsReview = false
+            };
+        }
+
+        private async Task<(NoticeSettings s, Domain.Rolls.RollRegistry? roll)> ResolveAsync(
+            Guid workflowKey,
+            CancellationToken ct)
         {
             var s = await _db.NoticeSettings.AsNoTracking()
                         .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey, ct)
@@ -159,8 +288,10 @@ namespace GV23_Notice.Services.Step3
                     ?? throw new InvalidOperationException("Workflow not found.");
 
             var roll = await _db.RollRegistry.AsNoTracking()
-                           .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
-                       ?? throw new InvalidOperationException("Roll not found.");
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+
+            if (roll == null && s.Notice != NoticeKind.TPA)
+                throw new InvalidOperationException("Roll not found.");
 
             return (s, roll);
         }

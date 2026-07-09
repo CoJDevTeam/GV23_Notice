@@ -1,6 +1,7 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
+using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.QA;
 using GV23_Notice.Services.Stats;
@@ -171,23 +172,75 @@ namespace GV23_Notice.Controllers
 
         // ── PRINT ───────────────────────────────────────────────────────────
 
-        // GET: Print dashboard
         [HttpGet("Print")]
         public async Task<IActionResult> Print(Guid key, CancellationToken ct)
         {
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
 
-            var settings = await GetWorkflowSettingsAsync(key, ct);
+            var settings = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ApprovalKey == key || x.WorkflowKey == key, ct)
+                ?? throw new InvalidOperationException("Workflow settings not found.");
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                var tpaVm = await _tpaPrint.BuildPrintVmAsync(key, ct);
-                return View("Print", tpaVm);
+                /*
+                 * TPA does not use NoticeBatches.
+                 * We still return the normal Step3PrintVm because Print.cshtml expects it.
+                 * TPA-specific data goes through ViewBag.
+                 */
+                ViewBag.TpaPrint = await _tpaPrint.BuildPrintVmAsync(key, ct);
+
+                var vm = await BuildTpaStep3PrintVmAsync(settings, key, ct);
+
+                return View("Print", vm);
             }
 
-            var vm = await _printQuery.BuildPrintVmAsync(key, ct);
-            return View(vm);
+            var normalVm = await _printQuery.BuildPrintVmAsync(key, ct);
+            return View("Print", normalVm);
+        }
+
+        private async Task<Step3PrintVm> BuildTpaStep3PrintVmAsync(
+    NoticeSettings settings,
+    Guid key,
+    CancellationToken ct)
+        {
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.RollId == settings.RollId, ct);
+
+            return new Step3PrintVm
+            {
+                WorkflowKey = key,
+                SettingsId = settings.Id,
+
+                RollId = settings.RollId,
+                RollShortCode = roll?.ShortCode ??  "GV23",
+                RollName = roll?.Name ?? settings.RollName ?? "General Valuation Roll 2023",
+
+                Notice = settings.Notice,
+                
+                Version = settings.Version,
+                VersionText = $"V{settings.Version}",
+
+                LetterDate = settings.LetterDate,
+                ObjectionStartDate = settings.ObjectionStartDate,
+                ObjectionEndDate = settings.ObjectionEndDate,
+                ExtensionDate = settings.ExtensionDate,
+
+                BulkFromDate = settings.BulkFromDate,
+                BulkToDate = settings.BulkToDate,
+
+                IsS52 = false,
+                S52IsReview = false,
+
+                TotalBatches = 0,
+                TotalPrinted = 0,
+                TotalFailed = 0,
+
+                Batches = new()
+            };
         }
 
         [HttpPost("PrintBatch")]
@@ -273,8 +326,9 @@ namespace GV23_Notice.Controllers
         [HttpPost("PrintThirdPartyAppealApplications")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> PrintThirdPartyAppealApplications(
-            Guid key,
-            CancellationToken ct)
+        Guid key,
+        bool forceReprint,
+        CancellationToken ct)
         {
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
@@ -288,11 +342,23 @@ namespace GV23_Notice.Controllers
                 if (settings.Notice != NoticeKind.TPA)
                     return BadRequest("This print action is only for Third-Party Appeal Application notices.");
 
-                var res = await _tpaPrint.PrintAsync(key, user, ct);
+                var res = await _tpaPrint.PrintAsync(
+                    key,
+                    user,
+                    forceReprint,
+                    ct);
 
-                TempData["Success"] =
-                    $"Third-Party Appeal Application notices printed: {res.Printed}. " +
-                    (res.Failed > 0 ? $"Failed: {res.Failed}." : "");
+                if (!string.IsNullOrWhiteSpace(res.ErrorMessage))
+                {
+                    TempData["Error"] = res.ErrorMessage;
+                    return RedirectToAction(nameof(Print), new { key });
+                }
+
+                TempData["Success"] = forceReprint
+                    ? $"Third-Party Appeal Application notices reprinted: {res.Printed}. " +
+                      (res.Failed > 0 ? $"Failed: {res.Failed}." : "")
+                    : $"Third-Party Appeal Application notices printed: {res.Printed}. " +
+                      (res.Failed > 0 ? $"Failed: {res.Failed}." : "");
 
                 return RedirectToAction(nameof(Print), new { key });
             }
@@ -302,7 +368,6 @@ namespace GV23_Notice.Controllers
                 return RedirectToAction(nameof(Print), new { key });
             }
         }
-
         // POST: Print ALL batches in this workflow
         [HttpPost("PrintAll")]
         [ValidateAntiForgeryToken]
@@ -315,7 +380,7 @@ namespace GV23_Notice.Controllers
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                return await PrintThirdPartyAppealApplications(key, ct);
+                return await PrintThirdPartyAppealApplications(key, false, ct);
             }
 
             var user = User?.Identity?.Name ?? "Unknown";
@@ -344,12 +409,77 @@ namespace GV23_Notice.Controllers
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                var vm = await _tpaEmail.BuildEmailVmAsync(key, ct);
+                /*
+                 * TPA does not use NoticeBatches.
+                 * SendEmail.cshtml still expects Step3SendEmailVm as the main model.
+                 * TPA-specific data must go through ViewBag.
+                 */
+                ViewBag.TpaEmail = await _tpaEmail.BuildEmailVmAsync(key, ct);
+
+                var vm = await BuildTpaStep3SendEmailVmAsync(settings, key, ct);
+
                 return View("SendEmail", vm);
             }
 
             var normalVm = await _printQuery.BuildEmailVmAsync(key, ct);
-            return View(normalVm);
+            return View("SendEmail", normalVm);
+        }
+
+        private async Task<Step3SendEmailVm> BuildTpaStep3SendEmailVmAsync(
+    NoticeSettings settings,
+    Guid key,
+    CancellationToken ct)
+        {
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.RollId == settings.RollId, ct);
+
+            var totalReady = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == settings.Id &&
+                    (x.Status == "Printed" || x.Status == "Email-Failed") &&
+                    !string.IsNullOrWhiteSpace(x.PdfPath),
+                    ct);
+
+            var totalSent = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == settings.Id &&
+                    x.Status == "Sent",
+                    ct);
+
+            return new Step3SendEmailVm
+            {
+                WorkflowKey = key,
+                SettingsId = settings.Id,
+
+                RollId = settings.RollId,
+                RollShortCode = roll?.ShortCode ??  "GV23",
+                RollName = roll?.Name ?? settings.RollName ?? "General Valuation Roll 2023",
+
+                Notice = settings.Notice,
+                Version = settings.Version,
+                VersionText = $"V{settings.Version}",
+
+                LetterDate = settings.LetterDate,
+                ObjectionStartDate = settings.ObjectionStartDate,
+                ObjectionEndDate = settings.ObjectionEndDate,
+                ExtensionDate = settings.ExtensionDate,
+
+                FinancialYearsText = settings.FinancialYearsText,
+
+                IsS52 = false,
+                S52IsReview = false,
+
+                TotalBatches = 0,
+                TotalPrinted = totalReady,
+                TotalSent = totalSent,
+
+                MaxEmailsPerSend = 999999,
+
+                Batches = new()
+            };
         }
 
         // POST: Send emails

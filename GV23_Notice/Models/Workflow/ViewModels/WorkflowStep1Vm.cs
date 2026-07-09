@@ -6,8 +6,8 @@ namespace GV23_Notice.Models.Workflow.ViewModels
     public class WorkflowStep1Vm
     {
         // ── Core selection (all required) ──────────────────────────────────
-        [Required(ErrorMessage = "Roll is required.")]
-        [Range(1, int.MaxValue, ErrorMessage = "Please select a roll.")]
+        //[Required(ErrorMessage = "Roll is required.")]
+        //[Range(1, int.MaxValue, ErrorMessage = "Please select a roll.")]
         public int RollId { get; set; }
 
         [Required(ErrorMessage = "Notice type is required.")]

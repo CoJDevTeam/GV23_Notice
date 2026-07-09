@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Models.Workflow.ViewModels;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Data.SqlClient;
@@ -142,9 +143,9 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 Value = (object?)vm.RollId ?? DBNull.Value
             });
 
-            command.Parameters.Add(new SqlParameter("@Notice", SqlDbType.NVarChar, 150)
+            command.Parameters.Add(new SqlParameter("@Notice", SqlDbType.Int)
             {
-                Value = vm.Notice
+                Value = (int)NoticeKind.TPA
             });
 
             command.Parameters.Add(new SqlParameter("@ValuationPeriod", SqlDbType.NVarChar, 250)

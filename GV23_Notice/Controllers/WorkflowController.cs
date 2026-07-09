@@ -198,9 +198,18 @@ namespace GV23_Notice.Controllers
             await PopulateRollsAsync(ct);
             var user = User?.Identity?.Name ?? "UNKNOWN";
 
-            if (vm.RollId <= 0)
-                ModelState.AddModelError(nameof(vm.RollId), "Roll is required.");
+            var isTpa = vm.Notice == NoticeKind.TPA;
 
+            if (isTpa)
+            {
+                // TPA must not force the user to select a roll.
+                // Remove any model validation error caused by RollId = 0.
+                ModelState.Remove(nameof(vm.RollId));
+            }
+            else if (vm.RollId <= 0)
+            {
+                ModelState.AddModelError(nameof(vm.RollId), "Roll is required.");
+            }
             // ✅ Valuation Period + Financial Year validation
             if (string.IsNullOrWhiteSpace(vm.ValuationPeriodCode))
                 ModelState.AddModelError(nameof(vm.ValuationPeriodCode), "Valuation Period is required.");
@@ -250,10 +259,21 @@ namespace GV23_Notice.Controllers
                             "Appeal Close Date is required when overridden.");
                 }
             }
-            // Third-Party Appeal Application
-            // Third-Party Appeal Application
             if (vm.Notice == NoticeKind.TPA)
             {
+                /*
+                 * TPA / Application to Valuation Appeal does not require the user
+                 * to select a roll on Step 1.
+                 *
+                 * NoticeSettings still needs RollId internally, so we resolve it
+                 * from the valuation period / default GV23 roll behind the scenes.
+                 */
+                if (!string.IsNullOrWhiteSpace(vm.ValuationPeriodCode))
+                {
+                    vm.RollId = await ResolveRollIdForTpaAsync(vm.ValuationPeriodCode, ct);
+                    ModelState.Remove(nameof(vm.RollId));
+                }
+
                 /*
                  * Step 1 only shows an estimated response period.
                  * The final 51 days must still be recalculated on email send date.
@@ -267,6 +287,8 @@ namespace GV23_Notice.Controllers
                 vm.LetterDate = calc.StartDate;
                 vm.BatchDate = calc.StartDate;
             }
+
+
             if (!ModelState.IsValid)
                 return View("Step1", vm);
 
@@ -359,7 +381,45 @@ namespace GV23_Notice.Controllers
             TempData["Success"] = $"Saved and confirmed (v{entity.Version}). Please review summary to approve.";
             return RedirectToAction(nameof(Step1Summary), new { settingsId = entity.Id });
         }
+        private async Task<int> ResolveRollIdForTpaAsync(
+    string? valuationPeriodCode,
+    CancellationToken ct)
+        {
+            /*
+             * TPA is not selected by roll on Step 1.
+             * But the existing workflow tables still require RollId.
+             *
+             * For now, map valuation period GV23 to active GV23 RollRegistry.
+             * If valuation period changes later, extend this mapping.
+             */
+            var period = (valuationPeriodCode ?? "").Trim().ToUpperInvariant();
 
+            var shortCode = period switch
+            {
+                "GV13" => "GV13",
+                "GV18" => "GV18",
+                "GV23" => "GV23",
+                "GV27" => "GV27",
+                _ => "GV23"
+            };
+
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .Where(x =>
+                    x.ShortCode.ToUpper() == shortCode ||
+                    x.ShortCode.ToUpper().Replace(" ", "") == shortCode.Replace(" ", ""))
+                .OrderBy(x => x.RollId)
+                .FirstOrDefaultAsync(ct);
+
+            if (roll == null)
+            {
+                throw new InvalidOperationException(
+                    $"No active RollRegistry record found for TPA using short code '{shortCode}'.");
+            }
+
+            return roll.RollId;
+        }
 
         // GET: /Workflow/Step1Summary?settingsId=123
         [HttpGet("Step1Summary")]
