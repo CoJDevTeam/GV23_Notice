@@ -18,7 +18,8 @@
         DJ = 5,
         IN = 6,
         S78 = 7,// S78 later
-        S53Rev = 8
+        S53Rev = 8,
+              TPA = 9
     }
 
     public enum BatchMode

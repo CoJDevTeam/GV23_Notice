@@ -1,14 +1,27 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3PrintVm
 @using GV23_Notice.Domain.Workflow
+
 @{
     ViewData["Title"] = "Step 3 — Print Batches";
+
     var key = Model.WorkflowKey;
-    bool anyPrintable = Model.Batches.Any(b => b.GeneratedCount > 0);
-    bool allDone = Model.Batches.Any() && Model.Batches.All(b => b.GeneratedCount == 0);
+
+    var tpa = ViewBag.TpaPrint as GV23_Notice.Models.Workflow.ViewModels.ThirdPartyAppealPrintVm;
+    bool isTpa = Model.Notice == NoticeKind.TPA;
+
+    bool anyPrintable = !isTpa && Model.Batches.Any(b => b.GeneratedCount > 0);
+    bool allDone = !isTpa && Model.Batches.Any() && Model.Batches.All(b => b.GeneratedCount == 0);
+
+    bool tpaAnyPending = isTpa && tpa != null && tpa.TotalPendingPrint > 0;
+    bool tpaAllDone = isTpa && tpa != null && tpa.TotalRecords > 0 && tpa.TotalPendingPrint == 0;
 
     string subTypeLabel = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
-    // URL back to kickoff — WorkflowKey IS the ApprovalKey
-    string kickoffUrl = Url.Action("Step3Kickoff", "Workflow", new { settingsId = Model.SettingsId, key = Model.WorkflowKey }) ?? "#";
+
+    string kickoffUrl = Url.Action("Step3Kickoff", "Workflow", new
+    {
+        settingsId = Model.SettingsId,
+        key = Model.WorkflowKey
+    }) ?? "#";
 }
 
 <link href="~/css/Step3/Step3KickoffCss.css" rel="stylesheet" />
@@ -990,21 +1003,69 @@
         <div class="sp-chip"><span class="sp-cl">Roll</span><span class="sp-cv">@Model.RollShortCode — @Model.RollName</span></div>
         <div class="sp-chip"><span class="sp-cl">Notice</span><span class="sp-cv">@Model.Notice</span></div>
         <div class="sp-chip"><span class="sp-cl">Version</span><span class="sp-cv">@Model.VersionText</span></div>
-        @if (Model.IsS52)
-        {
 
-            <div class="sp-chip"><span class="sp-cl">Type</span><span class="sp-cv">@subTypeLabel</span></div>
-            <div class="sp-chip"><span class="sp-cl">Range</span><span class="sp-cv">@(Model.BulkFromDate?.ToString("dd MMM") ?? "?") – @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "?")</span></div>
-        }
-        else
-        {
-            <div class="sp-chip"><span class="sp-cl">Batches</span><span class="sp-cv">@Model.TotalBatches</span></div>
-            <div class="sp-chip"><span class="sp-cl">Printed</span><span class="sp-cv">@Model.TotalPrinted.ToString("N0")</span></div>
-            @if (Model.TotalFailed > 0)
-            {
-                <div class="sp-chip"><span class="sp-cl">Failed</span><span style="color:#f87171;font-weight:700">@Model.TotalFailed</span></div>
-            }
-        }
+        @if (Model.IsS52)
+{
+    <div class="sp-chip">
+        <span class="sp-cl">Type</span>
+        <span class="sp-cv">@subTypeLabel</span>
+    </div>
+
+    <div class="sp-chip">
+        <span class="sp-cl">Range</span>
+        <span class="sp-cv">
+            @(Model.BulkFromDate?.ToString("dd MMM") ?? "?") – @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "?")
+        </span>
+    </div>
+}
+else if (isTpa && tpa != null)
+{
+    <div class="sp-chip">
+        <span class="sp-cl">Mode</span>
+        <span class="sp-cv">Direct Print</span>
+    </div>
+
+    <div class="sp-chip">
+        <span class="sp-cl">Records</span>
+        <span class="sp-cv">@tpa.TotalRecords.ToString("N0")</span>
+    </div>
+
+    <div class="sp-chip">
+        <span class="sp-cl">Printed</span>
+        <span class="sp-cv">@tpa.TotalPrinted.ToString("N0")</span>
+    </div>
+
+    @if (tpa.TotalPrintFailed > 0)
+    {
+        <div class="sp-chip">
+            <span class="sp-cl">Failed</span>
+            <span style="color:#f87171;font-weight:700">@tpa.TotalPrintFailed</span>
+        </div>
+    }
+}
+else
+{
+    <div class="sp-chip">
+        <span class="sp-cl">Batches</span>
+        <span class="sp-cv">@Model.TotalBatches</span>
+    </div>
+
+    <div class="sp-chip">
+        <span class="sp-cl">Printed</span>
+        <span class="sp-cv">@Model.TotalPrinted.ToString("N0")</span>
+    </div>
+
+    @if (Model.TotalFailed > 0)
+    {
+        <div class="sp-chip">
+            <span class="sp-cl">Failed</span>
+            <span style="color:#f87171;font-weight:700">@Model.TotalFailed</span>
+        </div>
+    }
+} 
+    
+    
+    
     </div>
 
     <!-- STEP TRAIL — different for S52 (no Batches step) vs standard -->
@@ -1015,17 +1076,30 @@
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Approve</div>
             <div class="sp-arrow">›</div>
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Kickoff</div>
-            @if (!Model.IsS52)
+            @if (!Model.IsS52 && !isTpa)
             {
                 <div class="sp-arrow">›</div>
-                <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Batches</div>
+                <div class="sp-bc done">
+                    <div class="sp-bc-dot">✓</div>Batches
+                </div>
             }
+
             <div class="sp-arrow">›</div>
-            <div class="sp-bc active"><div class="sp-bc-dot">@(Model.IsS52 ? "4" : "5")</div>Print</div>
+
+            <div class="sp-bc active">
+                <div class="sp-bc-dot">@(Model.IsS52 || isTpa ? "4" : "5")</div>Print
+            </div>
+
             <div class="sp-arrow">›</div>
-            <div class="sp-bc"><div class="sp-bc-dot">@(Model.IsS52 ? "5" : "6")</div>Send Email</div>
+
+            <div class="sp-bc">
+                <div class="sp-bc-dot">@(Model.IsS52 || isTpa ? "5" : "6")</div>Send Email
+            </div>
         </div>
-        <div class="sp-trail-label">Print @(Model.IsS52 ? "Range" : "Batches") &nbsp;·&nbsp; <span>Step 3</span></div>
+        <div class="sp-trail-label">
+            Print @(Model.IsS52 ? "Range" : isTpa ? "Third-Party Applications" : "Batches")
+            &nbsp;·&nbsp; <span>Step 3</span>
+        </div>
     </div>
 
     <!-- BODY -->
@@ -1051,17 +1125,44 @@
                         <div class="sp-sn gold">@subTypeLabel</div>
                         <div class="sp-sl">Print Type</div>
                     </div>
+
                     <div class="sp-stat">
                         <div class="sp-sn">@(Model.BulkFromDate?.ToString("dd MMM") ?? "—")</div>
                         <div class="sp-sl">From Date</div>
                     </div>
+
                     <div class="sp-stat">
                         <div class="sp-sn">@(Model.BulkToDate?.ToString("dd MMM") ?? "—")</div>
                         <div class="sp-sl">To Date</div>
                     </div>
+
                     <div class="sp-stat">
                         <div class="sp-sn green">@Model.TotalPrinted.ToString("N0")</div>
                         <div class="sp-sl">Printed</div>
+                    </div>
+                </div>
+            }
+            else if (isTpa && tpa != null)
+            {
+                <div class="sp-stats">
+                    <div class="sp-stat">
+                        <div class="sp-sn gold">@tpa.TotalRecords.ToString("N0")</div>
+                        <div class="sp-sl">Total</div>
+                    </div>
+
+                    <div class="sp-stat">
+                        <div class="sp-sn">@tpa.TotalPendingPrint.ToString("N0")</div>
+                        <div class="sp-sl">Pending</div>
+                    </div>
+
+                    <div class="sp-stat">
+                        <div class="sp-sn green">@tpa.TotalPrinted.ToString("N0")</div>
+                        <div class="sp-sl">Printed</div>
+                    </div>
+
+                    <div class="sp-stat">
+                        <div class="sp-sn @(tpa.TotalPrintFailed > 0 ? "red" : "")">@tpa.TotalPrintFailed.ToString("N0")</div>
+                        <div class="sp-sl">Failed</div>
                     </div>
                 </div>
             }
@@ -1072,115 +1173,161 @@
                         <div class="sp-sn gold">@Model.TotalBatches</div>
                         <div class="sp-sl">Batches</div>
                     </div>
+
                     <div class="sp-stat">
                         <div class="sp-sn">@Model.TotalRecordsBatched.ToString("N0")</div>
                         <div class="sp-sl">Total Records</div>
                     </div>
+
                     <div class="sp-stat">
                         <div class="sp-sn green">@Model.TotalPrinted.ToString("N0")</div>
                         <div class="sp-sl">Printed</div>
                     </div>
+
                     <div class="sp-stat">
                         <div class="sp-sn @(Model.TotalFailed > 0 ? "red" : "")">@Model.TotalFailed.ToString("N0")</div>
                         <div class="sp-sl">Failed</div>
                     </div>
                 </div>
             }
-
             <!-- Bulk actions -->
             <div class="sp-actions">
-                @if (Model.IsS52)
-                {
-                    var canPrintS52Range = Model.BulkFromDate.HasValue && Model.BulkToDate.HasValue;
+              @if (Model.IsS52)
+{
+    var canPrintS52Range = Model.BulkFromDate.HasValue && Model.BulkToDate.HasValue;
 
-                    if (!Model.Batches.Any())
-                    {
-                        if (canPrintS52Range)
-                        {
-                            <button type="button" class="btn-gold" onclick="submitPrintS52Range(this)">
-                                🖨 Print S52 Range
-                            </button>
+    if (!Model.Batches.Any())
+    {
+        if (canPrintS52Range)
+        {
+            <button type="button" class="btn-gold" onclick="submitPrintS52Range(this)">
+                🖨 Print S52 Range
+            </button>
 
-                            <form id="printS52RangeForm"
-                                  action="/Step3/PrintS52Range"
-                                  method="post"
-                                  style="display:none">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="key" value="@key" />
-                                <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                                <input type="hidden" name="isReview" value="@Model.S52IsReview.ToString().ToLower()" />
-                            </form>
-                        }
-                        else
-                        {
-                            <div class="btn-gold disabled" style="opacity:.5">
-                                🖨 Print S52 Range
-                            </div>
+            <form id="printS52RangeForm"
+                  action="/Step3/PrintS52Range"
+                  method="post"
+                  style="display:none">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="key" value="@key" />
+                <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+                <input type="hidden" name="isReview" value="@Model.S52IsReview.ToString().ToLower()" />
+            </form>
+        }
+        else
+        {
+            <div class="btn-gold disabled" style="opacity:.5">
+                🖨 Print S52 Range
+            </div>
 
-                            <div class="sp-alert sp-alert-err" style="margin:0">
-                                ⚠ S52 From Date and To Date are missing. Go back to Step 1 / approval settings and save the range.
-                            </div>
-                        }
-                    }
-                    else if (anyPrintable)
-                    {
-                        <button type="button" class="btn-gold" onclick="submitPrintAll()">
-                            🖨 Print Pending Batches
-                        </button>
+            <div class="sp-alert sp-alert-err" style="margin:0">
+                ⚠ S52 From Date and To Date are missing. Go back to Step 1 / approval settings and save the range.
+            </div>
+        }
+    }
+    else if (anyPrintable)
+    {
+        <button type="button" class="btn-gold" onclick="submitPrintAll()">
+            🖨 Print Pending Batches
+        </button>
 
-                        <form id="printAllForm" action="/Step3/PrintAll" method="post" style="display:none">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="key" value="@key" />
-                        </form>
-                    }
-                    else
-                    {
-                        <div class="btn-gold disabled" style="opacity:.5">
-                            ✓ Range Already Printed
-                        </div>
-                    }
+        <form id="printAllForm" action="/Step3/PrintAll" method="post" style="display:none">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="key" value="@key" />
+        </form>
+    }
+    else
+    {
+        <div class="btn-gold disabled" style="opacity:.5">
+            ✓ Range Already Printed
+        </div>
+    }
 
-                    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
-                        📧 Go to Send Email →
-                    </a>
+    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
+        📧 Go to Send Email →
+    </a>
 
-                    <a href="@kickoffUrl" class="btn-outline-dark">
-                        ← Back to Kickoff
-                    </a>
-                }
-                else
-                {
-                    // ── Non-S52 notices (S49, S51, S53, DJ, IN, S78) ─────────────
-                    if (anyPrintable)
-                    {
-                        <button type="button" class="btn-gold" onclick="submitPrintAll()">
-                            🖨 Print All Pending
-                        </button>
+    <a href="@kickoffUrl" class="btn-outline-dark">
+        ← Back to Kickoff
+    </a>
+}
+else if (isTpa && tpa != null)
+{
+    if (tpaAnyPending)
+    {
+        <button type="button" class="btn-gold" onclick="submitTpaPrint(this)">
+            🖨 Print Third-Party Appeal Notices
+        </button>
 
-                        <form id="printAllForm" action="/Step3/PrintAll" method="post" style="display:none">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="key" value="@key" />
-                        </form>
-                    }
-                    else if (allDone)
-                    {
-                        <div class="btn-gold disabled" style="opacity:.5">✓ All Batches Printed</div>
-                    }
+        <form id="tpaPrintForm" action="/Step3/PrintThirdPartyAppealApplications" method="post" style="display:none">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="key" value="@key" />
+        </form>
+    }
+    else if (tpaAllDone)
+    {
+        <div class="btn-gold disabled" style="opacity:.5">
+            ✓ All Third-Party Appeal Notices Printed
+        </div>
+    }
+    else
+    {
+        <div class="btn-gold disabled" style="opacity:.5">
+            No Third-Party Appeal Records to Print
+        </div>
+    }
 
-                    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
-                        📧 Go to Send Email →
-                    </a>
+    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
+        📧 Go to Send Email →
+    </a>
 
-                    <a href="@kickoffUrl" class="btn-outline-dark">
-                        ← Back to Kickoff
-                    </a>
-                }
+    <a href="@kickoffUrl" class="btn-outline-dark">
+        ← Back to Kickoff
+    </a>
+}
+else
+{
+    if (anyPrintable)
+    {
+        <button type="button" class="btn-gold" onclick="submitPrintAll()">
+            🖨 Print All Pending
+        </button>
+
+        <form id="printAllForm" action="/Step3/PrintAll" method="post" style="display:none">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="key" value="@key" />
+        </form>
+    }
+    else if (allDone)
+    {
+        <div class="btn-gold disabled" style="opacity:.5">
+            ✓ All Batches Printed
+        </div>
+    }
+
+    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
+        📧 Go to Send Email →
+    </a>
+
+    <a href="@kickoffUrl" class="btn-outline-dark">
+        ← Back to Kickoff
+    </a>
+}     
+            
+            
             </div>
 
             <!-- Save path info -->
             <div class="sp-path-info">
                 <b>📁 Save location:</b><br />
-                <code>@($"C:\\[Roll Root]\\{Model.RollShortCode}_{Model.Notice}\\Batches\\[BatchName]\\[PropertyDesc]_{Model.Notice}.pdf")</code>
+                @if (isTpa)
+                {
+                    <code>[Appeal Root]\[Appeal_No]\THIRD-PARTY APPLICATION\Valuation Appeal Board formal notice[Appeal_No].pdf</code>
+                }
+                else
+                {
+                    <code>@($"C:\\[Roll Root]\\{Model.RollShortCode}_{Model.Notice}\\Batches\\[BatchName]\\[PropertyDesc]_{Model.Notice}.pdf")</code>
+                }
             </div>
 
             <!-- Workflow summary card -->
@@ -1225,36 +1372,66 @@
                             <div class="sp-fv @(string.IsNullOrWhiteSpace(Model.FinancialYearsText) ? "empty" : "")">@(Model.FinancialYearsText ?? "—")</div>
                         </div>
                     </div>
-                    @if (!Model.IsS52)
+                    @if (!Model.IsS52 && !isTpa)
                     {
                         <hr class="sp-divider" />
                         <div class="sp-field">
-                            <div class="sp-fl">Signature</div><div class="sp-fv">
-                            @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
-                            {
-                                <span class="sp-badge-ok">✓ Uploaded</span>
-                            }
-                            else
-                            {
-
-                                <span class="sp-badge-warn">⚠ Missing</span>
-                            }
+                            <div class="sp-fl">Signature</div>
+                            <div class="sp-fv">
+                                @if (!string.IsNullOrWhiteSpace(Model.SignaturePath))
+                                {
+                                    <span class="sp-badge-ok">✓ Uploaded</span>
+                                }
+                                else
+                                {
+                                    <span class="sp-badge-warn">⚠ Missing</span>
+                                }
+                            </div>
                         </div>
-                    </div>
-                }
+                    }
+
+                    @if (isTpa)
+                    {
+                        <hr class="sp-divider" />
+                        <div class="sp-field">
+                            <div class="sp-fl">TPA Rule</div>
+                            <div class="sp-fv" style="font-size:.72rem;line-height:1.5">
+                                No batches. No ranges. Prints directly from ThirdPartyAppealApplicationNotices.
+                            </div>
+                        </div>
+                    }
+            
             </div>
         </div>
 
-        @if (allDone && !Model.IsS52)
-        {
-            <div class="sp-complete-banner" style="margin:14px 16px;border-radius:10px">
-                <div style="font-size:2rem;flex-shrink:0">🎉</div>
-                <div>
-                    <div style="font-size:.82rem;font-weight:800;margin-bottom:2px">All Batches Printed</div>
-                    <div style="font-size:.7rem;opacity:.75">@Model.TotalPrinted.ToString("N0") notices saved. Proceed to Send Email.</div>
+            @if (tpaAllDone && tpa != null)
+            {
+                <div class="sp-complete-banner" style="margin:14px 16px;border-radius:10px">
+                    <div style="font-size:2rem;flex-shrink:0">🎉</div>
+                    <div>
+                        <div style="font-size:.82rem;font-weight:800;margin-bottom:2px">
+                            All Third-Party Appeal Notices Printed
+                        </div>
+                        <div style="font-size:.7rem;opacity:.75">
+                            @tpa.TotalPrinted.ToString("N0") notices saved. Proceed to Send Email.
+                        </div>
+                    </div>
                 </div>
-            </div>
-        }
+            }
+            else if (allDone && !Model.IsS52 && !isTpa)
+            {
+                <div class="sp-complete-banner" style="margin:14px 16px;border-radius:10px">
+                    <div style="font-size:2rem;flex-shrink:0">🎉</div>
+                    <div>
+                        <div style="font-size:.82rem;font-weight:800;margin-bottom:2px">
+                            All Batches Printed
+                        </div>
+                        <div style="font-size:.7rem;opacity:.75">
+                            @Model.TotalPrinted.ToString("N0") notices saved. Proceed to Send Email.
+                        </div>
+                    </div>
+                </div>
+            }
 
     </div><!-- /sp-left -->
     <!-- ── RIGHT: BATCH PRINT TABLE ──────────────────────────────────── -->
@@ -1262,17 +1439,139 @@
         <div class="sp-rh">
             <div class="sp-rh-title">
                 <div class="sp-rh-icon">🖨</div>
-                Print Dashboard — @Model.Notice — @Model.RollShortCode
+                    Print Dashboard — @(isTpa ? "Third-Party Appeal Application" : Model.Notice.ToString()) — @Model.RollShortCode
                 @if (Model.IsS52)
                 {
                     <span style="margin-left:6px;font-size:.68rem;opacity:.7">(@subTypeLabel)</span>
                 }
             </div>
-            <span class="sp-badge-info">@Model.Batches.Count batch@(Model.Batches.Count == 1 ? "" : "es")</span>
+                @if (isTpa && tpa != null)
+                {
+                    <span class="sp-badge-info">@tpa.Items.Count record@(tpa.Items.Count == 1 ? "" : "s")</span>
+                }
+                else
+                {
+                    <span class="sp-badge-info">@Model.Batches.Count batch@(Model.Batches.Count == 1 ? "" : "es")</span>
+                }
         </div>
         <div class="sp-rb">
-            @if (!Model.Batches.Any())
-            {
+                @if (isTpa && tpa != null)
+                {
+                    if (!tpa.Items.Any())
+                    {
+                        <div class="sp-empty">
+                            <div class="sp-empty-icon">📭</div>
+                            <div style="font-size:.95rem;font-weight:800;color:#1a1a1a;margin-bottom:6px">
+                                No Third-Party Appeal records found
+                            </div>
+                            <div style="font-size:.75rem;color:#9a9a9a;line-height:1.7;max-width:420px">
+                                Make sure the TPA extract has been loaded into ThirdPartyAppealApplicationNotices.
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="sp-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Appeal No</th>
+                                    <th>Property</th>
+                                    <th>Owner Email</th>
+                                    <th>Status</th>
+                                    <th>PDF</th>
+                                    <th>Error</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{
+                                    int tpaRow = 0;
+                                }
+
+                                @foreach (var item in tpa.Items)
+                                {
+                                    tpaRow++;
+
+                                    <tr>
+                                        <td class="sp-dt" style="color:#bbb;width:30px">@tpaRow</td>
+
+                                        <td>
+                                            <span class="sp-code">@item.AppealNo</span>
+                                            @if (!string.IsNullOrWhiteSpace(item.ObjectionNo))
+                                            {
+                                                <div class="sp-meta-sub">Obj: @item.ObjectionNo</div>
+                                            }
+                                        </td>
+
+                                        <td>
+                                            <div style="font-weight:700;max-width:420px">
+                                                @item.PropertyDescription
+                                            </div>
+                                            <div class="sp-meta-sub">@item.PropertyType</div>
+                                        </td>
+
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(item.OwnerEmail))
+                                            {
+                                                @item.OwnerEmail
+                                            }
+                                            else
+                                            {
+                                                <span class="sp-badge-warn">Missing</span>
+                                            }
+                                        </td>
+
+                                        <td>
+                                            @if (item.Status == "Printed" || item.Status == "Sent")
+                                            {
+                                                <span class="sp-badge-ok">✓ @item.Status</span>
+                                            }
+                                            else if (item.Status == "Print-Failed")
+                                            {
+                                                <span class="sp-badge-red">✗ Print Failed</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="sp-badge-warn">@item.Status</span>
+                                            }
+                                        </td>
+
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(item.PdfPath))
+                                            {
+                                                <a class="btn-outline-gold"
+                                                       style="padding:6px 10px;font-size:.68rem"
+                                                       target="_blank"
+                                                       href="@Url.Action("OpenThirdPartyPdf", "Step3", new { id = item.Id })">
+                                                    Open PDF
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#bbb">—</span>
+                                            }
+                                        </td>
+
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(item.ErrorMessage))
+                                            {
+                                                <span style="color:#c0392b;font-size:.7rem">
+                                                    @item.ErrorMessage
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#bbb">—</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+                else if (!Model.Batches.Any())
+                {
                 <div class="sp-empty">
                     <div class="sp-empty-icon">📦</div>
                     @if (Model.IsS52)
@@ -1410,6 +1709,8 @@
                     </tbody>
                 </table>
             }
+     
+        
         </div>
     </div><!-- /sp-right -->
 
@@ -1451,7 +1752,12 @@
             </div>
         </div>
         <div class="pp-path">
-            📁 Saving to: <code id="ppPath">@($"[Roll Root]\\{Model.RollShortCode}_{Model.Notice}\\Batches\\[BatchName]\\[Property]_{Model.Notice}.pdf")</code>
+            📁 Saving to:
+            <code id="ppPath">
+                @(isTpa
+                    ? "[Appeal Root]\\[Appeal_No]\\THIRD-PARTY APPLICATION\\Valuation Appeal Board formal notice[Appeal_No].pdf"
+                    : $"[Roll Root]\\{Model.RollShortCode}_{Model.Notice}\\Batches\\[BatchName]\\[Property]_{Model.Notice}.pdf")
+            </code>
         </div>
         <div id="ppWorking" style="text-align:center;font-size:.72rem;color:#9a9a9a;margin-bottom:16px">
             <span class="pp-pulse">⏳ Printing in progress…</span>
@@ -1570,5 +1876,77 @@
             document.getElementById('printS52RangeFormMain');
 
         form.submit();
+
+    }
+        function submitTpaPrint(btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="sp-spin"></span> Starting TPA print…';
+
+        document.getElementById('ppOverlay').classList.add('active');
+        document.getElementById('ppTitle').textContent = 'Printing Third-Party Appeal notices…';
+        document.getElementById('ppBatchName').textContent = 'Direct print — no batches';
+        document.getElementById('ppWorking').style.display = '';
+        document.getElementById('ppDoneBanner').classList.remove('active');
+        document.getElementById('ppCloseBtn').classList.remove('active');
+
+        document.getElementById('ppTotal').textContent = '@(tpa?.TotalRecords ?? 0)';
+        document.getElementById('ppRemaining').textContent = '@(tpa?.TotalPendingPrint ?? 0)';
+        document.getElementById('ppChipGen').textContent = '@(tpa?.TotalPendingPrint ?? 0)';
+        document.getElementById('ppChipDone').textContent = '@(tpa?.TotalPrinted ?? 0)';
+        document.getElementById('ppChipFail').textContent = '@(tpa?.TotalPrintFailed ?? 0)';
+        document.getElementById('ppBarFill').style.width = '0%';
+        document.getElementById('ppBarFill').classList.remove('done');
+        document.getElementById('ppPct').textContent = '0';
+
+        document.getElementById('ppPath').textContent =
+            '[Appeal Root]\\[Appeal_No]\\THIRD-PARTY APPLICATION\\Valuation Appeal Board formal notice[Appeal_No].pdf';
+
+        _pollTimer = setInterval(pollTpaPrintProgress, 700);
+
+        document.getElementById('tpaPrintForm').submit();
+    }
+
+    function pollTpaPrintProgress() {
+        fetch(`/Step3/ThirdPartyPrintProgress?key=${encodeURIComponent(_currentKey)}`)
+            .then(r => r.json())
+            .then(d => {
+                const total = d.total || 0;
+                const printed = d.printed || 0;
+                const failed = d.failed || 0;
+                const pending = d.pending || 0;
+                const pct = total > 0 ? Math.round((printed + failed) * 100 / total) : 0;
+
+                document.getElementById('ppPct').textContent = pct;
+                document.getElementById('ppTotal').textContent = total.toLocaleString();
+                document.getElementById('ppPrinted').textContent = printed.toLocaleString();
+                document.getElementById('ppRemaining').textContent = pending.toLocaleString();
+                document.getElementById('ppChipGen').textContent = pending.toLocaleString();
+                document.getElementById('ppChipDone').textContent = printed.toLocaleString();
+                document.getElementById('ppChipFail').textContent = failed.toLocaleString();
+
+                const bar = document.getElementById('ppBarFill');
+                bar.style.width = pct + '%';
+
+                if (d.done) {
+                    clearInterval(_pollTimer);
+
+                    bar.classList.add('done');
+                    document.getElementById('ppWorking').style.display = 'none';
+                    document.getElementById('ppDoneBanner').classList.add('active');
+                    document.getElementById('ppCloseBtn').classList.add('active');
+                    document.getElementById('ppTitle').textContent = 'TPA print complete';
+
+                    document.getElementById('ppDoneTitle').textContent =
+                        failed > 0
+                            ? `Done — ${printed.toLocaleString()} printed, ${failed.toLocaleString()} failed`
+                            : `${printed.toLocaleString()} Third-Party Appeal notices printed`;
+
+                    document.getElementById('ppDoneSub').textContent =
+                        'Saved inside each Appeal_No folder under THIRD-PARTY APPLICATION.';
+                }
+            })
+            .catch(() => {
+                // keep polling on temporary errors
+            });
     }
 </script>

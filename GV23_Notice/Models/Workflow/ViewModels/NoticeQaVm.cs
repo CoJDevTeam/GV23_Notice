@@ -34,6 +34,7 @@ namespace GV23_Notice.Models.Workflow.ViewModels
     public sealed class NoticeQaGroupVm
     {
         public string PropertyType { get; set; } = "";
+        public string GroupLabel { get; set; } = "QA Group";
         public List<NoticeQaItemVm> Items { get; set; } = new();
     }
 

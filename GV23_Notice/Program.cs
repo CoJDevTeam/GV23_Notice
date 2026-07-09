@@ -171,6 +171,10 @@ builder.Services.AddScoped<INoticeCorrectionEmailService, NoticeCorrectionEmailS
 // THIRD PARTY APPEAL DATE CONFIGURATION
 // ----------------------------------------------------
 builder.Services.AddScoped<IThirdPartyAppealDateConfigurationService, ThirdPartyAppealDateConfigurationService>();
+builder.Services.AddScoped<IThirdPartyAppealFormalNoticePdfService, ThirdPartyAppealFormalNoticePdfService>();
+builder.Services.AddScoped<IThirdPartyAppealPackZipService, ThirdPartyAppealPackZipService>();
+builder.Services.AddScoped<IThirdPartyAppealPrintService, ThirdPartyAppealPrintService>();
+builder.Services.AddScoped<IThirdPartyAppealEmailService, ThirdPartyAppealEmailService>();
 
 // ----------------------------------------------------
 // Security

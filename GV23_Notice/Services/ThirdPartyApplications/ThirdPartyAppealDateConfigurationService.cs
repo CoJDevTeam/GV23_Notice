@@ -11,6 +11,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
     public sealed class ThirdPartyAppealDateConfigurationService : IThirdPartyAppealDateConfigurationService
     {
         private const string NoticeName = "Third-Party Appeal Application";
+        private const int DefaultResponseDays = 51;
 
         private readonly AppDbContext _db;
 
@@ -34,11 +35,21 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 ? null
                 : rollShortCode.Trim();
 
+            /*
+             * Step 1 only shows an estimated date.
+             * Final date is calculated again during email send using the actual sent date.
+             */
+            var calculatedDate = await CalculateResponseDateAsync(
+                startDate: DateTime.Today,
+                responseDays: DefaultResponseDays,
+                ct: ct);
+
             var summary = await GetSummaryFromSpAsync(
                 rollId,
                 selectedRollShortCode,
                 selectedValuationPeriod,
                 performedBy,
+                calculatedDate,
                 ct);
 
             var vm = new ThirdPartyAppealDateConfigVm
@@ -48,9 +59,9 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 Notice = NoticeName,
                 ValuationPeriod = selectedValuationPeriod,
 
-                EstimatedSendDate = summary.EstimatedSendDate,
-                ResponseDays = summary.ResponseDays,
-                EstimatedResponseDueDate = summary.EstimatedResponseDueDate,
+                EstimatedSendDate = calculatedDate.StartDate,
+                ResponseDays = calculatedDate.ResponseDays,
+                EstimatedResponseDueDate = calculatedDate.ResponseDueDate,
 
                 TotalRecords = summary.TotalRecords,
                 TotalWithOwnerEmail = summary.TotalWithOwnerEmail,
@@ -81,6 +92,19 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             if (string.IsNullOrWhiteSpace(vm.ValuationPeriod))
                 throw new InvalidOperationException("Valuation period is required.");
 
+            /*
+             * Refresh the estimated date using SP before audit.
+             * This avoids trusting browser-calculated values.
+             */
+            var calculatedDate = await CalculateResponseDateAsync(
+                startDate: DateTime.Today,
+                responseDays: DefaultResponseDays,
+                ct: ct);
+
+            vm.EstimatedSendDate = calculatedDate.StartDate;
+            vm.ResponseDays = calculatedDate.ResponseDays;
+            vm.EstimatedResponseDueDate = calculatedDate.ResponseDueDate;
+
             var snapshot = JsonSerializer.Serialize(new
             {
                 vm.NoticeSettingsId,
@@ -98,7 +122,8 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 vm.MultipurposeCount,
                 vm.TotalPrinted,
                 vm.TotalSent,
-                vm.TotalFailed
+                vm.TotalFailed,
+                Rule = "51 days starts from the actual email sent date. Step 1 only stores an estimated date."
             });
 
             var connection = _db.Database.GetDbConnection();
@@ -158,11 +183,63 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             await command.ExecuteNonQueryAsync(ct);
         }
 
+        public async Task<ThirdPartyAppealResponseDateVm> CalculateResponseDateAsync(
+            DateTime? startDate,
+            int responseDays,
+            CancellationToken ct)
+        {
+            if (responseDays <= 0)
+                responseDays = DefaultResponseDays;
+
+            var connection = _db.Database.GetDbConnection();
+
+            await using var command = connection.CreateCommand();
+            command.CommandText = "[dbo].[usp_ThirdPartyAppeal_CalculateResponseDueDate]";
+            command.CommandType = CommandType.StoredProcedure;
+
+            command.Parameters.Add(new SqlParameter("@StartDate", SqlDbType.Date)
+            {
+                Value = startDate.HasValue
+                    ? startDate.Value.Date
+                    : DBNull.Value
+            });
+
+            command.Parameters.Add(new SqlParameter("@ResponseDays", SqlDbType.Int)
+            {
+                Value = responseDays
+            });
+
+            if (connection.State != ConnectionState.Open)
+                await connection.OpenAsync(ct);
+
+            await using var reader = await command.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+            {
+                var fallbackStart = startDate?.Date ?? DateTime.Today;
+
+                return new ThirdPartyAppealResponseDateVm
+                {
+                    StartDate = fallbackStart,
+                    ResponseDays = responseDays,
+                    ResponseDueDate = fallbackStart.AddDays(responseDays)
+                };
+            }
+
+            return new ThirdPartyAppealResponseDateVm
+            {
+                StartDate = ReadDate(reader, "StartDate", startDate?.Date ?? DateTime.Today),
+                ResponseDays = ReadInt(reader, "ResponseDays"),
+                ResponseDueDate = ReadDate(reader, "ResponseDueDate", (startDate?.Date ?? DateTime.Today).AddDays(responseDays))
+            };
+        }
+
         private async Task<ThirdPartyAppealDateConfigurationSummaryVm> GetSummaryFromSpAsync(
             int? rollId,
             string? rollShortCode,
             string valuationPeriod,
             string performedBy,
+            ThirdPartyAppealResponseDateVm calculatedDate,
             CancellationToken ct)
         {
             var connection = _db.Database.GetDbConnection();
@@ -178,7 +255,9 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
             command.Parameters.Add(new SqlParameter("@RollShortCode", SqlDbType.NVarChar, 50)
             {
-                Value = string.IsNullOrWhiteSpace(rollShortCode) ? DBNull.Value : rollShortCode
+                Value = string.IsNullOrWhiteSpace(rollShortCode)
+                    ? DBNull.Value
+                    : rollShortCode
             });
 
             command.Parameters.Add(new SqlParameter("@ValuationPeriod", SqlDbType.NVarChar, 250)
@@ -209,9 +288,9 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                     RollShortCode = rollShortCode ?? "",
                     ValuationPeriod = valuationPeriod,
                     Notice = NoticeName,
-                    EstimatedSendDate = DateTime.Today,
-                    ResponseDays = 51,
-                    EstimatedResponseDueDate = DateTime.Today.AddDays(51)
+                    EstimatedSendDate = calculatedDate.StartDate,
+                    ResponseDays = calculatedDate.ResponseDays,
+                    EstimatedResponseDueDate = calculatedDate.ResponseDueDate
                 };
             }
 
@@ -222,9 +301,13 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 ValuationPeriod = ReadString(reader, "ValuationPeriod"),
                 Notice = ReadString(reader, "Notice"),
 
-                EstimatedSendDate = ReadDate(reader, "EstimatedSendDate", DateTime.Today),
-                ResponseDays = ReadInt(reader, "ResponseDays"),
-                EstimatedResponseDueDate = ReadDate(reader, "EstimatedResponseDueDate", DateTime.Today.AddDays(51)),
+                /*
+                 * Do not trust summary SP dates as final.
+                 * Use the dedicated 51-day calculation SP result.
+                 */
+                EstimatedSendDate = calculatedDate.StartDate,
+                ResponseDays = calculatedDate.ResponseDays,
+                EstimatedResponseDueDate = calculatedDate.ResponseDueDate,
 
                 TotalRecords = ReadInt(reader, "TotalRecords"),
                 TotalWithOwnerEmail = ReadInt(reader, "TotalWithOwnerEmail"),
@@ -243,13 +326,10 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             int? selectedRollId,
             CancellationToken ct)
         {
-            /*
-             * Replace this with your existing RollRegistry table if the property names differ.
-             * I kept it simple because your app already has RollRegistry in other notice workflows.
-             */
-            var rolls = await _db.RollRegistry  
+            var rolls = await _db.RollRegistry
                 .AsNoTracking()
-                .OrderBy(x => x.Name)
+                .Where(x => x.IsActive)
+                .OrderBy(x => x.RollId)
                 .Select(x => new SelectListItem
                 {
                     Value = x.RollId.ToString(),
@@ -284,25 +364,33 @@ namespace GV23_Notice.Services.ThirdPartyApplications
         private static string ReadString(IDataRecord reader, string name)
         {
             var ordinal = reader.GetOrdinal(name);
-            return reader.IsDBNull(ordinal) ? "" : Convert.ToString(reader.GetValue(ordinal)) ?? "";
+            return reader.IsDBNull(ordinal)
+                ? ""
+                : Convert.ToString(reader.GetValue(ordinal)) ?? "";
         }
 
         private static int ReadInt(IDataRecord reader, string name)
         {
             var ordinal = reader.GetOrdinal(name);
-            return reader.IsDBNull(ordinal) ? 0 : Convert.ToInt32(reader.GetValue(ordinal));
+            return reader.IsDBNull(ordinal)
+                ? 0
+                : Convert.ToInt32(reader.GetValue(ordinal));
         }
 
         private static int? ReadNullableInt(IDataRecord reader, string name)
         {
             var ordinal = reader.GetOrdinal(name);
-            return reader.IsDBNull(ordinal) ? null : Convert.ToInt32(reader.GetValue(ordinal));
+            return reader.IsDBNull(ordinal)
+                ? null
+                : Convert.ToInt32(reader.GetValue(ordinal));
         }
 
         private static DateTime ReadDate(IDataRecord reader, string name, DateTime fallback)
         {
             var ordinal = reader.GetOrdinal(name);
-            return reader.IsDBNull(ordinal) ? fallback : Convert.ToDateTime(reader.GetValue(ordinal));
+            return reader.IsDBNull(ordinal)
+                ? fallback
+                : Convert.ToDateTime(reader.GetValue(ordinal));
         }
     }
 }

@@ -212,7 +212,7 @@
     else if (Model.QaRunId == null)
     {
         <div class="qa-alert qa-alert-info">
-            Create the QA sample before sending emails. The system will select up to 5 records per Property Type.
+            Create the QA sample before sending emails. The system will select a dynamic sample based on the notice type and available printed records.
         </div>
     }
     else if (Model.FailedItems > 0)
@@ -255,7 +255,7 @@
         {
             <div class="qa-card">
                 <div class="qa-card-head">
-                    <strong>Property Type: @group.PropertyType</strong>
+                    <strong>@group.GroupLabel: @group.PropertyType</strong>
                     <span>@group.Items.Count item(s)</span>
                 </div>
 

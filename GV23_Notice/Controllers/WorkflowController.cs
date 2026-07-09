@@ -15,6 +15,7 @@ using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.SnapShotStep2;
+using GV23_Notice.Services.ThirdPartyApplications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
@@ -44,6 +45,7 @@ namespace GV23_Notice.Controllers
         private readonly ITempFileStore _tempFiles;
         private readonly INoticeStep2SnapshotService _snap;
         private readonly GV23_Notice.Services.Step3.IS52RangePrintService _s52Range;
+        private readonly IThirdPartyAppealDateConfigurationService _thirdPartyDates;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -59,7 +61,7 @@ namespace GV23_Notice.Controllers
      IPreviewDbDataService previewDb,
      ITempFileStore tempFiles,
      INoticeStep2SnapshotService snap,
-     GV23_Notice.Services.Step3.IS52RangePrintService s52Range)
+     GV23_Notice.Services.Step3.IS52RangePrintService s52Range, IThirdPartyAppealDateConfigurationService thirdPartyDates)
         {
             _db = db;
             _settings = settings;
@@ -76,8 +78,8 @@ namespace GV23_Notice.Controllers
             _previewRepo = previewDb;
             _snap = snap;
             _s52Range = s52Range;
-
-            _tempFiles = tempFiles;     // ✅ assign
+            _thirdPartyDates = thirdPartyDates;
+            _tempFiles = tempFiles;     
         }
 
         // GET: /Workflow/Step1
@@ -121,14 +123,26 @@ namespace GV23_Notice.Controllers
             }
 
             // Default empty vm
-            return View(new WorkflowStep1Vm
+            var defaultVm = new WorkflowStep1Vm
             {
                 RollId = rollId ?? 0,
                 Notice = notice ?? NoticeKind.S49,
                 Mode = mode ?? BatchMode.Bulk,
                 LetterDate = DateTime.Today,
                 BatchDate = DateTime.Today
-            });
+            };
+
+            if (defaultVm.Notice == NoticeKind.TPA)
+            {
+                var calc = await _thirdPartyDates.CalculateResponseDateAsync(
+                    startDate: DateTime.Today,
+                    responseDays: 51,
+                    ct: ct);
+
+                defaultVm.LetterDate = calc.StartDate;
+            }
+            return View(defaultVm);
+
         }
 
         private static void ApplyValuationAndFinancialYear(WorkflowStep1Vm vm, NoticeSettings e)
@@ -236,7 +250,23 @@ namespace GV23_Notice.Controllers
                             "Appeal Close Date is required when overridden.");
                 }
             }
+            // Third-Party Appeal Application
+            // Third-Party Appeal Application
+            if (vm.Notice == NoticeKind.TPA)
+            {
+                /*
+                 * Step 1 only shows an estimated response period.
+                 * The final 51 days must still be recalculated on email send date.
+                 * This uses SP: usp_ThirdPartyAppeal_CalculateResponseDueDate.
+                 */
+                var calc = await _thirdPartyDates.CalculateResponseDateAsync(
+                    startDate: DateTime.Today,
+                    responseDays: 51,
+                    ct: ct);
 
+                vm.LetterDate = calc.StartDate;
+                vm.BatchDate = calc.StartDate;
+            }
             if (!ModelState.IsValid)
                 return View("Step1", vm);
 
@@ -306,6 +336,26 @@ namespace GV23_Notice.Controllers
                 comment: null,
                 ct: ct);
 
+            if (entity.Notice == NoticeKind.TPA)
+            {
+                var roll = await _db.RollRegistry
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.RollId == entity.RollId, ct);
+
+                var tpaVm = await _thirdPartyDates.BuildAsync(
+                    rollId: entity.RollId,
+                    rollShortCode: roll?.ShortCode,
+                    valuationPeriod: entity.ValuationPeriodCode ?? entity.FinancialYearsText ?? "GENERAL VALUATION ROLL 2023",
+                    performedBy: user,
+                    ct: ct);
+
+                tpaVm.NoticeSettingsId = entity.Id;
+
+                await _thirdPartyDates.SaveStep1AuditAsync(
+                    tpaVm,
+                    user,
+                    ct);
+            }
             TempData["Success"] = $"Saved and confirmed (v{entity.Version}). Please review summary to approve.";
             return RedirectToAction(nameof(Step1Summary), new { settingsId = entity.Id });
         }
@@ -322,6 +372,15 @@ namespace GV23_Notice.Controllers
                 .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
             if (roll is null) return NotFound();
 
+            ThirdPartyAppealResponseDateVm? tpaDate = null;
+
+            if (s.Notice == NoticeKind.TPA)
+            {
+                tpaDate = await _thirdPartyDates.CalculateResponseDateAsync(
+                    startDate: DateTime.Today,
+                    responseDays: 51,
+                    ct: ct);
+            }
             var vm = new WorkflowStep1SummaryVm
             {
                 SettingsId = s.Id,
@@ -336,37 +395,36 @@ namespace GV23_Notice.Controllers
                 IsConfirmed = s.IsConfirmed,
                 IsApproved = s.IsApproved,
 
-                // common
                 LetterDate = s.LetterDate,
                 PortalUrl = s.PortalUrl,
                 EnquiriesLine = s.EnquiriesLine,
                 CityManagerSignDate = s.CityManagerSignDate,
 
-                // s49
                 ObjectionStartDate = s.ObjectionStartDate,
                 ObjectionEndDate = s.ObjectionEndDate,
                 ExtensionDate = s.ExtensionDate,
                 SignaturePath = s.SignaturePath,
 
-                // s51
                 EvidenceCloseDate = s.EvidenceCloseDate,
 
-                // s52
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
                 S52SendMode = s.S52SendMode,
 
-                // s53
                 BatchDate = s.BatchDate,
                 AppealCloseDate = s.AppealCloseDate,
                 AppealCloseOverrideReason = s.AppealCloseOverrideReason,
                 AppealCloseOverrideEvidencePath = s.AppealCloseOverrideEvidencePath,
 
-                // s78
                 ExtractionDate = s.ExtractionDate,
                 ExtractPeriodDays = s.ExtractPeriodDays,
                 ReviewOpenDate = s.ReviewOpenDate,
-                ReviewCloseDate = s.ReviewCloseDate
+                ReviewCloseDate = s.ReviewCloseDate,
+
+                // TPA
+                ThirdPartyResponseDays = tpaDate?.ResponseDays,
+                ThirdPartyEstimatedSendDate = tpaDate?.StartDate,
+                ThirdPartyEstimatedResponseDueDate = tpaDate?.ResponseDueDate
             };
 
             return View(vm);
@@ -456,6 +514,40 @@ namespace GV23_Notice.Controllers
                     return RedirectToAction(nameof(Step1), new { settingsId = s.Id });
                 }
             }
+            if (s.Notice == NoticeKind.TPA)
+            {
+                if (string.IsNullOrWhiteSpace(s.ValuationPeriodCode))
+                {
+                    TempData["Error"] = "Valuation period is required for Third-Party Appeal Application.";
+                    return RedirectToAction(nameof(Step1), new { settingsId = s.Id });
+                }
+
+                var calc = await _thirdPartyDates.CalculateResponseDateAsync(
+                    startDate: DateTime.Today,
+                    responseDays: 51,
+                    ct: ct);
+
+                await _audit.WriteAsync(
+                    settingsId: s.Id,
+                    step: "Step1Summary",
+                    action: "APPROVE_TPA_DATE_CONFIGURATION",
+                    by: user,
+                    snapshot: new
+                    {
+                        s.Id,
+                        s.RollId,
+                        s.Notice,
+                        s.Mode,
+                        s.Version,
+                        s.ValuationPeriodCode,
+                        EstimatedSendDate = calc.StartDate,
+                        ResponseDays = calc.ResponseDays,
+                        EstimatedResponseDueDate = calc.ResponseDueDate,
+                        Rule = "Final 51 days starts from actual email sent date."
+                    },
+                    comment: "Third-Party Appeal Application configuration approved.",
+                    ct: ct);
+            }
 
             await _settings.ApproveAsync(s.Id, user, "Admin approved via Step1Summary.", ct);
 
@@ -480,11 +572,11 @@ namespace GV23_Notice.Controllers
 
 
         // ✅ inside WorkflowController (class-level helper)
-        // ✅ inside WorkflowController (class-level helper)
         private static DataDomain ResolveDomain(NoticeKind notice)
         {
-            // S52 is Appeal-domain, everything else is Objection-domain
-            return notice == NoticeKind.S52 ? DataDomain.Appeal : DataDomain.Objection;
+            return notice == NoticeKind.S52 || notice == NoticeKind.TPA
+                ? DataDomain.Appeal
+                : DataDomain.Objection;
         }
 
         private static PreviewVariant ParseVariantOrDefault(string? variant)
@@ -768,6 +860,14 @@ namespace GV23_Notice.Controllers
                 variant = s.S52SendMode == S52SendMode.ReviewOnly ? "S52Review" : "S52Appeal";
                 v = PreviewVariantParser.Parse(variant);
             }
+            if (s.Notice == NoticeKind.TPA)
+            {
+                variant = "Default";
+                mode = string.IsNullOrWhiteSpace(mode) ? "single" : mode;
+
+                v = PreviewVariant.Default;
+                m = PreviewMode.Single;
+            }
 
             NoticePreviewResult result;
 
@@ -1018,6 +1118,12 @@ namespace GV23_Notice.Controllers
             var parsedVariant = ParseVariantOrDefault(variant);
             var parsedMode = ParseModeOrDefault(mode);
 
+            if (s.Notice == NoticeKind.TPA)
+            {
+                parsedVariant = PreviewVariant.Default;
+                parsedMode = PreviewMode.Single;
+            }
+
             if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(appealNo))
                 return BadRequest("AppealNo is required for Section 52 previews.");
 
@@ -1160,6 +1266,39 @@ namespace GV23_Notice.Controllers
             }
 
             var pv = await _preview.BuildPreviewAsync(dto.SettingsId, dto.Variant, dto.Mode, dto.AppealNo, ct);
+
+            if (s.Notice == NoticeKind.TPA)
+            {
+                var calc = await _thirdPartyDates.CalculateResponseDateAsync(
+                    startDate: DateTime.Today,
+                    responseDays: 51,
+                    ct: ct);
+
+                await _audit.WriteAsync(
+                    settingsId: s.Id,
+                    step: "Step2",
+                    action: "APPROVE_TPA_PREVIEW",
+                    by: approvedBy,
+                    snapshot: new
+                    {
+                        s.Id,
+                        s.RollId,
+                        s.Notice,
+                        s.Mode,
+                        s.Version,
+                        s.ValuationPeriodCode,
+                        EstimatedSendDate = calc.StartDate,
+                        ResponseDays = calc.ResponseDays,
+                        EstimatedResponseDueDate = calc.ResponseDueDate,
+                        dto.Variant,
+                       
+                        dto.AppealNo,
+                        PreviewFileName = pv.PdfFileName,
+                        Rule = "Final 51 days starts from actual email sent date."
+                    },
+                    comment: "Third-Party Appeal Application preview approved.",
+                    ct: ct);
+            }
 
             await _snap.SaveApprovalAsync(
                 settingsId: dto.SettingsId,
@@ -1369,15 +1508,14 @@ namespace GV23_Notice.Controllers
             });
         }
 
-
         [HttpGet("Step3Kickoff")]
         public async Task<IActionResult> Step3Kickoff(
-       int settingsId,
-       Guid key,
-       string? variant,
-       string? mode,
-       string? appealNo,
-       CancellationToken ct)
+            int settingsId,
+            Guid key,
+            string? variant,
+            string? mode,
+            string? appealNo,
+            CancellationToken ct)
         {
             var s = await _settings.GetByIdAsync(settingsId, ct);
             if (s is null) return NotFound();
@@ -1388,34 +1526,84 @@ namespace GV23_Notice.Controllers
             if (!s.ApprovalKey.HasValue || s.ApprovalKey.Value == Guid.Empty || s.ApprovalKey.Value != key)
                 return Unauthorized("Invalid approval link.");
 
-            var roll = await _db.RollRegistry.AsNoTracking()
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
                 .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
+
             if (roll is null) return NotFound();
 
+            var shortCode = roll.ShortCode ?? "";
+
+            var isS52 = s.Notice == NoticeKind.S52;
+            var isTpa = s.Notice == NoticeKind.TPA;
+
+            /*
+             * Resolve preview variant and mode.
+             * Normal notices use what came from the query string.
+             * S52 has special review/appeal variants.
+             * TPA always uses Default + Single because it has one formal owner notice preview.
+             */
             var v = PreviewVariantParser.Parse(variant);
             var m = PreviewModeParser.Parse(mode);
 
-            // ── S52: default variant from S52SendMode when not supplied ──────
-            if (s.Notice == NoticeKind.S52 && string.IsNullOrWhiteSpace(variant))
+            if (isS52 && string.IsNullOrWhiteSpace(variant))
             {
                 variant = s.S52SendMode switch
                 {
-                    Domain.Workflow.S52SendMode.ReviewOnly => "S52Review",
-                    Domain.Workflow.S52SendMode.AppealDecisionOnly => "S52Appeal",
-                    _ => "S52Review"  // Both: default Review
+                    S52SendMode.ReviewOnly => "S52Review",
+                    S52SendMode.AppealDecisionOnly => "S52Appeal",
+                    _ => "S52Review"
                 };
+
                 v = PreviewVariantParser.Parse(variant);
             }
 
-            // ── S52 range count (shown in kickoff panel instead of batch info) ─
-            var s52RangeCount = 0;
-            var s52IsReview = (v == PreviewVariant.S52ReviewDecision);
-            if (s.Notice == NoticeKind.S52)
+            if (isTpa)
             {
-                try { s52RangeCount = await _s52Range.CountRangeAsync(s.Id, s52IsReview, ct); }
-                catch (Exception ex) { _log.LogWarning(ex, "S52 range count failed for settingsId={Id}", s.Id); }
+                variant = "Default";
+                mode = "single";
+                v = PreviewVariant.Default;
+                m = PreviewMode.Single;
             }
 
+            /*
+             * S52 range count.
+             * Only S52 uses the S52 range print service.
+             */
+            var s52RangeCount = 0;
+            var s52IsReview = v == PreviewVariant.S52ReviewDecision;
+
+            if (isS52)
+            {
+                try
+                {
+                    s52RangeCount = await _s52Range.CountRangeAsync(s.Id, s52IsReview, ct);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "S52 range count failed for settingsId={SettingsId}", s.Id);
+                }
+            }
+
+            /*
+             * TPA response date.
+             * This is still only an estimate at Step 3 Kickoff.
+             * The final 51-day period must be recalculated again when the emails are sent.
+             */
+            ThirdPartyAppealResponseDateVm? tpaDate = null;
+
+            if (isTpa)
+            {
+                tpaDate = await _thirdPartyDates.CalculateResponseDateAsync(
+                    startDate: DateTime.Today,
+                    responseDays: 51,
+                    ct: ct);
+            }
+
+            /*
+             * Build preview PDF using the normal preview service.
+             * Next phase: make sure INoticePreviewService supports NoticeKind.TPA.
+             */
             var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
 
             var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
@@ -1424,50 +1612,73 @@ namespace GV23_Notice.Controllers
 
             var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
 
-            // ── Compute next batch code ──────────────────────────────────────
-            var shortCode = roll.ShortCode ?? "";
+            /*
+             * Normal notices use NoticeBatches.
+             * TPA does not create normal batches, but we still show Step 3 Kickoff.
+             */
             var batchPrefix = ComputeBatchPrefix(s, shortCode);
-            var batchesCreated = await _db.NoticeBatches.AsNoTracking()
-                .CountAsync(b => b.WorkflowKey == key && b.BatchKind == "STEP3", ct);
 
-            // Load all created batches for the dashboard tab (newest first)
-            var createdBatchList = await _db.NoticeBatches.AsNoTracking()
-                .Where(b => b.WorkflowKey == key && b.BatchKind == "STEP3")
-                .OrderByDescending(b => b.Id)
-                .Take(200)
-                .ToListAsync(ct);
+            var batchesCreated = 0;
+            var nextBatchCode = isTpa
+                ? $"TPA_{shortCode.Replace(" ", "")}"
+                : $"{batchPrefix}0001";
 
-            var lastBatch = createdBatchList
-                .FirstOrDefault(b => b.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
-                ?? await _db.NoticeBatches.AsNoTracking()
-                    .Where(b => b.RollId == s.RollId && b.Notice == s.Notice
-                             && b.BatchKind == "STEP3"
-                             && b.BatchName.StartsWith(batchPrefix))
+            var kickoffBatchRows = new List<KickoffBatchRowVm>();
+
+            if (!isTpa)
+            {
+                batchesCreated = await _db.NoticeBatches
+                    .AsNoTracking()
+                    .CountAsync(b => b.WorkflowKey == key && b.BatchKind == "STEP3", ct);
+
+                var createdBatchList = await _db.NoticeBatches
+                    .AsNoTracking()
+                    .Where(b => b.WorkflowKey == key && b.BatchKind == "STEP3")
                     .OrderByDescending(b => b.Id)
-                    .FirstOrDefaultAsync(ct);
+                    .Take(200)
+                    .ToListAsync(ct);
 
-            var nextSeq = 1;
-            if (lastBatch != null && lastBatch.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                var tail = lastBatch.BatchName[batchPrefix.Length..];
-                if (int.TryParse(tail, out var parsed)) nextSeq = parsed + 1;
+                var lastBatch = createdBatchList
+                    .FirstOrDefault(b => b.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
+                    ?? await _db.NoticeBatches
+                        .AsNoTracking()
+                        .Where(b =>
+                            b.RollId == s.RollId &&
+                            b.Notice == s.Notice &&
+                            b.BatchKind == "STEP3" &&
+                            b.BatchName.StartsWith(batchPrefix))
+                        .OrderByDescending(b => b.Id)
+                        .FirstOrDefaultAsync(ct);
+
+                var nextSeq = 1;
+
+                if (lastBatch != null && lastBatch.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    var tail = lastBatch.BatchName[batchPrefix.Length..];
+
+                    if (int.TryParse(tail, out var parsed))
+                        nextSeq = parsed + 1;
+                }
+
+                nextBatchCode = $"{batchPrefix}{nextSeq:0000}";
+
+                kickoffBatchRows = createdBatchList
+                    .Select(b => new KickoffBatchRowVm
+                    {
+                        BatchId = b.Id,
+                        BatchName = b.BatchName,
+                        BatchDate = b.BatchDate,
+                        NumberOfRecords = b.NumberOfRecords,
+                        CreatedBy = b.CreatedBy ?? "",
+                        CreatedAtUtc = b.CreatedAtUtc,
+                        IsApproved = b.IsApproved,
+                        ApprovedBy = b.ApprovedBy,
+                        ApprovedAtUtc = b.ApprovedAtUtc
+                    })
+                    .ToList();
             }
-            var nextBatchCode = $"{batchPrefix}{nextSeq:0000}";
 
-            var kickoffBatchRows = createdBatchList.Select(b => new GV23_Notice.Models.Workflow.ViewModels.KickoffBatchRowVm
-            {
-                BatchId = b.Id,
-                BatchName = b.BatchName,
-                BatchDate = b.BatchDate,
-                NumberOfRecords = b.NumberOfRecords,
-                CreatedBy = b.CreatedBy ?? "",
-                CreatedAtUtc = b.CreatedAtUtc,
-                IsApproved = b.IsApproved,
-                ApprovedBy = b.ApprovedBy,
-                ApprovedAtUtc = b.ApprovedAtUtc
-            }).ToList();
-
-            var vm = new GV23_Notice.Models.Workflow.ViewModels.WorkflowStep3KickoffVm
+            var vm = new WorkflowStep3KickoffVm
             {
                 SettingsId = s.Id,
                 ApprovalKey = s.ApprovalKey.Value,
@@ -1484,7 +1695,7 @@ namespace GV23_Notice.Controllers
                 ApprovedBy = s.ApprovedBy,
                 ApprovedAtUtc = s.ApprovedAtUtc,
 
-                // Step1 snapshot
+                // Step 1 snapshot
                 LetterDate = s.LetterDate,
                 ObjectionStartDate = s.ObjectionStartDate,
                 ObjectionEndDate = s.ObjectionEndDate,
@@ -1492,7 +1703,7 @@ namespace GV23_Notice.Controllers
                 FinancialYearsText = s.FinancialYearsText,
                 SignaturePath = s.SignaturePath,
 
-                // Notice-specific fields for batch panel
+                // Notice-specific fields
                 EvidenceCloseDate = s.EvidenceCloseDate,
                 BulkFromDate = s.BulkFromDate,
                 BulkToDate = s.BulkToDate,
@@ -1520,27 +1731,34 @@ namespace GV23_Notice.Controllers
                 SelectedMode = string.IsNullOrWhiteSpace(mode) ? "single" : mode!,
                 AppealNo = appealNo,
 
-                // S52 range-print
-                IsS52 = s.Notice == NoticeKind.S52,
+                // S52
+                IsS52 = isS52,
                 S52IsReview = s52IsReview,
                 S52RangeCount = s52RangeCount,
 
-                // Batch dashboard — populated so the dashboard tab shows real rows
+                // TPA
+                IsThirdPartyAppealApplication = isTpa,
+                ThirdPartyResponseDays = tpaDate?.ResponseDays,
+                ThirdPartyEstimatedSendDate = tpaDate?.StartDate,
+                ThirdPartyEstimatedResponseDueDate = tpaDate?.ResponseDueDate,
+
+                // Dashboard
                 CreatedBatches = kickoffBatchRows,
-                ShowBatchTab = TempData["Success"] != null,
+                ShowBatchTab = !isTpa && TempData["Success"] != null
             };
 
             return View(vm);
         }
-
-        private static string ComputeBatchPrefix(Domain.Workflow.Entities.NoticeSettings s, string rollShortCode)
+        private static string ComputeBatchPrefix(NoticeSettings s, string rollShortCode)
         {
             var code = rollShortCode.Replace(" ", "");
+
             return s.Notice switch
             {
                 NoticeKind.S52 => s.IsSection52Review == true ? $"S52_{code}_" : $"AD_{code}_",
                 NoticeKind.DJ => $"DJ_{code}_",
                 NoticeKind.IN => s.IsInvalidOmission == true ? $"IOM_{code}_" : $"IOBJ_{code}_",
+                NoticeKind.TPA => $"TPA_{code}_",
                 _ => $"{s.Notice}_{code}_"
             };
         }

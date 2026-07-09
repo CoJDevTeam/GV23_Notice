@@ -18,7 +18,8 @@ namespace GV23_Notice.Services.QA
         private readonly IRollDbConnectionFactory _rollConn;
         private readonly INoticeSourceStatusService _sourceStatus;
 
-        private const int SamplePerPropertyType = 5;
+        private const int QaTargetTotal = 10;
+        private const int QaMaxPerGroup = 3;
 
         public NoticeQaService(
             AppDbContext db,
@@ -38,13 +39,24 @@ namespace GV23_Notice.Services.QA
             if (settings == null)
                 return false;
 
-            // Appeal Decision / Section 52 does not use this QA gate.
-            if (settings.Notice == NoticeKind.S52)
-                return false;
-
-            // This QA rule is mainly for printed MVD notices.
-            // Keep this as S53 first. After testing, we can extend it to S49/S51 if needed.
-            return settings.Notice.IsSection53Family();
+            /*
+             * QA is now dynamic for normal printed notices.
+             * S52 and TPA can also use QA if their printed records exist,
+             * but the sample logic decides grouping dynamically.
+             */
+            return settings.Notice switch
+            {
+                NoticeKind.S49 => true,
+                NoticeKind.S51 => true,
+                NoticeKind.S52 => true,
+                NoticeKind.S53 => true,
+                NoticeKind.S53Rev => true,
+                NoticeKind.DJ => true,
+                NoticeKind.IN => true,
+                NoticeKind.S78 => true,
+                NoticeKind.TPA => true,
+                _ => false
+            };
         }
 
         public async Task<bool> IsQaApprovedAsync(Guid workflowKey, CancellationToken ct)
@@ -140,11 +152,14 @@ namespace GV23_Notice.Services.QA
                 items.All(x => x.IsCategoryValid) &&
                 qaRun.Status != "Approved";
 
+            var groupLabel = DetermineQaGroupLabel(settings.Notice);
+
             vm.Groups = items
-                .GroupBy(x => x.PropertyType ?? "Unknown")
+                .GroupBy(x => string.IsNullOrWhiteSpace(x.PropertyType) ? "General" : x.PropertyType)
                 .Select(g => new NoticeQaGroupVm
                 {
                     PropertyType = g.Key,
+                    GroupLabel = groupLabel,
                     Items = g.ToList()
                 })
                 .ToList();
@@ -248,12 +263,10 @@ namespace GV23_Notice.Services.QA
             if (joined.Count == 0)
                 throw new InvalidOperationException("Printed notices were found, but no matching Obj_Property_Info records were found.");
 
-            var selected = joined
-                .GroupBy(x => NormalizePropertyType(x.Source.PropertyType))
-                .SelectMany(g => g
-                    .OrderBy(x => x.Printed.ObjectionNo)
-                    .Take(SamplePerPropertyType))
-                .ToList();
+            var selected = PickDynamicQaSample(
+    joined,
+    x => ResolveQaGroup(settings.Notice, x.Source.PropertyType, null))
+    .ToList();
 
             var qaRun = new NoticeQaRun
             {
@@ -268,11 +281,16 @@ namespace GV23_Notice.Services.QA
 
             foreach (var row in selected)
             {
-                var propertyType = NormalizePropertyType(row.Source.PropertyType);
-                var expected = GetExpectedCategory(propertyType);
+                var actualPropertyType = NormalizePropertyType(row.Source.PropertyType);
+
+                var propertyType = ResolveQaGroup(
+                    settings.Notice,
+                    actualPropertyType,
+                    null);
+                var expected = GetExpectedCategory(actualPropertyType);
 
                 var isValid = IsCategoryValid(
-                    propertyType,
+                    actualPropertyType,
                     row.Source.NewCategoryMvd,
                     row.Source.New2CategoryMvd,
                     row.Source.New3CategoryMvd);
@@ -296,7 +314,7 @@ namespace GV23_Notice.Services.QA
                     QaStatus = isValid ? "Passed" : "Failed",
                     QaComment = isValid
                         ? null
-                        : propertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase)
+                        : actualPropertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase)
                             ? "Multi must have Multiple Purposes as the main category and at least one split category."
                             : "Captured category does not match the expected QA rule."
                 });
@@ -571,7 +589,148 @@ INNER JOIN @ObjectionNos n
                 || v == "MULTIPLEPURPOSE"
                 || v == "MULTIPLEPURPOSES";
         }
+        public async Task<NoticeQaRuleVm> GetQaRuleAsync(Guid workflowKey, CancellationToken ct)
+        {
+            var settings = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey || x.WorkflowKey == workflowKey, ct)
+                ?? throw new InvalidOperationException("Workflow settings not found.");
 
+            var groupLabel = DetermineQaGroupLabel(settings.Notice);
+
+            return new NoticeQaRuleVm
+            {
+                TargetTotal = QaTargetTotal,
+                MaxPerGroup = QaMaxPerGroup,
+                GroupLabel = groupLabel,
+                Description = $"QA will select {QaTargetTotal} printed files dynamically, with a maximum of {QaMaxPerGroup} per {groupLabel}."
+            };
+        }
+        private static List<T> PickDynamicQaSample<T>(
+    IEnumerable<T> source,
+    Func<T, string?> groupSelector)
+        {
+            var grouped = source
+                .GroupBy(x => NormalizeQaGroup(groupSelector(x)))
+                .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(_ => Guid.NewGuid()).ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var picked = new List<T>();
+
+            /*
+             * First pass:
+             * Take up to 3 from each group until we reach 10.
+             */
+            foreach (var group in grouped.Keys.OrderBy(x => x))
+            {
+                if (picked.Count >= QaTargetTotal)
+                    break;
+
+                var items = grouped[group];
+
+                var takeCount = Math.Min(QaMaxPerGroup, QaTargetTotal - picked.Count);
+                var take = items.Take(takeCount).ToList();
+
+                picked.AddRange(take);
+                items.RemoveAll(x => take.Contains(x));
+            }
+
+            /*
+             * Fallback:
+             * If there were fewer groups or fewer records, fill remaining slots,
+             * still respecting max 3 per group.
+             */
+            while (picked.Count < QaTargetTotal)
+            {
+                var added = false;
+
+                foreach (var group in grouped.Keys.OrderBy(x => x))
+                {
+                    if (picked.Count >= QaTargetTotal)
+                        break;
+
+                    var items = grouped[group];
+
+                    if (items.Count == 0)
+                        continue;
+
+                    var alreadyPickedForGroup = picked.Count(x =>
+                        string.Equals(
+                            NormalizeQaGroup(groupSelector(x)),
+                            group,
+                            StringComparison.OrdinalIgnoreCase));
+
+                    if (alreadyPickedForGroup >= QaMaxPerGroup)
+                        continue;
+
+                    picked.Add(items[0]);
+                    items.RemoveAt(0);
+                    added = true;
+                }
+
+                if (!added)
+                    break;
+            }
+
+            return picked.Take(QaTargetTotal).ToList();
+        }
+
+        private static string ResolveQaGroup(
+            NoticeKind notice,
+            string? propertyType,
+            string? vabName)
+        {
+            /*
+             * VAB notices must group by VAB when VAB exists.
+             * If VAB does not exist yet, fallback to property type.
+             */
+            if ((notice == NoticeKind.S52 || notice == NoticeKind.TPA) &&
+                !string.IsNullOrWhiteSpace(vabName))
+            {
+                return NormalizeQaGroup(vabName);
+            }
+
+            if (!string.IsNullOrWhiteSpace(propertyType))
+                return NormalizePropertyType(propertyType);
+
+            return "General";
+        }
+
+        private static string DetermineQaGroupLabel(NoticeKind notice)
+        {
+            return notice switch
+            {
+                NoticeKind.S52 => "VAB",
+                NoticeKind.TPA => "VAB",
+                _ => "Property Type"
+            };
+        }
+
+        private static string NormalizeQaGroup(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "General";
+
+            var cleaned = value.Trim();
+
+            var compact = cleaned
+                .ToUpperInvariant()
+                .Replace(" ", "")
+                .Replace("-", "")
+                .Replace("_", "");
+
+            return compact switch
+            {
+                "VAB1" => "VAB1",
+                "VAB2" => "VAB2",
+                "VAB3" => "VAB3",
+                "VAB4" => "VAB4",
+                _ => cleaned
+            };
+        }
         private sealed class PrintedLogLite
         {
             public int NoticeRunLogId { get; set; }

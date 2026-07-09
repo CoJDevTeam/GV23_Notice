@@ -15,5 +15,10 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             ThirdPartyAppealDateConfigVm vm,
             string performedBy,
             CancellationToken ct);
+
+        Task<ThirdPartyAppealResponseDateVm> CalculateResponseDateAsync(
+            DateTime? startDate,
+            int responseDays,
+            CancellationToken ct);
     }
 }

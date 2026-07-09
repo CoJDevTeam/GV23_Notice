@@ -8,6 +8,10 @@
         public int Failed { get; set; }
         public int NoOwnerEmail { get; set; }
 
+        public int Skipped { get; set; }
+
         public bool Done => Total > 0 && Pending == 0;
+
+       
     }
 }

@@ -179,11 +179,10 @@
                                     <option value="S51" selected="@(Model.Notice == NoticeKind.S51)">Section 51 Notice</option>
                                     <option value="S52" selected="@(Model.Notice == NoticeKind.S52)">Appeal Notices</option>
                                     <option value="S53" selected="@(Model.Notice == NoticeKind.S53)">Section 53 Notice</option>
+                                    <option value="S53Rev" selected="@(Model.Notice == NoticeKind.S53Rev)">Section 53 Revised MVD Notice</option>
                                     <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny Notice</option>
                                     <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity Notices</option>
-                                    
-
-                                    <option value="S53Rev" selected="@(Model.Notice == NoticeKind.S53Rev)">Section 53 Revised MVD Notice</option>
+                                    <option value="TPA" selected="@(Model.Notice == NoticeKind.TPA)">Third-Party Appeal Application</option>
                                     @*   <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option> *@
                                 </select>
                               
@@ -472,6 +471,53 @@
                             </div>
                         </div>
 
+                        <!-- Third-Party Appeal Application -->
+                        <div id="blockTPA" class="notice-block">
+                            <div class="s1-notice-header s1-notice-s52">
+                                Third-Party Appeal Application — Owner Response Period
+                            </div>
+
+                            <div class="s1-row s1-row-3">
+                                <div class="s1-field">
+                                    <label class="s1-label">Estimated Send Date</label>
+                                    <input type="date"
+                                           id="tpaEstimatedSendDate"
+                                           class="s1-input"
+                                           value="@DateTime.Today.ToString("yyyy-MM-dd")"
+                                           readonly />
+                                    <div class="s1-info-note" style="margin-top:6px">
+                                        Final send date will be the actual email sent date.
+                                    </div>
+                                </div>
+
+                                <div class="s1-field">
+                                    <label class="s1-label">Owner Response Days</label>
+                                    <input type="number"
+                                           id="tpaResponseDays"
+                                           class="s1-input"
+                                           value="51"
+                                           readonly />
+                                    <div class="s1-info-note" style="margin-top:6px">
+                                        Owner gets 51 days from the day the email is sent.
+                                    </div>
+                                </div>
+
+                                <div class="s1-field">
+                                    <label class="s1-label">Estimated Response Due Date</label>
+                                    <input type="date"
+                                           id="tpaEstimatedDueDate"
+                                           class="s1-input"
+                                           value="@DateTime.Today.AddDays(51).ToString("yyyy-MM-dd")"
+                                           readonly />
+                                </div>
+                            </div>
+
+                            <div class="s1-info-note" style="margin-top:12px">
+                                This notice will print the formal Valuation Appeal Board notice and send it to the property owner.
+                                The third party, admin and valuation enquiries email will be copied on the email.
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
@@ -513,130 +559,213 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+
     <script>
         /* ── Toast ─────────────────────────────────────── */
         const WfToast = (() => {
             const c = document.getElementById('wf-toast-container');
-            const ICONS  = {success:'✓',error:'✕',warning:'!',info:'i'};
-            const TITLES = {success:'Success',error:'Error',warning:'Warning',info:'Info'};
+            const ICONS  = { success: '✓', error: '✕', warning: '!', info: 'i' };
+            const TITLES = { success: 'Success', error: 'Error', warning: 'Warning', info: 'Info' };
+
             function show(type, msg, title) {
+                if (!c) return;
+
                 const t = document.createElement('div');
                 t.className = `wf-toast t-${type}`;
-                t.innerHTML = `<div class="wf-toast-main"><div class="wf-toast-stripe"></div>
-                    <div class="wf-toast-body"><div class="wf-toast-icon">${ICONS[type]}</div>
-                    <div class="wf-toast-content"><div class="wf-toast-title">${title||TITLES[type]}</div>
-                    <div class="wf-toast-msg">${msg}</div></div></div>
-                    <button class="wf-toast-close" aria-label="Dismiss">×</button></div>
-                    <div class="wf-toast-progress"><div class="wf-toast-bar"></div></div>`;
+                t.innerHTML = `
+                    <div class="wf-toast-main">
+                        <div class="wf-toast-stripe"></div>
+                        <div class="wf-toast-body">
+                            <div class="wf-toast-icon">${ICONS[type]}</div>
+                            <div class="wf-toast-content">
+                                <div class="wf-toast-title">${title || TITLES[type]}</div>
+                                <div class="wf-toast-msg">${msg}</div>
+                            </div>
+                        </div>
+                        <button class="wf-toast-close" aria-label="Dismiss">×</button>
+                    </div>
+                    <div class="wf-toast-progress">
+                        <div class="wf-toast-bar"></div>
+                    </div>`;
+
                 c.appendChild(t);
+
                 requestAnimationFrame(() => requestAnimationFrame(() => {
                     t.classList.add('show');
                     const bar = t.querySelector('.wf-toast-bar');
-                    bar.style.transition = 'transform 5000ms linear';
-                    bar.style.transform  = 'scaleX(0)';
+                    if (bar) {
+                        bar.style.transition = 'transform 5000ms linear';
+                        bar.style.transform = 'scaleX(0)';
+                    }
                 }));
+
                 const timer = setTimeout(() => dismiss(t), 5000);
-                t.querySelector('.wf-toast-close').onclick = () => { clearTimeout(timer); dismiss(t); };
+                const close = t.querySelector('.wf-toast-close');
+
+                if (close) {
+                    close.onclick = () => {
+                        clearTimeout(timer);
+                        dismiss(t);
+                    };
+                }
             }
+
             function dismiss(t) {
-                t.classList.replace('show','hide');
-                t.addEventListener('transitionend', () => t.remove(), {once:true});
+                t.classList.replace('show', 'hide');
+                t.addEventListener('transitionend', () => t.remove(), { once: true });
             }
-            return {success:(m,t)=>show('success',m,t), error:(m,t)=>show('error',m,t),
-                    warning:(m,t)=>show('warning',m,t), info:(m,t)=>show('info',m,t)};
+
+            return {
+                success: (m, t) => show('success', m, t),
+                error: (m, t) => show('error', m, t),
+                warning: (m, t) => show('warning', m, t),
+                info: (m, t) => show('info', m, t)
+            };
         })();
 
         /* ── Loader ─────────────────────────────────────── */
         const WfLoader = (() => {
-            const el=document.getElementById('wf-loader'),
-                  tx=document.getElementById('wf-loader-text'),
-                  sb=document.getElementById('wf-loader-sub');
+            const el = document.getElementById('wf-loader');
+            const tx = document.getElementById('wf-loader-text');
+            const sb = document.getElementById('wf-loader-sub');
+
             return {
-                show:(m,h)=>{tx.textContent=m||'Loading…';sb.textContent=h||'Please wait';el.classList.add('active');},
-                hide:()=>el.classList.remove('active')
+                show: (m, h) => {
+                    if (tx) tx.textContent = m || 'Loading…';
+                    if (sb) sb.textContent = h || 'Please wait';
+                    if (el) el.classList.add('active');
+                },
+                hide: () => {
+                    if (el) el.classList.remove('active');
+                }
             };
         })();
 
         /* ── TempData toasts ────────────────────────────── */
         @if (TempData["Success"] != null)
         {
-                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));</text>
+                <text>
+                        document.addEventListener('DOMContentLoaded', () =>
+                            WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
+                </text>
         }
+
         @if (TempData["Error"] != null)
         {
-                <text>document.addEventListener('DOMContentLoaded',()=>WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));</text>
+                <text>
+                        document.addEventListener('DOMContentLoaded', () =>
+                            WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
+                </text>
+        }
+
+        /* ── Helpers ────────────────────────────────────── */
+        function toIsoDate(d) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function getTodayIso() {
+            return toIsoDate(new Date());
+        }
+
+        function addDaysIso(dateValue, days) {
+            if (!dateValue) return '';
+
+            const d = new Date(dateValue + 'T00:00:00');
+            d.setDate(d.getDate() + days);
+
+            return toIsoDate(d);
+        }
+
+        function scrollTo(id) {
+            document.getElementById(id)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
         }
 
         /* ── Client validation ──────────────────────────── */
         const REQUIRED = [
-            { id:'field-ValuationPeriodCode', errId:'err-ValuationPeriodCode', label:'Valuation Period',
-              check:()=>{ const v=document.getElementById('valuationPeriod')?.value; return v&&v!==''; }},
-            { id:'field-FinancialYear', errId:'err-FinancialYear', label:'Financial Year',
-              check:()=>{ const v=document.getElementById('fyStart')?.value; return v&&v!==''; }},
-            { id:'field-RollId', errId:'err-RollId', label:'Roll',
-              check:()=>{ const v=document.getElementById('rollSelect')?.value; return v&&v!=='0'&&v!==''; }},
-            { id:'field-Notice', errId:'err-Notice', label:'Notice Type',
-              check:()=>{ const v=document.getElementById('noticeSelect')?.value; return v&&v!==''; }},
+            {
+                id: 'field-ValuationPeriodCode',
+                errId: 'err-ValuationPeriodCode',
+                label: 'Valuation Period',
+                check: () => {
+                    const v = document.getElementById('valuationPeriod')?.value;
+                    return v && v !== '';
+                }
+            },
+            {
+                id: 'field-FinancialYear',
+                errId: 'err-FinancialYear',
+                label: 'Financial Year',
+                check: () => {
+                    const v = document.getElementById('fyStart')?.value;
+                    return v && v !== '';
+                }
+            },
+            {
+                id: 'field-RollId',
+                errId: 'err-RollId',
+                label: 'Roll',
+                check: () => {
+                    const v = document.getElementById('rollSelect')?.value;
+                    return v && v !== '0' && v !== '';
+                }
+            },
+            {
+                id: 'field-Notice',
+                errId: 'err-Notice',
+                label: 'Notice Type',
+                check: () => {
+                    const v = document.getElementById('noticeSelect')?.value;
+                    return v && v !== '';
+                }
+            }
         ];
 
         function setFieldErr(fieldId, errId, msg) {
             document.getElementById(fieldId)?.classList.toggle('s1-field-invalid', !!msg);
+
             const el = document.getElementById(errId);
-            if (el) el.innerHTML = msg
-                ? `<span class="s1-err-text"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> ${msg}</span>`
-                : '';
+
+            if (el) {
+                el.innerHTML = msg
+                    ? `<span class="s1-err-text">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <line x1="12" y1="8" x2="12" y2="12"/>
+                                <line x1="12" y1="16" x2="12.01" y2="16"/>
+                            </svg>
+                            ${msg}
+                       </span>`
+                    : '';
+            }
         }
 
         function validateAll() {
             const errs = [];
             let hasPeriodErr = false;
+
             for (const f of REQUIRED) {
-                if (!f.check()) { setFieldErr(f.id,f.errId,`${f.label} is required.`); errs.push(f.label); if(f.id.includes('Period')||f.id.includes('Financial')) hasPeriodErr=true; }
-                else setFieldErr(f.id,f.errId,null);
+                if (!f.check()) {
+                    setFieldErr(f.id, f.errId, `${f.label} is required.`);
+                    errs.push(f.label);
+
+                    if (f.id.includes('Period') || f.id.includes('Financial')) {
+                        hasPeriodErr = true;
+                    }
+                } else {
+                    setFieldErr(f.id, f.errId, null);
+                }
             }
-            // Sidebar error indicator
+
             document.getElementById('nav-period')?.classList.toggle('has-error', hasPeriodErr);
+
             return errs;
         }
 
-        document.addEventListener('DOMContentLoaded', () => {
-            ['valuationPeriod','financialYearSelect','rollSelect','noticeSelect'].forEach(id => {
-                const el = document.getElementById(id);
-                if (!el) return;
-                el.addEventListener('change', () => {
-                    const map = {valuationPeriod:'field-ValuationPeriodCode,err-ValuationPeriodCode',
-                                 financialYearSelect:'field-FinancialYear,err-FinancialYear',
-                                 rollSelect:'field-RollId,err-RollId',
-                                 noticeSelect:'field-Notice,err-Notice'};
-                    const [fid,eid] = (map[id]||'').split(',');
-                    if (fid) setFieldErr(fid, eid, null);
-                });
-            });
-
-            document.getElementById('wf-form').addEventListener('submit', e => {
-                const errs = validateAll();
-                if (errs.length > 0) {
-                    e.preventDefault();
-                    const banner = document.getElementById('valBanner');
-                    const list   = document.getElementById('valBannerList');
-                    list.innerHTML = errs.map(x=>`<li>${x} is required</li>`).join('');
-                    banner.style.display = 'flex';
-                    banner.scrollIntoView({behavior:'smooth', block:'nearest'});
-                    WfToast.error('Fix the required fields before continuing.', 'Validation Failed');
-                    return;
-                }
-                document.getElementById('valBanner').style.display = 'none';
-                document.getElementById('wf-submit-btn').classList.add('loading');
-                WfLoader.show('Saving settings…', 'Submitting your notice configuration');
-            });
-        });
-
-        function scrollTo(id) {
-            document.getElementById(id)?.scrollIntoView({behavior:'smooth', block:'start'});
-        }
-
         /* ── Notice blocks ──────────────────────────────── */
-              const NOTICE_DESCS = {
+        const NOTICE_DESCS = {
             S49: 'Section 49 — objection window, inspection dates and signature',
             S51: 'Section 51 — objection decision, evidence close date',
             S52: 'Section 52 — appeal notices, backlog processing by date range',
@@ -645,6 +774,7 @@
             DJ: 'Dear Johnny — only letter date required',
             IN: 'Invalid notice — objection or omission sub-type',
             S78: 'Section 78 — review period and extraction settings',
+            TPA: 'Third-Party Appeal Application — owner notification and 51-day response period'
         };
 
         const NOTICE_BADGE = {
@@ -655,191 +785,380 @@
             S53Rev: 's1-badge-s53',
             DJ: 's1-badge-dj',
             IN: 's1-badge-in',
-            S78: 's1-badge-s78'
+            S78: 's1-badge-s78',
+            TPA: 's1-badge-s52'
         };
-        function toIsoDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-        function getTodayIso(){ return toIsoDate(new Date()); }
+
+        function calculateTpaEstimatedDates() {
+            const notice = document.getElementById('noticeSelect')?.value;
+
+            if (notice !== 'TPA') return;
+
+            const todayIso = getTodayIso();
+            const dueIso = addDaysIso(todayIso, 51);
+
+            const sendDate = document.getElementById('tpaEstimatedSendDate');
+            const days = document.getElementById('tpaResponseDays');
+            const dueDate = document.getElementById('tpaEstimatedDueDate');
+
+            if (sendDate) sendDate.value = todayIso;
+            if (days) days.value = '51';
+            if (dueDate) dueDate.value = dueIso;
+        }
 
         function showBlocks() {
             const notice = document.getElementById('noticeSelect')?.value || 'S49';
-            const mode   = document.getElementById('modeSelect')?.value   || '2';
+            const mode = document.getElementById('modeSelect')?.value || '2';
 
-            document.getElementById('noticeHidden').value = notice;
+            const noticeHidden = document.getElementById('noticeHidden');
+            if (noticeHidden) noticeHidden.value = notice;
 
-            // Badge + subtitle
             const badge = document.getElementById('noticeBadge');
-            if (badge) { badge.textContent = notice; badge.className = `s1-notice-badge ${NOTICE_BADGE[notice]||''}`; }
-            const sub = document.getElementById('noticeSpecificSub');
-            if (sub && NOTICE_DESCS[notice]) sub.textContent = NOTICE_DESCS[notice];
 
-            // Sidebar notice label
+            if (badge) {
+                badge.textContent = notice;
+                badge.className = `s1-notice-badge ${NOTICE_BADGE[notice] || ''}`;
+            }
+
+            const sub = document.getElementById('noticeSpecificSub');
+
+            if (sub && NOTICE_DESCS[notice]) {
+                sub.textContent = NOTICE_DESCS[notice];
+            }
+
             const sbl = document.getElementById('sb-notice-label');
             const sbd = document.getElementById('sb-notice-desc');
+
             if (sbl) sbl.textContent = notice;
-            if (sbd) sbd.textContent = NOTICE_DESCS[notice]||'';
-                    const revBox = document.getElementById('s53RevNotice');
-        if (revBox) {
-            revBox.style.display = notice === 'S53Rev' ? 'block' : 'none';
-        }
+            if (sbd) sbd.textContent = NOTICE_DESCS[notice] || '';
 
-        const s53Header = document.querySelector('#blockS53 .s1-notice-header');
-        if (s53Header) {
-            s53Header.textContent = notice === 'S53Rev'
-                ? 'Section 53 Revised MVD — Appeal Period'
-                : 'Section 53 — Appeal Period';
-        }
-            // Hide all
-            document.querySelectorAll('.notice-block').forEach(b => b.style.display='none');
+            const revBox = document.getElementById('s53RevNotice');
 
-                    const map = {
-            S49: 'blockS49',
-            S51: 'blockS51',
-            S52: 'blockS52',
-            S53: 'blockS53',
-            S53Rev: 'blockS53',
-            S78: 'blockS78'
-        };
-            if (map[notice]) document.getElementById(map[notice]).style.display = 'block';
-            if (notice==='DJ'||notice==='IN') {
-                document.getElementById('blockDJIN').style.display = 'block';
-                const hdr  = document.getElementById('djinHeader');
-                const note = document.getElementById('djinNote');
-                const inSub = document.getElementById('blockINSubType');
-                if (notice==='IN') {
-                    if(hdr)  { hdr.textContent='Invalid Notice'; hdr.className='s1-notice-header s1-notice-in'; }
-                    if(note) note.style.display='none';
-                    if(inSub) inSub.style.display='block';
-                } else {
-                    if(hdr)  { hdr.textContent='Dear Johnny Notice'; hdr.className='s1-notice-header s1-notice-dj'; }
-                    if(note) note.style.display='block';
-                    if(inSub) inSub.style.display='none';
+            if (revBox) {
+                revBox.style.display = notice === 'S53Rev' ? 'block' : 'none';
+            }
+
+            const s53Header = document.querySelector('#blockS53 .s1-notice-header');
+
+            if (s53Header) {
+                s53Header.textContent = notice === 'S53Rev'
+                    ? 'Section 53 Revised MVD — Appeal Period'
+                    : 'Section 53 — Appeal Period';
+            }
+
+            document.querySelectorAll('.notice-block').forEach(b => {
+                b.style.display = 'none';
+            });
+
+            const map = {
+                S49: 'blockS49',
+                S51: 'blockS51',
+                S52: 'blockS52',
+                S53: 'blockS53',
+                S53Rev: 'blockS53',
+                S78: 'blockS78',
+                TPA: 'blockTPA'
+            };
+
+            if (map[notice]) {
+                const block = document.getElementById(map[notice]);
+
+                if (block) {
+                    block.style.display = 'block';
                 }
             }
 
-            const chk   = document.getElementById('overrideS53');
-            const ovBlk = document.getElementById('blockS53Override');
-            const ap    = document.getElementById('appealCloseDate');
-            if (chk) {
-                if(ovBlk) ovBlk.style.display = chk.checked?'block':'none';
-                if(ap)    ap.readOnly = !chk.checked;
+            if (notice === 'DJ' || notice === 'IN') {
+                const blockDJIN = document.getElementById('blockDJIN');
+
+                if (blockDJIN) {
+                    blockDJIN.style.display = 'block';
+                }
+
+                const hdr = document.getElementById('djinHeader');
+                const note = document.getElementById('djinNote');
+                const inSub = document.getElementById('blockINSubType');
+
+                if (notice === 'IN') {
+                    if (hdr) {
+                        hdr.textContent = 'Invalid Notice';
+                        hdr.className = 's1-notice-header s1-notice-in';
+                    }
+
+                    if (note) note.style.display = 'none';
+                    if (inSub) inSub.style.display = 'block';
+                } else {
+                    if (hdr) {
+                        hdr.textContent = 'Dear Johnny Notice';
+                        hdr.className = 's1-notice-header s1-notice-dj';
+                    }
+
+                    if (note) note.style.display = 'block';
+                    if (inSub) inSub.style.display = 'none';
+                }
             }
 
-            const letter  = document.getElementById('letterDate')?.value;
+            const chk = document.getElementById('overrideS53');
+            const ovBlk = document.getElementById('blockS53Override');
+            const ap = document.getElementById('appealCloseDate');
+
+            if (chk) {
+                if (ovBlk) ovBlk.style.display = chk.checked ? 'block' : 'none';
+                if (ap) ap.readOnly = !chk.checked;
+            }
+
+            const letter = document.getElementById('letterDate')?.value;
             const ovLetter = document.getElementById('letterOverrideBlock');
-            if (ovLetter)
-                ovLetter.style.display = (notice==='S49'&&letter&&letter!==getTodayIso()) ? 'block':'none';
+
+            if (ovLetter) {
+                ovLetter.style.display =
+                    notice === 'S49' && letter && letter !== getTodayIso()
+                        ? 'block'
+                        : 'none';
+            }
+
+            calculateTpaEstimatedDates();
         }
 
         function calcS51EvidenceClose() {
-            if (document.getElementById('noticeSelect')?.value!=='S51') return;
+            if (document.getElementById('noticeSelect')?.value !== 'S51') return;
+
             const letter = document.getElementById('letterDate')?.value;
-            const out    = document.getElementById('evidenceCloseDate');
-            if (!letter||!out) return;
-            const dt = new Date(letter+'T00:00:00');
-            dt.setDate(dt.getDate()+30);
-            out.value = toIsoDate(dt);
+            const out = document.getElementById('evidenceCloseDate');
+
+            if (!letter || !out) return;
+
+            out.value = addDaysIso(letter, 30);
         }
 
-         async function calcS53AppealClose() {
-        const selectedNotice = document.getElementById('noticeSelect')?.value;
-        if (selectedNotice !== 'S53' && selectedNotice !== 'S53Rev') return;
+        async function calcS53AppealClose() {
+            const selectedNotice = document.getElementById('noticeSelect')?.value;
+
+            if (selectedNotice !== 'S53' && selectedNotice !== 'S53Rev') return;
             if (document.getElementById('overrideS53')?.checked) return;
-            const rollId = document.getElementById('rollSelect')?.value;
+
+            const valuationPeriodCode = document.getElementById('valuationPeriod')?.value;
             const letter = document.getElementById('letterDate')?.value;
-            const out    = document.getElementById('appealCloseDate');
-            if (!rollId||rollId==='0'||!letter||!out) return;
-            WfLoader.show('Calculating appeal date…','Checking weekends and public holidays');
+            const out = document.getElementById('appealCloseDate');
+
+            if (!valuationPeriodCode || !letter || !out) return;
+
+            WfLoader.show('Calculating appeal date…', 'Checking weekends and public holidays');
+
             try {
-                const res = await fetch(`/Workflow/CalcS53AppealCloseDate?rollId=${encodeURIComponent(rollId)}&letterDate=${encodeURIComponent(letter)}`,
-                    {headers:{'Accept':'application/json'}});
-                if (!res.ok) { WfToast.warning('Could not calculate appeal close date.','Calculation Failed'); return; }
+                const url =
+                    `/Workflow/CalcS53AppealCloseDate?valuationPeriodCode=${encodeURIComponent(valuationPeriodCode)}&letterDate=${encodeURIComponent(letter)}`;
+
+                const res = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!res.ok) {
+                    WfToast.warning('Could not calculate appeal close date.', 'Calculation Failed');
+                    return;
+                }
+
                 const data = await res.json();
-                if (data?.appealCloseDate) { out.value=data.appealCloseDate; WfToast.info(`Appeal close date set to ${data.appealCloseDate}.`,'Date Calculated'); }
-            } catch { WfToast.error('Network error.','Error'); }
-            finally  { WfLoader.hide(); }
+
+                if (data?.appealCloseDate) {
+                    out.value = data.appealCloseDate;
+                    WfToast.info(`Appeal close date set to ${data.appealCloseDate}.`, 'Date Calculated');
+                }
+            } catch {
+                WfToast.error('Network error.', 'Error');
+            } finally {
+                WfLoader.hide();
+            }
         }
 
         async function runAll() {
-            showBlocks(); calcS51EvidenceClose(); await calcS53AppealClose();
+            showBlocks();
+            calcS51EvidenceClose();
+            calculateTpaEstimatedDates();
+            await calcS53AppealClose();
         }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('noticeSelect')?.addEventListener('change', runAll);
-            document.getElementById('modeSelect')?.addEventListener('change', runAll);
-            document.getElementById('rollSelect')?.addEventListener('change', runAll);
-            document.getElementById('letterDate')?.addEventListener('change', runAll);
-            document.getElementById('overrideS53')?.addEventListener('change', runAll);
-            runAll();
-        });
 
         /* ── Financial year cascade ─────────────────────── */
         async function onValuationPeriodChange() {
             const fySelect = document.getElementById('financialYearSelect');
             const code = document.getElementById('valuationPeriod')?.value;
+
+            if (!fySelect) return;
+
             fySelect.innerHTML = '<option value="">— Select —</option>';
-            fySelect.disabled  = true;
-            document.getElementById('fyStart').value = '';
-            document.getElementById('fyEnd').value   = '';
-            document.getElementById('fyText').value  = '';
-            setFieldErr('field-FinancialYear','err-FinancialYear',null);
+            fySelect.disabled = true;
+
+            const fyStart = document.getElementById('fyStart');
+            const fyEnd = document.getElementById('fyEnd');
+            const fyText = document.getElementById('fyText');
+
+            if (fyStart) fyStart.value = '';
+            if (fyEnd) fyEnd.value = '';
+            if (fyText) fyText.value = '';
+
+            setFieldErr('field-FinancialYear', 'err-FinancialYear', null);
+
             if (!code) return;
-            WfLoader.show('Loading financial years…','Fetching available periods');
+
+            WfLoader.show('Loading financial years…', 'Fetching available periods');
+
             try {
-                const res  = await fetch(`/Workflow/FinancialYears?valuationPeriodCode=${encodeURIComponent(code)}`);
-                if (!res.ok) { WfToast.error('Failed to load financial years.','Load Error'); return; }
+                const res = await fetch(`/Workflow/FinancialYears?valuationPeriodCode=${encodeURIComponent(code)}`);
+
+                if (!res.ok) {
+                    WfToast.error('Failed to load financial years.', 'Load Error');
+                    return;
+                }
+
                 const list = await res.json();
-                const savedStart = document.getElementById('fyStart').value;
+                const savedStart = document.getElementById('fyStart')?.value;
+
                 for (const item of list) {
                     const opt = document.createElement('option');
                     opt.value = `${item.start}|${item.end}|${item.text}`;
                     opt.textContent = item.text;
-                    if (savedStart && item.start && item.start.startsWith(savedStart.substring(0,4))) opt.selected = true;
+
+                    if (savedStart && item.start && item.start.startsWith(savedStart.substring(0, 4))) {
+                        opt.selected = true;
+                    }
+
                     fySelect.appendChild(opt);
                 }
+
                 fySelect.disabled = false;
-                if (list.length) { WfToast.success(`${list.length} year(s) loaded.`,'Loaded'); fySelect.dispatchEvent(new Event('change')); }
-            } catch { WfToast.error('Network error.','Error'); }
-            finally  { WfLoader.hide(); }
+
+                if (list.length) {
+                    WfToast.success(`${list.length} year(s) loaded.`, 'Loaded');
+                    fySelect.dispatchEvent(new Event('change'));
+                }
+            } catch {
+                WfToast.error('Network error.', 'Error');
+            } finally {
+                WfLoader.hide();
+            }
         }
 
         function onFinancialYearChange() {
             const v = document.getElementById('financialYearSelect')?.value;
-            if (!v) return;
-            const [start,end,text] = v.split('|');
-            document.getElementById('fyStart').value = start;
-            document.getElementById('fyEnd').value   = end;
-            document.getElementById('fyText').value  = text;
-            setFieldErr('field-FinancialYear','err-FinancialYear',null);
-        }
 
-        document.addEventListener('DOMContentLoaded', async () => {
-            const vp = document.getElementById('valuationPeriod')?.value;
-            if (vp) await onValuationPeriodChange();
-        });
+            if (!v) return;
+
+            const [start, end, text] = v.split('|');
+
+            document.getElementById('fyStart').value = start;
+            document.getElementById('fyEnd').value = end;
+            document.getElementById('fyText').value = text;
+
+            setFieldErr('field-FinancialYear', 'err-FinancialYear', null);
+        }
 
         /* ── S52 radio ──────────────────────────────────── */
         function onS52ModeChange(radio) {
-            if (radio) document.getElementById('s52SendModeHidden').value = radio.value;
-            const val = parseInt(document.getElementById('s52SendModeHidden').value||'3');
+            if (radio) {
+                document.getElementById('s52SendModeHidden').value = radio.value;
+            }
 
-            const reviewBlock  = document.getElementById('blockS52Review');
-            const appealBlock  = document.getElementById('blockS52Appeal');
-            const showReview   = (val===1||val===3);
-            const showAppeal   = (val===2||val===3);
+            const val = parseInt(document.getElementById('s52SendModeHidden')?.value || '3');
 
-            reviewBlock.style.display = showReview ? 'block' : 'none';
-            appealBlock.style.display = showAppeal ? 'block' : 'none';
+            const reviewBlock = document.getElementById('blockS52Review');
+            const appealBlock = document.getElementById('blockS52Appeal');
 
-            // Disable inputs in hidden blocks so they are NOT included in the form POST.
-            // Without this, the hidden block's empty value posts first and overwrites the
-            // visible block's value — causing BulkFromDate to be null on the server.
-            reviewBlock.querySelectorAll('input').forEach(i => i.disabled = !showReview);
-            appealBlock.querySelectorAll('input').forEach(i => i.disabled = !showAppeal);
+            const showReview = val === 1 || val === 3;
+            const showAppeal = val === 2 || val === 3;
 
-            document.querySelectorAll('input[name="S52SendMode"]').forEach(r => r.checked=parseInt(r.value)===val);
+            if (reviewBlock) {
+                reviewBlock.style.display = showReview ? 'block' : 'none';
+                reviewBlock.querySelectorAll('input').forEach(i => i.disabled = !showReview);
+            }
+
+            if (appealBlock) {
+                appealBlock.style.display = showAppeal ? 'block' : 'none';
+                appealBlock.querySelectorAll('input').forEach(i => i.disabled = !showAppeal);
+            }
+
+            document.querySelectorAll('input[name="S52SendMode"]').forEach(r => {
+                r.checked = parseInt(r.value) === val;
+            });
         }
-        document.addEventListener('DOMContentLoaded', () => {
-            if (document.getElementById('blockS52')?.style.display!=='none') onS52ModeChange(null);
+
+        /* ── DOM init ───────────────────────────────────── */
+        document.addEventListener('DOMContentLoaded', async () => {
+            ['valuationPeriod', 'financialYearSelect', 'rollSelect', 'noticeSelect'].forEach(id => {
+                const el = document.getElementById(id);
+
+                if (!el) return;
+
+                el.addEventListener('change', () => {
+                    const map = {
+                        valuationPeriod: 'field-ValuationPeriodCode,err-ValuationPeriodCode',
+                        financialYearSelect: 'field-FinancialYear,err-FinancialYear',
+                        rollSelect: 'field-RollId,err-RollId',
+                        noticeSelect: 'field-Notice,err-Notice'
+                    };
+
+                    const [fid, eid] = (map[id] || '').split(',');
+
+                    if (fid) {
+                        setFieldErr(fid, eid, null);
+                    }
+                });
+            });
+
+            document.getElementById('wf-form')?.addEventListener('submit', e => {
+                const errs = validateAll();
+
+                if (errs.length > 0) {
+                    e.preventDefault();
+
+                    const banner = document.getElementById('valBanner');
+                    const list = document.getElementById('valBannerList');
+
+                    if (list) {
+                        list.innerHTML = errs.map(x => `<li>${x} is required</li>`).join('');
+                    }
+
+                    if (banner) {
+                        banner.style.display = 'flex';
+                        banner.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'nearest'
+                        });
+                    }
+
+                    WfToast.error('Fix the required fields before continuing.', 'Validation Failed');
+                    return;
+                }
+
+                const banner = document.getElementById('valBanner');
+
+                if (banner) {
+                    banner.style.display = 'none';
+                }
+
+                document.getElementById('wf-submit-btn')?.classList.add('loading');
+
+                WfLoader.show('Saving settings…', 'Submitting your notice configuration');
+            });
+
+            document.getElementById('noticeSelect')?.addEventListener('change', runAll);
+            document.getElementById('modeSelect')?.addEventListener('change', runAll);
+            document.getElementById('rollSelect')?.addEventListener('change', runAll);
+            document.getElementById('letterDate')?.addEventListener('change', runAll);
+            document.getElementById('overrideS53')?.addEventListener('change', runAll);
+
+            const vp = document.getElementById('valuationPeriod')?.value;
+
+            if (vp) {
+                await onValuationPeriodChange();
+            }
+
+            if (document.getElementById('blockS52')?.style.display !== 'none') {
+                onS52ModeChange(null);
+            }
+
+            await runAll();
         });
     </script>
 }

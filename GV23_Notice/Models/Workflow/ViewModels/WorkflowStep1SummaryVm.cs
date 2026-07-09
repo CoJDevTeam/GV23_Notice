@@ -47,5 +47,8 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public int? ExtractPeriodDays { get; set; }
         public DateTime? ReviewOpenDate { get; set; }
         public DateTime? ReviewCloseDate { get; set; }
+        public int? ThirdPartyResponseDays { get; set; }
+        public DateTime? ThirdPartyEstimatedSendDate { get; set; }
+        public DateTime? ThirdPartyEstimatedResponseDueDate { get; set; }
     }
 }

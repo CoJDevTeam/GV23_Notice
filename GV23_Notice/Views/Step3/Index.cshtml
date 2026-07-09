@@ -1,8 +1,10 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3SelectVm
 @using System.Globalization
 @using GV23_Notice.Domain.Workflow
+
 @{
     ViewData["Title"] = "Step 3 — Processing";
+
     string D(DateTime d) => d.ToString("dd MMM yyyy", CultureInfo.InvariantCulture);
 
     string NoticeName(NoticeKind n) => n switch
@@ -11,29 +13,70 @@
         NoticeKind.S51 => "Section 51 — Objection Decision",
         NoticeKind.S52 => "Section 52 — Appeal Notices",
         NoticeKind.S53 => "Section 53 — MVD Decision",
+        NoticeKind.S53Rev => "Section 53 — Revised MVD Decision",
         NoticeKind.DJ => "Dear Johnny Notice",
         NoticeKind.IN => "Invalid Notice",
         NoticeKind.S78 => "Section 78 — Review Period",
+        NoticeKind.TPA => "Third-Party Appeal Application",
         _ => n.ToString()
     };
+
     string NoticeChip(NoticeKind n) => n switch
     {
         NoticeKind.S49 => "s3i-chip-s49",
         NoticeKind.S51 => "s3i-chip-s51",
         NoticeKind.S52 => "s3i-chip-s52",
         NoticeKind.S53 => "s3i-chip-s53",
+        NoticeKind.S53Rev => "s3i-chip-s53",
         NoticeKind.DJ => "s3i-chip-dj",
         NoticeKind.IN => "s3i-chip-in",
         NoticeKind.S78 => "s3i-chip-s78",
+        NoticeKind.TPA => "s3i-chip-s52",
         _ => ""
+    };
+
+    string ActionText(NoticeKind n) => n switch
+    {
+        NoticeKind.TPA => "Start TPA Processing",
+        NoticeKind.S52 => "Start Range Processing",
+        _ => "Start Processing"
+    };
+
+    string HelperText(NoticeKind n) => n switch
+    {
+        NoticeKind.TPA => "Print formal owner notices and send emails. No batches or date ranges required.",
+        NoticeKind.S52 => "Start range-based appeal processing.",
+        _ => "Create batches, print PDFs and send notices."
     };
 
     var allRows = Model.Rows;
     var readyRows = allRows.Where(r => r.Step2Approved).ToList();
     var corrRows = allRows.Where(r => r.Step2CorrectionRequested && !r.Step2Approved).ToList();
+    var tpaRows = allRows.Where(r => r.Notice == NoticeKind.TPA).ToList();
 }
 
 <link href="~/css/step3/step3indexcss.css" rel="stylesheet" asp-append-version="true" />
+
+<style>
+    .s3i-chip-tpa {
+        background: #eef2ff;
+        color: #3730a3;
+        border-color: #c7d2fe;
+    }
+
+    .s3i-tpa-note {
+        margin-top: 5px;
+        font-size: 11.5px;
+        color: var(--s3i-mu);
+        line-height: 1.35;
+    }
+
+    .s3i-action-tpa {
+        background: #1e1b4b !important;
+        color: #fff !important;
+        border-color: #1e1b4b !important;
+    }
+</style>
 
 <div class="s3i-page">
 
@@ -47,10 +90,11 @@
                 </div>
                 <h1 class="s3i-hero-title">Step 3 — <em>Processing</em></h1>
                 <p class="s3i-hero-sub">
-                    Select an approved configuration to create batches,
-                    print PDFs and send notices to ratepayers.
+                    Select an approved configuration to process notices.
+                    Normal notices use batches. Third-Party Appeal Application prints directly from its extract.
                 </p>
             </div>
+
             <a class="s3i-hero-link" href="@Url.Action("SettingsLibrary", "Workflow")">
                 ← Settings Library
             </a>
@@ -66,20 +110,23 @@
                 <div class="s3i-stat-num">@allRows.Count</div>
                 <div class="s3i-stat-sub">Approved configurations</div>
             </div>
+
             <div class="s3i-stat s3i-stat-green">
                 <div class="s3i-stat-lbl">Ready to Process</div>
                 <div class="s3i-stat-num">@readyRows.Count</div>
                 <div class="s3i-stat-sub">Step 2 approved</div>
             </div>
+
+            <div class="s3i-stat">
+                <div class="s3i-stat-lbl">TPA Workflows</div>
+                <div class="s3i-stat-num">@tpaRows.Count</div>
+                <div class="s3i-stat-sub">Third-party appeal notices</div>
+            </div>
+
             <div class="s3i-stat">
                 <div class="s3i-stat-lbl">Corrections</div>
                 <div class="s3i-stat-num">@corrRows.Count</div>
                 <div class="s3i-stat-sub">Correction requested</div>
-            </div>
-            <div class="s3i-stat">
-                <div class="s3i-stat-lbl">Notice Types</div>
-                <div class="s3i-stat-num">@allRows.Select(r => r.Notice).Distinct().Count()</div>
-                <div class="s3i-stat-sub">Distinct types</div>
             </div>
         </div>
 
@@ -89,8 +136,10 @@
                 <div class="s3i-sec-bar"></div>
                 <span class="s3i-sec-title">Select a Configuration</span>
             </div>
+
             <span style="font-size:11.5px;color:var(--s3i-mu)">
-                Click <strong>Start Processing</strong> on a row to create batches for that notice
+                Click <strong>Start Processing</strong> to continue to Step 3.
+                TPA will go directly to print and email.
             </span>
         </div>
 
@@ -109,10 +158,11 @@
                         No approved configurations found.<br />
                         Complete Steps 1 and 2 first to create an approved workflow.
                     </p>
+
                     <a href="@Url.Action("Step1", "Workflow")"
-                       style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;
-                                  font-size:13px;font-weight:700;padding:9px 18px;border-radius:8px;
-                                  background:var(--s3i-black);color:#fff;text-decoration:none;">
+                           style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;
+                        font-size:13px;font-weight:700;padding:9px 18px;border-radius:8px;
+                        background:var(--s3i-black);color:#fff;text-decoration:none;">
                         Go to Step 1 →
                     </a>
                 </div>
@@ -129,37 +179,65 @@
                                 <th>Ver</th>
                                 <th>Letter Date</th>
                                 <th>Status</th>
-                                <th style="width:220px">Actions</th>
+                                <th style="width:250px">Actions</th>
                             </tr>
                         </thead>
+
                         <tbody>
                             @foreach (var r in allRows)
                             {
+                                bool isTpa = r.Notice == NoticeKind.TPA;
                                 bool canStart = r.Step2Approved && r.ApprovalKey != Guid.Empty;
+
                                 string? kickUrl = canStart
-                                ? Url.Action("Step3Kickoff", "Workflow",
-                                new { settingsId = r.SettingsId, key = r.ApprovalKey })
-                                : null;
-                                string? prevUrl = Url.Action("Step2", "Workflow",
-                                new { settingsId = r.SettingsId, variant = "Default", mode = "single" });
+                                    ? Url.Action("Step3Kickoff", "Workflow", new
+                                    {
+                                        settingsId = r.SettingsId,
+                                        key = r.ApprovalKey,
+                                        variant = "Default",
+                                        mode = "single"
+                                    })
+                                    : null;
+
+                                string? prevUrl = Url.Action("Step2", "Workflow", new
+                                {
+                                    settingsId = r.SettingsId,
+                                    variant = "Default",
+                                    mode = "single"
+                                });
 
                                 <tr>
                                     <td>
                                         <div class="s3i-roll-name">@r.RollName</div>
                                         <span class="s3i-roll-code">@r.RollShortCode</span>
                                     </td>
+
                                     <td>
-                                        <span class="s3i-notice-chip @NoticeChip(r.Notice)">@r.Notice</span>
+                                        <span class="s3i-notice-chip @(isTpa ? "s3i-chip-tpa" : NoticeChip(r.Notice))">
+                                            @(isTpa ? "TPA" : r.Notice.ToString())
+                                        </span>
+
                                         <div class="s3i-notice-name">@NoticeName(r.Notice)</div>
+
+                                        @if (isTpa)
+                                        {
+                                            <div class="s3i-tpa-note">
+                                                No batches. No ranges. Print formal owner notices directly from TPA extract.
+                                            </div>
+                                        }
                                     </td>
+
                                     <td>
                                         <span class="s3i-status"
                                               style="background:var(--s3i-surf);color:var(--s3i-mu);border-color:var(--s3i-bord)">
                                             @r.Mode
                                         </span>
                                     </td>
+
                                     <td class="s3i-date">v@r.VersionText</td>
+
                                     <td class="s3i-date">@D(r.LetterDate)</td>
+
                                     <td>
                                         @if (r.Step2Approved)
                                         {
@@ -167,28 +245,31 @@
                                         }
                                         else if (r.Step2CorrectionRequested)
                                         {
-
                                             <span class="s3i-status s3i-pip-corr">Correction</span>
                                         }
                                         else
                                         {
-
-                                            <span class="s3i-status" style="background:var(--s3i-surf);color:var(--s3i-mu);border-color:var(--s3i-bord)">Pending</span>
+                                            <span class="s3i-status"
+                                                  style="background:var(--s3i-surf);color:var(--s3i-mu);border-color:var(--s3i-bord)">
+                                                Pending
+                                            </span>
                                         }
                                     </td>
+
                                     <td>
                                         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
                                             @if (canStart)
                                             {
-                                                <!-- Primary: go straight to batch creation -->
-                                                <a class="s3i-action s3i-action-primary" href="@kickUrl">
+                                                <a class="s3i-action s3i-action-primary @(isTpa ? "s3i-action-tpa" : "")"
+                                                       href="@kickUrl"
+                                                       title="@HelperText(r.Notice)">
                                                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
                                                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                                                         <polygon points="5 3 19 12 5 21 5 3" />
                                                     </svg>
-                                                    Start Processing
+                                                    @ActionText(r.Notice)
                                                 </a>
-                                                <!-- Secondary: view the notice preview first -->
+
                                                 <a class="s3i-preview-link" href="@prevUrl">
                                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
                                                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
@@ -201,7 +282,6 @@
                                             else
                                             {
                                                 <span class="s3i-action s3i-action-disabled">Not Ready</span>
-                                                <!-- Still allow preview even if not approved -->
                                                 <a class="s3i-preview-link" href="@prevUrl">Preview</a>
                                             }
                                         </div>
@@ -221,18 +301,24 @@
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             if (typeof $.fn.DataTable === "undefined") return;
+
             $('#s3Table').DataTable({
                 pageLength: 15,
                 lengthMenu: [10, 15, 25, 50],
                 order: [[4, 'desc']],
-                columnDefs: [{ orderable: false, targets: 6 }],
+                columnDefs: [
+                    { orderable: false, targets: 6 }
+                ],
                 language: {
                     search: "",
                     searchPlaceholder: "Search workflows…",
                     lengthMenu: "Show _MENU_ rows",
                     info: "Showing _START_–_END_ of _TOTAL_",
                     infoEmpty: "No workflows found",
-                    paginate: { previous: "‹", next: "›" }
+                    paginate: {
+                        previous: "‹",
+                        next: "›"
+                    }
                 },
                 dom: "<'dt-toolbar'<'dataTables_length'l><'dataTables_filter'f>>t<'row'<'col-sm-6'i><'col-sm-6'p>>"
             });

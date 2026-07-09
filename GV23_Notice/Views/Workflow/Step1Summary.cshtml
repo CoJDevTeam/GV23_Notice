@@ -14,6 +14,7 @@
         NoticeKind.DJ => "Dear Johnny — Acknowledgement Notice",
         NoticeKind.IN => "Invalid Notice",
         NoticeKind.S78 => "Section 78 — Property Verification Review",
+        NoticeKind.TPA => "Third-Party Appeal Application",
         _ => n.ToString()
     };
 
@@ -28,6 +29,7 @@
         NoticeKind.DJ => "DJ",
         NoticeKind.IN => "IN",
         NoticeKind.S78 => "78",
+        NoticeKind.TPA => "TPA",
         _ => "?"
     };
 
@@ -35,6 +37,7 @@
     bool sigRequired = Model.Notice == NoticeKind.S49;
     bool canApprove = !sigRequired || hasSignature;
     bool isS53Family = Model.Notice == NoticeKind.S53 || Model.Notice == NoticeKind.S53Rev;
+    bool isThirdPartyAppeal = Model.Notice == NoticeKind.TPA;
 }
 
 
@@ -410,6 +413,54 @@
                     </div>
                 </div>
             }
+  
+            
+
+            @if (isThirdPartyAppeal)
+            {
+                <div class="ss-card">
+                    <div class="ss-card-header">
+                        <div class="ss-card-header-left">
+                            <div class="ss-card-icon ss-icon-s52">TPA</div>
+                            <div>
+                                <div class="ss-card-title">Third-Party Appeal Application</div>
+                                <div class="ss-card-sub">Owner notification and response period</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ss-detail-grid">
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Estimated Send Date</span>
+                            <span class="ss-detail-value ss-mono">
+                                @Model.LetterDate.ToString("dd MMMM yyyy")
+                            </span>
+                        </div>
+
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Owner Response Period</span>
+                            <span class="ss-detail-value ss-detail-strong">
+                                51 calendar days
+                            </span>
+                        </div>
+
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Estimated Response Due Date</span>
+                            <span class="ss-detail-value ss-mono ss-detail-strong">
+                                @Model.LetterDate.AddDays(51).ToString("dd MMMM yyyy")
+                            </span>
+                        </div>
+
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">Important</span>
+                            <span class="ss-detail-value">
+                                The final 51 days will start from the actual email sent date.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+        
         </div>
 
         <!-- ── RIGHT: checklist + approve ────────────────────── -->

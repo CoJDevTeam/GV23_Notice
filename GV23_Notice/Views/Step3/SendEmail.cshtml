@@ -5,12 +5,23 @@
 
 @{
     ViewData["Title"] = "Step 3 — Send Notices";
+
     var key = Model.WorkflowKey;
-    var totalPrinted = Model.TotalPrinted;
-    var totalSent = Model.TotalSent;
+
+    var tpa = ViewBag.TpaEmail as GV23_Notice.Models.Workflow.ViewModels.ThirdPartyAppealSendEmailVm;
+    bool isTpa = Model.Notice == NoticeKind.TPA;
+
+    var totalPrinted = isTpa && tpa != null ? tpa.TotalReadyToSend : Model.TotalPrinted;
+    var totalSent = isTpa && tpa != null ? tpa.TotalSent : Model.TotalSent;
+    var totalFailed = isTpa && tpa != null ? tpa.TotalFailed : 0;
+    var totalNoEmail = isTpa && tpa != null ? tpa.TotalNoOwnerEmail : 0;
+
     var cap = Model.MaxEmailsPerSend;
+
     var qaApproved = await QaService.IsQaApprovedAsync(Model.WorkflowKey, Context.RequestAborted);
     var qaRequired = await QaService.RequiresQaAsync(Model.WorkflowKey, Context.RequestAborted);
+
+    bool tpaCanSend = isTpa && tpa != null && tpa.TotalReadyToSend > 0;
 }
 
 <link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
@@ -917,10 +928,21 @@
         <div class="se-chip"><span class="se-chip-lbl">Roll</span><span class="se-chip-val gold">@Model.RollShortCode — @Model.RollName</span></div>
         <div class="se-chip"><span class="se-chip-lbl">Notice</span><span class="se-chip-val gold">@Model.Notice</span></div>
         <div class="se-chip"><span class="se-chip-lbl">Version</span><span class="se-chip-val gold">@Model.VersionText</span></div>
-        <div class="se-chip"><span class="se-chip-lbl">Batches</span><span class="se-chip-val">@Model.TotalBatches</span></div>
-        <div class="se-chip"><span class="se-chip-lbl">Ready</span><span class="se-chip-val">@totalPrinted</span></div>
-        <div class="se-chip"><span class="se-chip-lbl">Sent</span><span class="se-chip-val">@totalSent</span></div>
-        <div class="se-chip"><span class="se-chip-lbl">Cap</span><span class="se-chip-val">@cap</span></div>
+        @if (isTpa && tpa != null)
+        {
+            <div class="se-chip"><span class="se-chip-lbl">Mode</span><span class="se-chip-val">Direct Send</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Ready</span><span class="se-chip-val">@tpa.TotalReadyToSend</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Sent</span><span class="se-chip-val">@tpa.TotalSent</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Failed</span><span class="se-chip-val">@tpa.TotalFailed</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">No Email</span><span class="se-chip-val">@tpa.TotalNoOwnerEmail</span></div>
+        }
+        else
+        {
+            <div class="se-chip"><span class="se-chip-lbl">Batches</span><span class="se-chip-val">@Model.TotalBatches</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Ready</span><span class="se-chip-val">@totalPrinted</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Sent</span><span class="se-chip-val">@totalSent</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Cap</span><span class="se-chip-val">@cap</span></div>
+        }
         @if (qaRequired)
         {
             <div class="se-chip">
@@ -940,8 +962,12 @@
             <div class="se-bc-arrow">›</div>
             <div class="se-bc done"><div class="se-bc-dot">✓</div>Kickoff</div>
             <div class="se-bc-arrow">›</div>
-            <div class="se-bc done"><div class="se-bc-dot">✓</div>Batches</div>
-            <div class="se-bc-arrow">›</div>
+            @if (!isTpa)
+            {
+                <div class="se-bc done"><div class="se-bc-dot">✓</div>Batches</div>
+                <div class="se-bc-arrow">›</div>
+            }
+
             <div class="se-bc done"><div class="se-bc-dot">✓</div>Print</div>
             <div class="se-bc-arrow">›</div>
 
@@ -1004,16 +1030,53 @@
             }
             <a href="@Url.Action("Print", "Step3", new { key })" class="se-back">← Back to Print Dashboard</a>
             <div class="se-stats">
-                <div class="se-stat"><div class="se-stat-num gold">@Model.TotalBatches</div><div class="se-stat-lbl">Batches</div></div>
-                <div class="se-stat"><div class="se-stat-num">@cap.ToString("N0")</div><div class="se-stat-lbl">Email Cap</div></div>
-                <div class="se-stat"><div class="se-stat-num">@totalPrinted.ToString("N0")</div><div class="se-stat-lbl">Ready to Send</div></div>
-                <div class="se-stat"><div class="se-stat-num green">@totalSent.ToString("N0")</div><div class="se-stat-lbl">Already Sent</div></div>
+                @if (isTpa && tpa != null)
+                {
+                    <div class="se-stat">
+                        <div class="se-stat-num gold">@tpa.TotalReadyToSend.ToString("N0")</div>
+                        <div class="se-stat-lbl">Ready</div>
+                    </div>
+                    <div class="se-stat">
+                        <div class="se-stat-num green">@tpa.TotalSent.ToString("N0")</div>
+                        <div class="se-stat-lbl">Sent</div>
+                    </div>
+                    <div class="se-stat">
+                        <div class="se-stat-num">@tpa.TotalNoOwnerEmail.ToString("N0")</div>
+                        <div class="se-stat-lbl">No Owner Email</div>
+                    </div>
+                    <div class="se-stat">
+                        <div class="se-stat-num @(tpa.TotalFailed > 0 ? "gold" : "")">@tpa.TotalFailed.ToString("N0")</div>
+                        <div class="se-stat-lbl">Failed</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="se-stat"><div class="se-stat-num gold">@Model.TotalBatches</div><div class="se-stat-lbl">Batches</div></div>
+                    <div class="se-stat"><div class="se-stat-num">@cap.ToString("N0")</div><div class="se-stat-lbl">Email Cap</div></div>
+                    <div class="se-stat"><div class="se-stat-num">@totalPrinted.ToString("N0")</div><div class="se-stat-lbl">Ready to Send</div></div>
+                    <div class="se-stat"><div class="se-stat-num green">@totalSent.ToString("N0")</div><div class="se-stat-lbl">Already Sent</div></div>
+                }
             </div>
+            @if (!isTpa)
+{
             <div class="se-cap-wrap">
                 <div class="se-cap-label"><span>Selected vs Cap</span><span id="capCountLabel">0 / @cap selected</span></div>
                 <div class="se-cap-bar-wrap"><div class="se-cap-bar-fill" id="capBar" style="width:0%"></div></div>
                 <div class="se-cap-note" id="capNote">Select batches on the right to send</div>
             </div>
+            }
+            else
+            {
+                <div class="se-cap-wrap">
+                    <div class="se-cap-label">
+                        <span>Third-Party Appeal Sending</span>
+                        <span>@(tpa?.TotalReadyToSend ?? 0) ready</span>
+                    </div>
+                    <div class="se-cap-note">
+                        TPA sends directly from printed ThirdPartyAppealApplicationNotices. No batch selection is required.
+                    </div>
+                </div>
+            }
             @if (qaRequired)
             {
                 <div class="se-card">
@@ -1035,7 +1098,7 @@
                         {
                             <div class="se-fv" style="color:#8a1a1a;">Required Before Sending</div>
                             <div style="font-size:.7rem;color:#777;line-height:1.6;">
-                                You must approve the 5-per-property-type QA sample before sending client notices.
+                                You must approve the dynamic QA sample before sending client notices.
                             </div>
 
                             <div style="margin-top:12px;">
@@ -1068,7 +1131,12 @@
                     <div><div class="se-fl">Email Template</div><div class="se-fv">@Model.Notice Kickoff-approved body</div></div>
                     <div>
                         <div class="se-fl">.eml Copies Saved To</div>
+
                         <div class="se-fv" style="font-size:.65rem;color:#666;font-weight:400;word-break:break-all;line-height:1.5">
+                            @if (isTpa)
+                            {
+                                <text>[Appeal Root]\[Appeal_No]\THIRD-PARTY APPLICATION\email_[Appeal_No]_[PropertyDesc]_Third-Party Appeal Application.eml</text>
+                            }
                             @if (Model.IsS52)
                             {
                                 var s52Sub = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
@@ -1088,9 +1156,16 @@
             <div class="se-right-header">
                 <div class="se-right-title">
                     <div class="se-right-icon">📧</div>
-                    Send Notices Dashboard — @Model.Notice
+                    Send Notices Dashboard — @(isTpa ? "Third-Party Appeal Application" : Model.Notice.ToString())
                 </div>
-                <span class="se-badge-info">@Model.Batches.Count batch@(Model.Batches.Count == 1 ? "" : "es")</span>
+                @if (isTpa && tpa != null)
+                {
+                    <span class="se-badge-info">@tpa.Items.Count record@(tpa.Items.Count == 1 ? "" : "s")</span>
+                }
+                else
+                {
+                    <span class="se-badge-info">@Model.Batches.Count batch@(Model.Batches.Count == 1 ? "" : "es")</span>
+                }
             </div>
 
             <form id="sendForm" action="/Step3/SendEmail" method="post" style="display:contents">
@@ -1098,7 +1173,129 @@
                 <input type="hidden" name="key" value="@key" />
 
                 <div class="se-table-wrap">
-                    @if (Model.Batches.Count == 0)
+                    @if (isTpa && tpa != null)
+                    {
+                        if (!tpa.Items.Any())
+                        {
+                            <div class="se-empty">
+                                <div class="se-empty-icon">📭</div>
+                                <div class="se-empty-title">No Third-Party Appeal notices ready</div>
+                                <div class="se-empty-sub">
+                                    Go back to the Print Dashboard and print the Third-Party Appeal notices first.
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <table class="se-table">
+                                <thead>
+                                    <tr>
+                                        <th>Appeal No</th>
+                                        <th>Property</th>
+                                        <th>Owner</th>
+                                        <th>Third Party</th>
+                                        <th>Admin</th>
+                                        <th>Status</th>
+                                        <th>PDF</th>
+                                        <th>Pack</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in tpa.Items)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <span class="se-bt-code">@item.AppealNo</span>
+                                                @if (!string.IsNullOrWhiteSpace(item.ObjectionNo))
+                                                {
+                                                    <div class="se-bt-meta">Obj: @item.ObjectionNo</div>
+                                                }
+                                            </td>
+
+                                            <td>
+                                                <div style="font-weight:700;max-width:360px">@item.PropertyDescription</div>
+                                            </td>
+
+                                            <td>
+                                                <div style="font-weight:700">@item.OwnerName</div>
+                                                @if (!string.IsNullOrWhiteSpace(item.OwnerEmail))
+                                                {
+                                                    <div class="se-bt-meta">@item.OwnerEmail</div>
+                                                }
+                                                else
+                                                {
+                                                    <span class="se-badge-warn">No owner email</span>
+                                                }
+                                            </td>
+
+                                            <td>
+                                                <div style="font-weight:700">@item.ThirdPartyName</div>
+                                                <div class="se-bt-meta">@item.ThirdPartyEmail</div>
+                                            </td>
+
+                                            <td>
+                                                <div style="font-weight:700">@item.AdminName</div>
+                                                <div class="se-bt-meta">@item.AdminEmail</div>
+                                            </td>
+
+                                            <td>
+                                                @if (item.Status == "Sent")
+                                                {
+                                                    <span class="se-badge-sent">✓ Sent</span>
+                                                }
+                                                else if (item.Status == "Email-Failed")
+                                                {
+                                                    <span class="se-badge-warn">⚠ Failed</span>
+                                                    @if (!string.IsNullOrWhiteSpace(item.ErrorMessage))
+                                                    {
+                                                        <div class="se-bt-meta" style="color:#c0392b">@item.ErrorMessage</div>
+                                                    }
+                                                }
+                                                else if (item.Status == "Printed")
+                                                {
+                                                    if (qaRequired && !qaApproved)
+                                                    {
+                                                        <span class="se-badge-warn">🔒 QA Required</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="se-badge-info">Ready</span>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <span class="se-badge-warn">@item.Status</span>
+                                                }
+                                            </td>
+
+                                            <td>
+                                                @if (!string.IsNullOrWhiteSpace(item.PdfPath))
+                                                {
+                                                    <span class="se-badge-ok">PDF</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="se-badge-warn">Missing</span>
+                                                }
+                                            </td>
+
+                                            <td>
+                                                @if (!string.IsNullOrWhiteSpace(item.AppealPackZipPath))
+                                                {
+                                                    <span class="se-badge-ok">ZIP</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="se-badge-warn">Missing</span>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    }
+                    else if (Model.Batches.Count == 0)
                     {
                         <div class="se-empty">
                             <div class="se-empty-icon">📭</div>
@@ -1211,20 +1408,42 @@
                 </div>
 
                 <div class="se-send-footer">
-                    <div class="se-sel-info">
-                        <strong id="selCount">0</strong> batches selected &nbsp;·&nbsp; <strong id="selRecords">0</strong> notices
-                    </div>
-                    <div class="se-footer-spacer"></div>
-                    <div class="se-sel-info" id="capWarn" style="display:none;color:#e74c3c;font-weight:700;">
-                        ⚠ Over @cap limit
-                    </div>
-                    <button type="button"
-                            class="btn-send"
-                            id="sendBtn"
-                            disabled
-                            onclick="submitSendForm()">
-                        @(qaRequired && !qaApproved ? "🔒 QA Required" : "📧 Send Notices")
-                    </button>
+                    @if (isTpa && tpa != null)
+                    {
+                        <div class="se-sel-info">
+                            <strong>@tpa.TotalReadyToSend</strong> Third-Party Appeal notices ready
+                            &nbsp;·&nbsp;
+                            <strong>@tpa.TotalSent</strong> sent
+                        </div>
+
+                        <div class="se-footer-spacer"></div>
+
+                        <button type="button"
+                                class="btn-send"
+                                id="sendBtn"
+                            @(qaRequired && !qaApproved ? "disabled" : "")
+                            @(tpaCanSend ? "" : "disabled")
+                                onclick="submitTpaSendForm()">
+                            @(qaRequired && !qaApproved ? "🔒 QA Required" : "📧 Send Third-Party Appeal Notices")
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="se-sel-info">
+                            <strong id="selCount">0</strong> batches selected &nbsp;·&nbsp; <strong id="selRecords">0</strong> notices
+                        </div>
+                        <div class="se-footer-spacer"></div>
+                        <div class="se-sel-info" id="capWarn" style="display:none;color:#e74c3c;font-weight:700;">
+                            ⚠ Over @cap limit
+                        </div>
+                        <button type="button"
+                                class="btn-send"
+                                id="sendBtn"
+                                disabled
+                                onclick="submitSendForm()">
+                            @(qaRequired && !qaApproved ? "🔒 QA Required" : "📧 Send Notices")
+                        </button>
+                    }
                 </div>
             </form>
         </div>
@@ -1281,164 +1500,461 @@
 
 @section Scripts {
     <script>
-        let _selCount=0,_selRecords=0,_pollTimer=null,_sendBatchIds=[];
-          const CAP=@cap,
-        WF_KEY='@key',
-        QA_REQUIRED=@(qaRequired.ToString().ToLowerInvariant()),
-        QA_APPROVED=@(qaApproved.ToString().ToLowerInvariant());
+        let _selCount = 0;
+        let _selRecords = 0;
+        let _pollTimer = null;
+        let _sendBatchIds = [];
 
-        function onChkChange(){
-            _selCount=_selRecords=0;
-            document.querySelectorAll('.batch-chk:checked').forEach(c=>{_selCount++;_selRecords+=parseInt(c.dataset.count||'0');});
+        const CAP = @cap;
+        const WF_KEY = '@key';
+        const QA_REQUIRED = @(qaRequired.ToString().ToLowerInvariant());
+        const QA_APPROVED = @(qaApproved.ToString().ToLowerInvariant());
+        const IS_TPA = @(isTpa.ToString().ToLowerInvariant());
+        const TPA_READY = @(tpa?.TotalReadyToSend ?? 0);
+
+        // ─────────────────────────────────────────────────────────────
+        // NORMAL BATCH SEND FUNCTIONS
+        // These only run for normal notices.
+        // TPA does not use batch checkboxes.
+        // ─────────────────────────────────────────────────────────────
+
+        function onChkChange() {
+            if (IS_TPA) return;
+
+            _selCount = 0;
+            _selRecords = 0;
+
+            document.querySelectorAll('.batch-chk:checked').forEach(c => {
+                _selCount++;
+                _selRecords += parseInt(c.dataset.count || '0');
+            });
+
             updateCapUI();
         }
-               function toggleRow(id){
-            if(QA_REQUIRED && !QA_APPROVED){
+
+        function toggleRow(id) {
+            if (IS_TPA) return;
+
+            if (QA_REQUIRED && !QA_APPROVED) {
                 alert('QA must be approved before selecting batches to send.');
                 return;
             }
 
-            const c=document.getElementById('chk_'+id);
-            if(!c || c.disabled)return;
+            const c = document.getElementById('chk_' + id);
 
-            c.checked=!c.checked;
+            if (!c || c.disabled) return;
+
+            c.checked = !c.checked;
             onChkChange();
 
-            const row=document.getElementById('row_'+id);
-            if(row) row.classList.toggle('row-selected',c.checked);
+            const row = document.getElementById('row_' + id);
+
+            if (row) {
+                row.classList.toggle('row-selected', c.checked);
+            }
         }
-                function toggleAll(m){
-            if(QA_REQUIRED && !QA_APPROVED){
+
+        function toggleAll(m) {
+            if (IS_TPA) return;
+
+            if (QA_REQUIRED && !QA_APPROVED) {
                 alert('QA must be approved before selecting batches to send.');
-                m.checked=false;
+                m.checked = false;
                 return;
             }
 
-            document.querySelectorAll('.batch-chk:not(:disabled)').forEach(c=>{
-                c.checked=m.checked;
-                const r=document.getElementById('row_'+c.value);
-                if(r)r.classList.toggle('row-selected',m.checked);
+            document.querySelectorAll('.batch-chk:not(:disabled)').forEach(c => {
+                c.checked = m.checked;
+
+                const r = document.getElementById('row_' + c.value);
+
+                if (r) {
+                    r.classList.toggle('row-selected', m.checked);
+                }
             });
 
             onChkChange();
         }
-        function updateCapUI(){
-            document.getElementById('selCount').textContent=_selCount;
-            document.getElementById('selRecords').textContent=_selRecords.toLocaleString();
-            const pct=Math.min(100,Math.round(_selRecords*100/CAP)),over=_selRecords>CAP;
-            const bar=document.getElementById('capBar');
-            bar.style.width=pct+'%';bar.classList.toggle('over',over);
-            document.getElementById('capCountLabel').textContent=_selRecords.toLocaleString()+' / '+CAP.toLocaleString()+' selected';
-            const note=document.getElementById('capNote');
-            note.textContent=over?'Over limit by '+(_selRecords-CAP).toLocaleString()+' — deselect some':(_selCount>0?_selRecords.toLocaleString()+' notices will be sent':'Select batches on the right');
-            note.className='se-cap-note'+(over?' warn':'');
-            document.getElementById('capWarn').style.display=over?'':'none';
-                    const qaBlocked = QA_REQUIRED && !QA_APPROVED;
-        const sendBtn = document.getElementById('sendBtn');
 
-        sendBtn.disabled = qaBlocked || over || _selCount === 0;
+        function updateCapUI() {
+            if (IS_TPA) return;
 
-        if (qaBlocked) {
-            sendBtn.innerHTML = '🔒 QA Required';
-        } else {
-            sendBtn.innerHTML = '📧 Send Notices';
+            const selCountEl = document.getElementById('selCount');
+            const selRecordsEl = document.getElementById('selRecords');
+            const capBarEl = document.getElementById('capBar');
+            const capCountLabelEl = document.getElementById('capCountLabel');
+            const capNoteEl = document.getElementById('capNote');
+            const capWarnEl = document.getElementById('capWarn');
+            const sendBtn = document.getElementById('sendBtn');
+
+            if (!sendBtn) return;
+
+            if (selCountEl) {
+                selCountEl.textContent = _selCount;
+            }
+
+            if (selRecordsEl) {
+                selRecordsEl.textContent = _selRecords.toLocaleString();
+            }
+
+            const pct = CAP > 0
+                ? Math.min(100, Math.round(_selRecords * 100 / CAP))
+                : 0;
+
+            const over = CAP > 0 && _selRecords > CAP;
+
+            if (capBarEl) {
+                capBarEl.style.width = pct + '%';
+                capBarEl.classList.toggle('over', over);
+            }
+
+            if (capCountLabelEl) {
+                capCountLabelEl.textContent =
+                    _selRecords.toLocaleString() + ' / ' + CAP.toLocaleString() + ' selected';
+            }
+
+            if (capNoteEl) {
+                capNoteEl.textContent = over
+                    ? 'Over limit by ' + (_selRecords - CAP).toLocaleString() + ' — deselect some'
+                    : (_selCount > 0
+                        ? _selRecords.toLocaleString() + ' notices will be sent'
+                        : 'Select batches on the right');
+
+                capNoteEl.className = 'se-cap-note' + (over ? ' warn' : '');
+            }
+
+            if (capWarnEl) {
+                capWarnEl.style.display = over ? '' : 'none';
+            }
+
+            const qaBlocked = QA_REQUIRED && !QA_APPROVED;
+
+            sendBtn.disabled = qaBlocked || over || _selCount === 0;
+
+            if (qaBlocked) {
+                sendBtn.innerHTML = '🔒 QA Required';
+            } else {
+                sendBtn.innerHTML = '📧 Send Notices';
+            }
         }
-        }
-                function submitSendForm(){
-            if(QA_REQUIRED && !QA_APPROVED){
-                alert('QA must be approved before notices can be sent.');
-                window.location.href='@Url.Action("QA", "Step3", new { key })';
+
+        function submitSendForm() {
+            if (IS_TPA) {
+                submitTpaSendForm();
                 return;
             }
 
-            _sendBatchIds=Array.from(document.querySelectorAll('.batch-chk:checked')).map(c=>parseInt(c.value));
+            if (QA_REQUIRED && !QA_APPROVED) {
+                alert('QA must be approved before notices can be sent.');
+                window.location.href = '@Url.Action("QA", "Step3", new { key })';
+                return;
+            }
 
-            if(!_sendBatchIds.length)return;
+            _sendBatchIds = Array.from(document.querySelectorAll('.batch-chk:checked'))
+                .map(c => parseInt(c.value))
+                .filter(x => !isNaN(x));
 
-            const btn=document.getElementById('sendBtn');
-            btn.disabled=true;
-            btn.innerHTML='<span class="se-spin"></span> Sending…';
+            if (!_sendBatchIds.length) return;
+
+            const btn = document.getElementById('sendBtn');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="se-spin"></span> Sending…';
+            }
 
             showEmailOverlay();
-            document.getElementById('sendForm').submit();
+
+            const form = document.getElementById('sendForm');
+
+            if (form) {
+                form.submit();
+            }
         }
-        function showEmailOverlay(){
+
+        function showEmailOverlay() {
+            if (IS_TPA) {
+                showTpaEmailOverlay();
+                return;
+            }
+
             document.getElementById('epOverlay').classList.add('active');
-            document.getElementById('epTitle').textContent='Sending '+_selCount+' batch'+(_selCount>1?'es':'')+'…';
-            document.getElementById('epSub').textContent=_selRecords.toLocaleString()+' notices — please wait';
-            document.getElementById('epTotal').textContent=_selRecords.toLocaleString();
-            document.getElementById('epRemaining').textContent=_selRecords.toLocaleString();
-            document.getElementById('epChipPending').textContent=_selRecords.toLocaleString();
-            ['epChipSent','epChipFailed','epChipNoEmail','epSent','epPct'].forEach(id=>document.getElementById(id).textContent='0');
-            document.getElementById('epBarFill').style.width='0%';
-            document.getElementById('epBarFill').classList.remove('done','has-fail');
-            document.getElementById('epWorking').style.display='';
+            document.getElementById('epTitle').textContent =
+                'Sending ' + _selCount + ' batch' + (_selCount > 1 ? 'es' : '') + '…';
+
+            document.getElementById('epSub').textContent =
+                _selRecords.toLocaleString() + ' notices — please wait';
+
+            document.getElementById('epTotal').textContent = _selRecords.toLocaleString();
+            document.getElementById('epRemaining').textContent = _selRecords.toLocaleString();
+            document.getElementById('epChipPending').textContent = _selRecords.toLocaleString();
+
+            document.getElementById('epSent').textContent = '0';
+            document.getElementById('epPct').textContent = '0';
+            document.getElementById('epChipSent').textContent = '0';
+            document.getElementById('epChipFailed').textContent = '0';
+            document.getElementById('epChipNoEmail').textContent = '0';
+
+            document.getElementById('epBarFill').style.width = '0%';
+            document.getElementById('epBarFill').classList.remove('done', 'has-fail');
+
+            document.getElementById('epWorking').style.display = '';
             document.getElementById('epDoneBanner').classList.remove('active');
             document.getElementById('epCloseBtn').classList.remove('active');
+
             clearInterval(_pollTimer);
-            _pollTimer=setInterval(pollEmailProgress,700);
+            _pollTimer = setInterval(pollEmailProgress, 700);
         }
-        function pollEmailProgress(){
-            const url=_sendBatchIds.length===1
-                ?'/Step3/EmailProgress?batchId='+_sendBatchIds[0]
-                :'/Step3/EmailProgressAll?key='+WF_KEY;
-            fetch(url).then(r=>r.json()).then(d=>{
-                const total=d.total||0,sent=d.sent||0,failed=d.failed||0,noEmail=d.noEmail||0,pending=d.printed||0;
-                const doneN=sent+failed+noEmail,pct=total>0?Math.round(doneN*100/total):0;
-                document.getElementById('epPct').textContent=pct;
-                document.getElementById('epTotal').textContent=total.toLocaleString();
-                document.getElementById('epSent').textContent=sent.toLocaleString();
-                document.getElementById('epRemaining').textContent=pending.toLocaleString();
-                document.getElementById('epChipPending').textContent=pending.toLocaleString();
-                document.getElementById('epChipSent').textContent=sent.toLocaleString();
-                document.getElementById('epChipFailed').textContent=failed.toLocaleString();
-                document.getElementById('epChipNoEmail').textContent=noEmail.toLocaleString();
-                document.getElementById('epBarFill').style.width=pct+'%';
-                if(d.done){
-                    clearInterval(_pollTimer);
-                    document.getElementById('epBarFill').classList.add(failed>0?'has-fail':'done');
-                    document.getElementById('epWorking').style.display='none';
-                    document.getElementById('epDoneBanner').classList.add('active');
-                    document.getElementById('epDoneTitle').textContent=failed>0
-                        ?'Done — '+sent.toLocaleString()+' sent, '+failed.toLocaleString()+' failed'
-                        :sent.toLocaleString()+' notices sent successfully';
-                    document.getElementById('epDoneSub').textContent='.eml copies saved · '+noEmail.toLocaleString()+' had no email';
-                    document.getElementById('epTitle').textContent='Send complete';
-                    document.getElementById('epCloseBtn').classList.add('active');
-                }
-            }).catch(()=>{});
+
+        function pollEmailProgress() {
+            if (IS_TPA) {
+                pollTpaEmailProgress();
+                return;
+            }
+
+            const url = _sendBatchIds.length === 1
+                ? '/Step3/EmailProgress?batchId=' + _sendBatchIds[0]
+                : '/Step3/EmailProgressAll?key=' + encodeURIComponent(WF_KEY);
+
+            fetch(url)
+                .then(r => r.json())
+                .then(d => {
+                    const total = d.total || 0;
+                    const sent = d.sent || 0;
+                    const failed = d.failed || 0;
+                    const noEmail = d.noEmail || 0;
+                    const pending = d.printed || 0;
+
+                    const doneN = sent + failed + noEmail;
+                    const pct = total > 0 ? Math.round(doneN * 100 / total) : 0;
+
+                    document.getElementById('epPct').textContent = pct;
+                    document.getElementById('epTotal').textContent = total.toLocaleString();
+                    document.getElementById('epSent').textContent = sent.toLocaleString();
+                    document.getElementById('epRemaining').textContent = pending.toLocaleString();
+
+                    document.getElementById('epChipPending').textContent = pending.toLocaleString();
+                    document.getElementById('epChipSent').textContent = sent.toLocaleString();
+                    document.getElementById('epChipFailed').textContent = failed.toLocaleString();
+                    document.getElementById('epChipNoEmail').textContent = noEmail.toLocaleString();
+
+                    const bar = document.getElementById('epBarFill');
+                    bar.style.width = pct + '%';
+
+                    if (d.done) {
+                        clearInterval(_pollTimer);
+
+                        bar.classList.add(failed > 0 ? 'has-fail' : 'done');
+
+                        document.getElementById('epWorking').style.display = 'none';
+                        document.getElementById('epDoneBanner').classList.add('active');
+
+                        document.getElementById('epDoneTitle').textContent = failed > 0
+                            ? 'Done — ' + sent.toLocaleString() + ' sent, ' + failed.toLocaleString() + ' failed'
+                            : sent.toLocaleString() + ' notices sent successfully';
+
+                        document.getElementById('epDoneSub').textContent =
+                            '.eml copies saved · ' + noEmail.toLocaleString() + ' had no email';
+
+                        document.getElementById('epTitle').textContent = 'Send complete';
+                        document.getElementById('epCloseBtn').classList.add('active');
+                    }
+                })
+                .catch(() => {
+                    // keep polling on temporary error
+                });
         }
-        function closeEmailOverlay(){
+
+        // ─────────────────────────────────────────────────────────────
+        // TPA DIRECT SEND FUNCTIONS
+        // TPA sends directly from printed ThirdPartyAppealApplicationNotices.
+        // No batchIds are required.
+        // ─────────────────────────────────────────────────────────────
+
+        function submitTpaSendForm() {
+            if (!IS_TPA) {
+                submitSendForm();
+                return;
+            }
+
+            if (QA_REQUIRED && !QA_APPROVED) {
+                alert('QA must be approved before notices can be sent.');
+                window.location.href = '@Url.Action("QA", "Step3", new { key })';
+                return;
+            }
+
+            if (TPA_READY <= 0) {
+                alert('There are no Third-Party Appeal notices ready to send.');
+                return;
+            }
+
+            const btn = document.getElementById('sendBtn');
+
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="se-spin"></span> Sending…';
+            }
+
+            showTpaEmailOverlay();
+
+            const form = document.getElementById('sendForm');
+
+            if (form) {
+                form.submit();
+            }
+        }
+
+        function showTpaEmailOverlay() {
+            document.getElementById('epOverlay').classList.add('active');
+            document.getElementById('epTitle').textContent = 'Sending Third-Party Appeal notices…';
+            document.getElementById('epSub').textContent =
+                TPA_READY.toLocaleString() + ' notices — please wait';
+
+            document.getElementById('epTotal').textContent = TPA_READY.toLocaleString();
+            document.getElementById('epRemaining').textContent = TPA_READY.toLocaleString();
+            document.getElementById('epChipPending').textContent = TPA_READY.toLocaleString();
+
+            document.getElementById('epSent').textContent = '0';
+            document.getElementById('epPct').textContent = '0';
+            document.getElementById('epChipSent').textContent = '0';
+            document.getElementById('epChipFailed').textContent = '0';
+            document.getElementById('epChipNoEmail').textContent = '0';
+
+            document.getElementById('epBarFill').style.width = '0%';
+            document.getElementById('epBarFill').classList.remove('done', 'has-fail');
+
+            document.getElementById('epWorking').style.display = '';
+            document.getElementById('epDoneBanner').classList.remove('active');
+            document.getElementById('epCloseBtn').classList.remove('active');
+
             clearInterval(_pollTimer);
-            document.getElementById('epOverlay').classList.remove('active');
+            _pollTimer = setInterval(pollTpaEmailProgress, 700);
+        }
+
+        function pollTpaEmailProgress() {
+            fetch('/Step3/ThirdPartyEmailProgress?key=' + encodeURIComponent(WF_KEY))
+                .then(r => r.json())
+                .then(d => {
+                    const total = d.total || 0;
+                    const sent = d.sent || 0;
+                    const failed = d.failed || 0;
+                    const skipped = d.skipped || 0;
+                    const pending = d.pending || 0;
+
+                    const doneN = sent + failed + skipped;
+                    const pct = total > 0 ? Math.round(doneN * 100 / total) : 0;
+
+                    document.getElementById('epPct').textContent = pct;
+                    document.getElementById('epTotal').textContent = total.toLocaleString();
+                    document.getElementById('epSent').textContent = sent.toLocaleString();
+                    document.getElementById('epRemaining').textContent = pending.toLocaleString();
+
+                    document.getElementById('epChipPending').textContent = pending.toLocaleString();
+                    document.getElementById('epChipSent').textContent = sent.toLocaleString();
+                    document.getElementById('epChipFailed').textContent = failed.toLocaleString();
+                    document.getElementById('epChipNoEmail').textContent = skipped.toLocaleString();
+
+                    const bar = document.getElementById('epBarFill');
+                    bar.style.width = pct + '%';
+
+                    if (d.done) {
+                        clearInterval(_pollTimer);
+
+                        bar.classList.add(failed > 0 ? 'has-fail' : 'done');
+
+                        document.getElementById('epWorking').style.display = 'none';
+                        document.getElementById('epDoneBanner').classList.add('active');
+
+                        document.getElementById('epDoneTitle').textContent = failed > 0
+                            ? 'Done — ' + sent.toLocaleString() + ' sent, ' + failed.toLocaleString() + ' failed'
+                            : sent.toLocaleString() + ' Third-Party Appeal notices sent successfully';
+
+                        document.getElementById('epDoneSub').textContent =
+                            '.eml copies saved · ' + skipped.toLocaleString() + ' skipped';
+
+                        document.getElementById('epTitle').textContent = 'Send complete';
+                        document.getElementById('epCloseBtn').classList.add('active');
+                    }
+                })
+                .catch(() => {
+                    // keep polling on temporary error
+                });
+        }
+
+        function closeEmailOverlay() {
+            clearInterval(_pollTimer);
+
+            const overlay = document.getElementById('epOverlay');
+
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
+
             window.location.reload();
         }
-                document.addEventListener('DOMContentLoaded', function(){
-            if(QA_REQUIRED && !QA_APPROVED){
-                const btn=document.getElementById('sendBtn');
-                if(btn){
-                    btn.disabled=true;
-                    btn.innerHTML='🔒 QA Required';
+
+        // ─────────────────────────────────────────────────────────────
+        // PAGE INITIALISATION
+        // ─────────────────────────────────────────────────────────────
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const btn = document.getElementById('sendBtn');
+            const note = document.getElementById('capNote');
+
+            if (QA_REQUIRED && !QA_APPROVED) {
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '🔒 QA Required';
                 }
 
-                const note=document.getElementById('capNote');
-                if(note){
-                    note.textContent='QA approval is required before sending notices.';
-                    note.className='se-cap-note warn';
+                if (note) {
+                    note.textContent = 'QA approval is required before sending notices.';
+                    note.className = 'se-cap-note warn';
                 }
+
+                return;
             }
+
+            if (IS_TPA) {
+                if (btn) {
+                    btn.disabled = TPA_READY <= 0;
+                    btn.innerHTML = TPA_READY > 0
+                        ? '📧 Send Third-Party Appeal Notices'
+                        : 'No Third-Party Appeal Notices Ready';
+                }
+
+                if (note) {
+                    note.textContent = 'TPA sends directly. No batch selection is required.';
+                    note.className = 'se-cap-note';
+                }
+
+                return;
+            }
+
+            updateCapUI();
         });
-        // ── Page loader dismiss ───────────────────────────────────
+
+        // ─────────────────────────────────────────────────────────────
+        // PAGE LOADER DISMISS
+        // ─────────────────────────────────────────────────────────────
+
         (function () {
             function dismiss() {
-                var el = document.getElementById('pageLoader');
-                if (el) el.classList.add('hidden');
+                const el = document.getElementById('pageLoader');
+
+                if (el) {
+                    el.classList.add('hidden');
+                }
             }
+
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function () { setTimeout(dismiss, 350); });
+                document.addEventListener('DOMContentLoaded', function () {
+                    setTimeout(dismiss, 350);
+                });
             } else {
                 setTimeout(dismiss, 350);
             }
+
             setTimeout(dismiss, 2000);
         })();
     </script>

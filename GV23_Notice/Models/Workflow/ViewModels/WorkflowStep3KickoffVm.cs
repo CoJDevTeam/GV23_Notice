@@ -89,6 +89,11 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         /// Triggers the confirmation modal to auto-open on page load.
         /// </summary>
         public bool FromStep2 { get; set; }
+
+        public bool IsThirdPartyAppealApplication { get; set; }
+        public int? ThirdPartyResponseDays { get; set; }
+        public DateTime? ThirdPartyEstimatedSendDate { get; set; }
+        public DateTime? ThirdPartyEstimatedResponseDueDate { get; set; }
     }
 
     public sealed class KickoffBatchRowVm

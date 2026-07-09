@@ -13,5 +13,8 @@ namespace GV23_Notice.Services.QA
         Task<int> CreateQaRunAsync(Guid workflowKey, string user, CancellationToken ct);
 
         Task ApproveQaAsync(Guid workflowKey, int qaRunId, string user, string? comment, CancellationToken ct);
+
+        // New: dynamic QA rule info
+        Task<NoticeQaRuleVm> GetQaRuleAsync(Guid workflowKey, CancellationToken ct);
     }
 }
