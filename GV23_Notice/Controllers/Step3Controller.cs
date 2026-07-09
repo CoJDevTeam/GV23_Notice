@@ -326,9 +326,9 @@ namespace GV23_Notice.Controllers
         [HttpPost("PrintThirdPartyAppealApplications")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> PrintThirdPartyAppealApplications(
-        Guid key,
-        bool forceReprint,
-        CancellationToken ct)
+     Guid key,
+     bool forceReprint,
+     CancellationToken ct)
         {
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
@@ -354,6 +354,33 @@ namespace GV23_Notice.Controllers
                     return RedirectToAction(nameof(Print), new { key });
                 }
 
+                if (res.Failed > 0 && res.Printed == 0)
+                {
+                    TempData["Error"] = $"Third-Party Appeal Application print failed. Failed: {res.Failed}.";
+                    return RedirectToAction(nameof(Print), new { key });
+                }
+
+                /*
+                 * TPA requires QA before Send Email.
+                 * After printing/reprinting, create/recreate the QA sample automatically
+                 * and send the user to the QA screen.
+                 */
+                if (await _qa.RequiresQaAsync(key, ct))
+                {
+                    var alreadyApproved = await _qa.IsQaApprovedAsync(key, ct);
+
+                    if (!alreadyApproved)
+                    {
+                        var qaRunId = await _qa.CreateQaRunAsync(key, user, ct);
+
+                        TempData["Success"] = forceReprint
+                            ? $"Third-Party Appeal Application notices reprinted: {res.Printed}. QA sample #{qaRunId} created. Please approve QA before sending."
+                            : $"Third-Party Appeal Application notices printed: {res.Printed}. QA sample #{qaRunId} created. Please approve QA before sending.";
+
+                        return RedirectToAction(nameof(QA), new { key });
+                    }
+                }
+
                 TempData["Success"] = forceReprint
                     ? $"Third-Party Appeal Application notices reprinted: {res.Printed}. " +
                       (res.Failed > 0 ? $"Failed: {res.Failed}." : "")
@@ -368,6 +395,7 @@ namespace GV23_Notice.Controllers
                 return RedirectToAction(nameof(Print), new { key });
             }
         }
+
         // POST: Print ALL batches in this workflow
         [HttpPost("PrintAll")]
         [ValidateAntiForgeryToken]
@@ -742,26 +770,22 @@ namespace GV23_Notice.Controllers
 
         // ── QA ───────────────────────────────────────────────────────────────
 
+        // ── QA ───────────────────────────────────────────────────────────────
+
         [HttpGet("QA")]
         public async Task<IActionResult> QA(Guid key, CancellationToken ct)
         {
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
 
-            var settings = await GetWorkflowSettingsAsync(key, ct);
-
-            if (settings.Notice == NoticeKind.TPA)
-            {
-                /*
-                 * TPA currently does not use normal batch QA.
-                 * After print, proceed to SendEmail.
-                 */
-                TempData["Success"] = "Third-Party Appeal Application notices are ready for email.";
-                return RedirectToAction(nameof(SendEmail), new { key });
-            }
-
+            /*
+             * Same QA view for all notices.
+             * Normal notices use NoticeBatches / NoticeRunLogs inside the service.
+             * TPA uses ThirdPartyAppealApplicationNotices inside the service.
+             */
             var vm = await _qa.BuildQaVmAsync(key, ct);
-            return View(vm);
+
+            return View("QA", vm);
         }
 
         [HttpPost("CreateQA")]
@@ -771,20 +795,13 @@ namespace GV23_Notice.Controllers
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
 
-            var settings = await GetWorkflowSettingsAsync(key, ct);
-
-            if (settings.Notice == NoticeKind.TPA)
-            {
-                TempData["Success"] = "Third-Party Appeal Application does not use normal batch QA.";
-                return RedirectToAction(nameof(SendEmail), new { key });
-            }
-
             var user = User?.Identity?.Name ?? "Unknown";
 
             try
             {
-                await _qa.CreateQaRunAsync(key, user, ct);
-                TempData["Success"] = "QA sample created successfully.";
+                var qaRunId = await _qa.CreateQaRunAsync(key, user, ct);
+
+                TempData["Success"] = $"QA sample #{qaRunId} created successfully.";
             }
             catch (Exception ex)
             {
@@ -805,27 +822,25 @@ namespace GV23_Notice.Controllers
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
 
-            var settings = await GetWorkflowSettingsAsync(key, ct);
-
-            if (settings.Notice == NoticeKind.TPA)
-            {
-                TempData["Success"] = "Third-Party Appeal Application does not use normal batch QA.";
-                return RedirectToAction(nameof(SendEmail), new { key });
-            }
-
             var user = User?.Identity?.Name ?? "Unknown";
 
             try
             {
                 await _qa.ApproveQaAsync(key, qaRunId, user, comment, ct);
+
                 TempData["Success"] = "QA approved. You can now send notices.";
+
+                /*
+                 * After QA approval, go straight to Send Email.
+                 * This applies to normal notices and TPA.
+                 */
+                return RedirectToAction(nameof(SendEmail), new { key });
             }
             catch (Exception ex)
             {
                 TempData["Error"] = ex.Message;
+                return RedirectToAction(nameof(QA), new { key });
             }
-
-            return RedirectToAction(nameof(QA), new { key });
         }
 
         [HttpGet("OpenPdf")]
@@ -946,6 +961,26 @@ namespace GV23_Notice.Controllers
                 throw new InvalidOperationException("Workflow settings were not found.");
 
             return settings;
+        }
+        [HttpGet("OpenQaPdfByPath")]
+        public async Task<IActionResult> OpenQaPdfByPath(int qaItemId, CancellationToken ct)
+        {
+            var item = await _db.NoticeQaItems
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == qaItemId, ct);
+
+            if (item == null)
+                return NotFound("QA item not found.");
+
+            if (string.IsNullOrWhiteSpace(item.PdfPath))
+                return NotFound("PDF path is missing.");
+
+            if (!System.IO.File.Exists(item.PdfPath))
+                return NotFound("PDF file was not found on disk.");
+
+            var bytes = await System.IO.File.ReadAllBytesAsync(item.PdfPath, ct);
+
+            return File(bytes, "application/pdf");
         }
     }
 }

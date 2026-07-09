@@ -19,10 +19,10 @@ namespace GV23_Notice.Services.ThirdPartyApplications
         }
 
         public async Task<string> BuildAppealPackZipAsync(
-            NoticeSettings settings,
-            string appealNo,
-            string outputFolder,
-            CancellationToken ct)
+       NoticeSettings settings,
+       string appealNo,
+       string outputFolder,
+       CancellationToken ct)
         {
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
@@ -33,19 +33,17 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             if (string.IsNullOrWhiteSpace(outputFolder))
                 throw new InvalidOperationException("Output folder is required to build the appeal pack.");
 
-            var roll = await _db.RollRegistry
-                .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.RollId == settings.RollId, ct);
+            var rootKey = ResolveAppealRootKeyFromAppealNo(appealNo);
 
-            if (roll == null)
-                throw new InvalidOperationException($"Roll not found for RollId {settings.RollId}.");
-
-            var root = ResolveAppealRoot(roll.ShortCode);
+            var root = _config[$"Storage:AppealRootsByShortCode:{rootKey}"];
 
             if (string.IsNullOrWhiteSpace(root))
-                throw new InvalidOperationException($"Appeal root folder is not configured for roll '{roll.ShortCode}'.");
+            {
+                throw new InvalidOperationException(
+                    $"Appeal root folder is not configured for key '{rootKey}'.");
+            }
 
-            var appealFolder = Path.Combine(root, appealNo);
+            var appealFolder = Path.Combine(root, SafeFile(appealNo));
 
             if (!Directory.Exists(appealFolder))
                 throw new DirectoryNotFoundException($"Appeal pack folder was not found: {appealFolder}");
@@ -85,7 +83,27 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
             return zipPath;
         }
+        private static string ResolveAppealRootKeyFromAppealNo(string? appealNo)
+        {
+            if (string.IsNullOrWhiteSpace(appealNo))
+                return "GV23";
 
+            var value = appealNo.Trim();
+
+            if (value.Contains("APP-GV23-Sup1", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 1";
+
+            if (value.Contains("APP-GV23-Sup2", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 2";
+
+            if (value.Contains("APP-GV23-Sup3", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 3";
+
+            if (value.Contains("APP-GV23-", StringComparison.OrdinalIgnoreCase))
+                return "GV23";
+
+            return "GV23";
+        }
         private string ResolveAppealRoot(string? rollShortCode)
         {
             var key = string.IsNullOrWhiteSpace(rollShortCode)

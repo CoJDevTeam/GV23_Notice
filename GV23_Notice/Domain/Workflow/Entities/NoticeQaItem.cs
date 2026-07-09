@@ -11,7 +11,7 @@ namespace GV23_Notice.Domain.Workflow.Entities
         public int NoticeQaRunId { get; set; }
         public NoticeQaRun NoticeQaRun { get; set; } = null!;
 
-        public int NoticeRunLogId { get; set; }
+        public int? NoticeRunLogId { get; set; }
         public NoticeRunLog NoticeRunLog { get; set; } = null!;
 
         [MaxLength(80)]

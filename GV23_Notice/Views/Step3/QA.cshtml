@@ -313,13 +313,26 @@
                                 <td>
                                     @if (!string.IsNullOrWhiteSpace(item.PdfPath))
                                     {
-                                        <a class="qa-btn qa-btn-main"
-                                               target="_blank"
-                                               asp-action="OpenPdf"
-                                               asp-controller="Step3"
-                                               asp-route-runLogId="@item.NoticeRunLogId">
-                                            View PDF
-                                        </a>
+                                        if (Model.Notice == GV23_Notice.Domain.Workflow.NoticeKind.TPA)
+                                        {
+                                            <a class="qa-btn qa-btn-main"
+                                                   target="_blank"
+                                                   asp-action="OpenQaPdfByPath"
+                                                   asp-controller="Step3"
+                                                   asp-route-qaItemId="@item.QaItemId">
+                                                View PDF
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <a class="qa-btn qa-btn-main"
+                                                   target="_blank"
+                                                   asp-action="OpenPdf"
+                                                   asp-controller="Step3"
+                                                   asp-route-runLogId="@item.NoticeRunLogId">
+                                                View PDF
+                                            </a>
+                                        }
                                     }
                                     else
                                     {

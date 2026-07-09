@@ -26,8 +26,8 @@ namespace GV23_Notice.Services.ThirdPartyApplications
         }
 
         public async Task<ThirdPartyAppealSendEmailVm> BuildEmailVmAsync(
-            Guid key,
-            CancellationToken ct)
+       Guid key,
+       CancellationToken ct)
         {
             var settings = await GetSettingsAsync(key, ct);
 
@@ -38,37 +38,40 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             var failed = await query.CountAsync(x => x.Status == "Email-Failed", ct);
             var noOwnerEmail = await query.CountAsync(x => string.IsNullOrWhiteSpace(x.OwnerEmail), ct);
 
-            var items = await query
+            var rows = await query
+                .AsNoTracking()
                 .Where(x => x.Status == "Printed" || x.Status == "Email-Failed" || x.Status == "Sent")
                 .OrderBy(x => x.Appeal_No)
                 .Take(200)
-                .Select(x => new ThirdPartyAppealSendEmailItemVm
-                {
-                    Id = x.Id,
-                    AppealNo = x.Appeal_No,
-                    ObjectionNo = x.Objection_No ?? "",
-                    PropertyDescription = x.Property_Description ?? "",
-
-                    OwnerName = x.OwnerName ?? "",
-                    OwnerEmail = x.OwnerEmail ?? "",
-
-                    ThirdPartyName = x.ThirdPartyName ?? "",
-                    ThirdPartyEmail = x.ThirdPartyEmail ?? "",
-
-                    AdminName = x.AdminName ?? "",
-                    AdminEmail = x.AdminEmail ?? "",
-
-                    EmailTo = x.OwnerEmail ?? "",
-                    EmailCc = BuildCc(x),
-
-                    PdfPath = x.PdfPath ?? "",
-                    AppealPackZipPath = x.AppealPackZipPath ?? "",
-                    EmlPath = x.EmlPath ?? "",
-
-                    Status = x.Status,
-                    ErrorMessage = x.ErrorMessage ?? ""
-                })
                 .ToListAsync(ct);
+
+            var items = rows.Select(x => new ThirdPartyAppealSendEmailItemVm
+            {
+                Id = x.Id,
+                AppealNo = x.Appeal_No ?? "",
+                ObjectionNo = x.Objection_No ?? "",
+                PremiseId = x.Premise_ID ?? "",
+                PropertyDescription = x.Property_Description ?? "",
+
+                OwnerName = x.OwnerName ?? "",
+                OwnerEmail = x.OwnerEmail ?? "",
+
+                ThirdPartyName = x.ThirdPartyName ?? "",
+                ThirdPartyEmail = x.ThirdPartyEmail ?? "",
+
+                AdminName = x.AdminName ?? "",
+                AdminEmail = x.AdminEmail ?? "",
+
+                EmailTo = x.OwnerEmail ?? "",
+                EmailCc = BuildCc(x),
+
+                PdfPath = x.PdfPath ?? "",
+                AppealPackZipPath = x.AppealPackZipPath ?? "",
+                EmlPath = x.EmlPath ?? "",
+
+                Status = x.Status ?? "Pending",
+                ErrorMessage = x.ErrorMessage ?? ""
+            }).ToList();
 
             return new ThirdPartyAppealSendEmailVm
             {
@@ -79,7 +82,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 Notice = "Third-Party Appeal Application",
 
                 TotalPrinted = totalPrinted,
-                TotalReadyToSend = await query.CountAsync(x => x.Status == "Printed", ct),
+                TotalReadyToSend = totalPrinted,
                 TotalSent = sent,
                 TotalFailed = failed,
                 TotalNoOwnerEmail = noOwnerEmail,
@@ -301,41 +304,56 @@ Valuation Appeal Board Secretariat
 City of Johannesburg";
         }
 
-        private string BuildCc(
-            ThirdPartyAppealApplicationNotice notice)
+        private static string BuildCc(ThirdPartyAppealApplicationNotice notice)
         {
-            var emails = new List<string>();
+            var cc = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(notice.ThirdPartyEmail))
-                emails.Add(notice.ThirdPartyEmail.Trim());
+                cc.Add(notice.ThirdPartyEmail.Trim());
 
             if (!string.IsNullOrWhiteSpace(notice.AdminEmail))
-                emails.Add(notice.AdminEmail.Trim());
+                cc.Add(notice.AdminEmail.Trim());
 
-            var valuationEmail =
-                _config["Email:Enquiries:Email"]
-                ?? _config["Email:CcAddress"]
-                ?? "valuationenquiries@joburg.org.za";
+            cc.Add("valuationenquiries@joburg.org.za");
 
-            if (!string.IsNullOrWhiteSpace(valuationEmail))
-                emails.Add(valuationEmail.Trim());
-
-            return string.Join("; ", emails.Distinct(StringComparer.OrdinalIgnoreCase));
+            return string.Join(";", cc.Distinct(StringComparer.OrdinalIgnoreCase));
         }
 
         private string SaveEmailEvidence(
-            NoticeSettings settings,
-            ThirdPartyAppealApplicationNotice notice,
-            string subject,
-            string body,
-            string cc,
-            string sentBy,
-            DateTime sentAt)
+     NoticeSettings settings,
+     ThirdPartyAppealApplicationNotice notice,
+     string subject,
+     string body,
+     string cc,
+     string sentBy,
+     DateTime sentAt)
         {
-            var folder = Path.GetDirectoryName(notice.PdfPath);
+            if (string.IsNullOrWhiteSpace(notice.Appeal_No))
+                throw new InvalidOperationException("Appeal_No is missing.");
 
-            if (string.IsNullOrWhiteSpace(folder))
-                throw new InvalidOperationException("Could not resolve email evidence folder.");
+            var rootKey = ResolveAppealRootKeyFromAppealNo(notice.Appeal_No);
+
+            var appealRoot = _config[$"Storage:AppealRootsByShortCode:{rootKey}"];
+
+            if (string.IsNullOrWhiteSpace(appealRoot))
+            {
+                throw new InvalidOperationException(
+                    $"Appeal root path is missing in appsettings for key '{rootKey}'.");
+            }
+
+            var tpaFolderName =
+                _config["Storage:ThirdPartyAppealApplication:PdfFolderName"]
+                ?? "THIRD-PARTY APPLICATION";
+
+            var emailCopyFolderName =
+                _config["Storage:ThirdPartyAppealApplication:EmailCopyFolderName"]
+                ?? "EMAIL COPIES";
+
+            var folder = Path.Combine(
+                appealRoot,
+                SafeFile(notice.Appeal_No),
+                tpaFolderName,
+                emailCopyFolderName);
 
             Directory.CreateDirectory(folder);
 
@@ -374,8 +392,29 @@ City of Johannesburg";
             return path;
         }
 
+        private static string ResolveAppealRootKeyFromAppealNo(string? appealNo)
+        {
+            if (string.IsNullOrWhiteSpace(appealNo))
+                return "GV23";
+
+            var value = appealNo.Trim();
+
+            if (value.Contains("APP-GV23-Sup1", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 1";
+
+            if (value.Contains("APP-GV23-Sup2", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 2";
+
+            if (value.Contains("APP-GV23-Sup3", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 3";
+
+            if (value.Contains("APP-GV23-", StringComparison.OrdinalIgnoreCase))
+                return "GV23";
+
+            return "GV23";
+        }
         private IQueryable<ThirdPartyAppealApplicationNotice> BuildNoticeQuery(
-            NoticeSettings settings)
+         NoticeSettings settings)
         {
             var q = _db.ThirdPartyAppealApplicationNotices.AsQueryable();
 
@@ -387,7 +426,12 @@ City of Johannesburg";
                     return bySettings;
             }
 
-            return q.Where(x => x.RollId == settings.RollId);
+            /*
+             * TPA records are selected by extract/workflow first.
+             * If no rows are linked yet, return all imported TPA records.
+             * They will be linked during print.
+             */
+            return q;
         }
 
         private async Task<NoticeSettings> GetSettingsAsync(

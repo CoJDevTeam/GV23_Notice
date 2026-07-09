@@ -1,6 +1,6 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3PrintVm
 @using GV23_Notice.Domain.Workflow
-
+@inject GV23_Notice.Services.QA.INoticeQaService QaService
 @{
     ViewData["Title"] = "Step 3 — Print Batches";
 
@@ -15,6 +15,10 @@
     bool tpaAnyPending = isTpa && tpa != null && tpa.TotalPendingPrint > 0;
     bool tpaAllDone = isTpa && tpa != null && tpa.TotalRecords > 0 && tpa.TotalPendingPrint == 0;
 
+    var qaRequired = await QaService.RequiresQaAsync(Model.WorkflowKey, Context.RequestAborted);
+    var qaApproved = await QaService.IsQaApprovedAsync(Model.WorkflowKey, Context.RequestAborted);
+    var mustGoQa = qaRequired && !qaApproved;
+
     string subTypeLabel = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
 
     string kickoffUrl = Url.Action("Step3Kickoff", "Workflow", new
@@ -23,7 +27,6 @@
         key = Model.WorkflowKey
     }) ?? "#";
 }
-
 <link href="~/css/Step3/Step3KickoffCss.css" rel="stylesheet" />
 <style>
     /* ── FULL-SCREEN SHELL ────────────────────────────────── */
@@ -1243,9 +1246,18 @@ else
         </div>
     }
 
-    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
-        📧 Go to Send Email →
-    </a>
+                    @if (mustGoQa)
+                    {
+                        <a href="@Url.Action("QA", "Step3", new { key })" class="btn-outline-gold">
+                            🔍 Go to QA →
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
+                            📧 Go to Send Email →
+                        </a>
+                    }
 
     <a href="@kickoffUrl" class="btn-outline-dark">
         ← Back to Kickoff
@@ -1286,9 +1298,18 @@ else if (isTpa && tpa != null)
         </div>
     }
 
-    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
-        📧 Go to Send Email →
-    </a>
+                    @if (mustGoQa)
+                    {
+                        <a href="@Url.Action("QA", "Step3", new { key })" class="btn-outline-gold">
+                            🔍 Go to QA →
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
+                            📧 Go to Send Email →
+                        </a>
+                    }
 
     <a href="@kickoffUrl" class="btn-outline-dark">
         ← Back to Kickoff
@@ -1422,7 +1443,14 @@ else
                             All Third-Party Appeal Notices Printed
                         </div>
                         <div style="font-size:.7rem;opacity:.75">
-                            @tpa.TotalPrinted.ToString("N0") notices saved. Proceed to Send Email.
+                            @if (mustGoQa)
+                            {
+                                <text>@tpa.TotalPrinted.ToString("N0") notices saved. Proceed to QA before sending email.</text>
+                            }
+                            else
+                            {
+                                <text>@tpa.TotalPrinted.ToString("N0") notices saved. Proceed to Send Email.</text>
+                            }
                         </div>
                     </div>
                 </div>

@@ -329,7 +329,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
         }
 
         private IQueryable<ThirdPartyAppealApplicationNotice> BuildNoticeQuery(
-            NoticeSettings settings)
+         NoticeSettings settings)
         {
             var q = _db.ThirdPartyAppealApplicationNotices.AsQueryable();
 
@@ -341,7 +341,12 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                     return bySettings;
             }
 
-            return q.Where(x => x.RollId == settings.RollId);
+            /*
+             * TPA records are selected by extract/workflow first.
+             * If no rows are linked yet, return all imported TPA records.
+             * They will be linked during print.
+             */
+            return q;
         }
 
         private async Task<NoticeSettings> GetSettingsAsync(
@@ -360,21 +365,21 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
 
         private string BuildThirdPartyFolder(
-      NoticeSettings settings,
-      ThirdPartyAppealApplicationNotice notice,
-      CancellationToken ct)
+          NoticeSettings settings,
+          ThirdPartyAppealApplicationNotice notice,
+          CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(notice.Appeal_No))
                 throw new InvalidOperationException("Appeal_No is missing.");
 
-            var shortCode = ResolveShortCode(settings);
+            var rootKey = ResolveAppealRootKeyFromAppealNo(notice.Appeal_No);
 
-            var appealRoot = _config[$"Storage:AppealRootsByShortCode:{shortCode}"];
+            var appealRoot = _config[$"Storage:AppealRootsByShortCode:{rootKey}"];
 
             if (string.IsNullOrWhiteSpace(appealRoot))
             {
                 throw new InvalidOperationException(
-                    $"Appeal root path is missing in appsettings for short code '{shortCode}'.");
+                    $"Appeal root path is missing in appsettings for key '{rootKey}'.");
             }
 
             var tpaFolderName =
@@ -391,17 +396,22 @@ namespace GV23_Notice.Services.ThirdPartyApplications
     string appealNo,
     CancellationToken ct)
         {
-            var shortCode = ResolveShortCode(settings);
+            if (string.IsNullOrWhiteSpace(appealNo))
+                throw new InvalidOperationException("Appeal_No is missing.");
 
-            var appealRoot = _config[$"Storage:AppealRootsByShortCode:{shortCode}"];
+            var rootKey = ResolveAppealRootKeyFromAppealNo(appealNo);
+
+            var appealRoot = _config[$"Storage:AppealRootsByShortCode:{rootKey}"];
 
             if (string.IsNullOrWhiteSpace(appealRoot))
             {
                 throw new InvalidOperationException(
-                    $"Appeal root path is missing in appsettings for short code '{shortCode}'.");
+                    $"Appeal root path is missing in appsettings for key '{rootKey}'.");
             }
 
-            return Path.Combine(appealRoot, SafeFolder(appealNo));
+            return Path.Combine(
+                appealRoot,
+                SafeFolder(appealNo));
         }
 
 
@@ -416,6 +426,27 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             return "GV23";
         }
 
+        private static string ResolveAppealRootKeyFromAppealNo(string? appealNo)
+        {
+            if (string.IsNullOrWhiteSpace(appealNo))
+                return "GV23";
+
+            var value = appealNo.Trim();
+
+            if (value.Contains("APP-GV23-Sup1", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 1";
+
+            if (value.Contains("APP-GV23-Sup2", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 2";
+
+            if (value.Contains("APP-GV23-Sup3", StringComparison.OrdinalIgnoreCase))
+                return "SUPP 3";
+
+            if (value.Contains("APP-GV23-", StringComparison.OrdinalIgnoreCase))
+                return "GV23";
+
+            return "GV23";
+        }
         private static string SafeFolder(string value)
         {
             foreach (var c in Path.GetInvalidFileNameChars())

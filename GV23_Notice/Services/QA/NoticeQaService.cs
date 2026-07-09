@@ -78,6 +78,11 @@ namespace GV23_Notice.Services.QA
                 .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey || x.WorkflowKey == workflowKey, ct)
                 ?? throw new InvalidOperationException("Workflow settings not found.");
 
+            if (settings.Notice == NoticeKind.TPA)
+            {
+                return await BuildTpaQaVmAsync(workflowKey, settings, ct);
+            }
+
             var roll = await _db.RollRegistry
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.RollId == settings.RollId, ct)
@@ -128,7 +133,7 @@ namespace GV23_Notice.Services.QA
                 .Select(x => new NoticeQaItemVm
                 {
                     QaItemId = x.Id,
-                    NoticeRunLogId = x.NoticeRunLogId,
+                    NoticeRunLogId = x.NoticeRunLogId??0,
                     ObjectionNo = x.ObjectionNo,
                     PremiseId = x.PremiseId,
                     PropertyType = x.PropertyType,
@@ -175,6 +180,11 @@ namespace GV23_Notice.Services.QA
 
             if (!await RequiresQaAsync(workflowKey, ct))
                 throw new InvalidOperationException("This notice type does not require this QA step.");
+
+            if (settings.Notice == NoticeKind.TPA)
+            {
+                return await CreateTpaQaRunAsync(workflowKey, settings, user, ct);
+            }
 
             var roll = await _db.RollRegistry
                 .AsNoTracking()
@@ -350,6 +360,12 @@ namespace GV23_Notice.Services.QA
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.Id == qaRun.NoticeSettingsId, ct)
                 ?? throw new InvalidOperationException("Notice settings not found for QA run.");
+
+            if (settings.Notice == NoticeKind.TPA)
+            {
+                await ApproveTpaQaAsync(qaRun, user, comment, ct);
+                return;
+            }
 
             var batchIds = await _db.NoticeBatches
                 .AsNoTracking()
@@ -730,6 +746,245 @@ INNER JOIN @ObjectionNos n
                 "VAB4" => "VAB4",
                 _ => cleaned
             };
+        }
+        private async Task<NoticeQaVm> BuildTpaQaVmAsync(
+    Guid workflowKey,
+    NoticeSettings settings,
+    CancellationToken ct)
+        {
+            var totalPrinted = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == settings.Id &&
+                    (x.Status == "Printed" || x.Status == "Email-Failed" || x.Status == "Sent") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "",
+                    ct);
+
+            var qaRun = await _db.NoticeQaRuns
+                .AsNoTracking()
+                .Include(x => x.Items)
+                .Where(x => x.WorkflowKey == workflowKey)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+
+            var vm = new NoticeQaVm
+            {
+                WorkflowKey = workflowKey,
+                SettingsId = settings.Id,
+                RollId = settings.RollId,
+                RollShortCode =  settings.ValuationPeriodCode ?? "GV23",
+                RollName = settings.RollName ?? "General Valuation Roll 2023",
+                Notice = settings.Notice,
+                VersionText = $"V{settings.Version}",
+                TotalPrinted = totalPrinted,
+                QaStatus = qaRun?.Status ?? "NotStarted",
+                QaRunId = qaRun?.Id,
+                IsApproved = qaRun?.Status == "Approved"
+            };
+
+            if (qaRun == null)
+                return vm;
+
+            var items = qaRun.Items
+                .OrderBy(x => x.PropertyType)
+                .ThenBy(x => x.ObjectionNo)
+                .Select(x => new NoticeQaItemVm
+                {
+                    QaItemId = x.Id,
+                    NoticeRunLogId = x.NoticeRunLogId??0,
+                    ObjectionNo = x.ObjectionNo,
+                    PremiseId = x.PremiseId,
+                    PropertyType = x.PropertyType,
+                    PropertyDesc = x.PropertyDesc,
+                    PdfPath = x.PdfPath,
+                    NewCategoryMvd = x.NewCategoryMvd,
+                    New2CategoryMvd = x.New2CategoryMvd,
+                    New3CategoryMvd = x.New3CategoryMvd,
+                    ExpectedCategory = x.ExpectedCategory,
+                    IsCategoryValid = x.IsCategoryValid,
+                    QaStatus = x.QaStatus,
+                    QaComment = x.QaComment
+                })
+                .ToList();
+
+            vm.TotalQaItems = items.Count;
+            vm.FailedItems = items.Count(x => !x.IsCategoryValid || x.QaStatus == "Failed");
+
+            /*
+             * For TPA we are checking printed PDF existence and basic required fields.
+             * If all sample items passed, allow approval.
+             */
+            vm.CanApprove =
+                items.Count > 0 &&
+                items.All(x => x.IsCategoryValid) &&
+                qaRun.Status != "Approved";
+
+            vm.Groups = items
+                .GroupBy(x => string.IsNullOrWhiteSpace(x.PropertyType) ? "General" : x.PropertyType)
+                .Select(g => new NoticeQaGroupVm
+                {
+                    PropertyType = g.Key,
+                    GroupLabel = "Property Type",
+                    Items = g.ToList()
+                })
+                .ToList();
+
+            return vm;
+        }
+
+        private async Task<int> CreateTpaQaRunAsync(
+            Guid workflowKey,
+            NoticeSettings settings,
+            string user,
+            CancellationToken ct)
+        {
+            var oldOpenRuns = await _db.NoticeQaRuns
+                .Where(x => x.WorkflowKey == workflowKey && x.Status == "Open")
+                .ToListAsync(ct);
+
+            foreach (var old in oldOpenRuns)
+                old.Status = "Replaced";
+
+            var printedRows = await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .Where(x =>
+                    x.NoticeSettingsId == settings.Id &&
+                    (x.Status == "Printed" || x.Status == "Email-Failed" || x.Status == "Sent") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "")
+                .OrderBy(x => x.Appeal_No)
+                .Select(x => new TpaQaLite
+                {
+                    Id = x.Id,
+                    AppealNo = x.Appeal_No ?? "",
+                    ObjectionNo = x.Objection_No ?? "",
+                    PremiseId = x.Premise_ID,
+                    PropertyDesc = x.Property_Description,
+                    PropertyType = x.Property_Type,
+                    PdfPath = x.PdfPath,
+                    OwnerEmail = x.OwnerEmail,
+                    AppealPackZipPath = x.AppealPackZipPath
+                })
+                .ToListAsync(ct);
+
+            if (printedRows.Count == 0)
+                throw new InvalidOperationException("No printed Third-Party Appeal notices found for QA. Print the notices first.");
+
+            var selected = PickDynamicQaSample(
+                printedRows,
+                x => NormalizePropertyType(x.PropertyType))
+                .ToList();
+
+            var qaRun = new NoticeQaRun
+            {
+                WorkflowKey = workflowKey,
+                NoticeSettingsId = settings.Id,
+                RollId = settings.RollId,
+                Notice = settings.Notice,
+                Status = "Open",
+                CreatedBy = user,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+
+            foreach (var row in selected)
+            {
+                var propertyType = NormalizePropertyType(row.PropertyType);
+
+                var hasPdf = !string.IsNullOrWhiteSpace(row.PdfPath) && File.Exists(row.PdfPath);
+                var hasAppealNo = !string.IsNullOrWhiteSpace(row.AppealNo);
+                var hasPremise = !string.IsNullOrWhiteSpace(row.PremiseId);
+                var hasProperty = !string.IsNullOrWhiteSpace(row.PropertyDesc);
+
+                var passed = hasPdf && hasAppealNo && hasPremise && hasProperty;
+
+                var commentParts = new List<string>();
+
+                if (!hasPdf)
+                    commentParts.Add("PDF file is missing or path does not exist.");
+
+                if (!hasAppealNo)
+                    commentParts.Add("Appeal_No is missing.");
+
+                if (!hasPremise)
+                    commentParts.Add("Premise_ID is missing.");
+
+                if (!hasProperty)
+                    commentParts.Add("Property description is missing.");
+
+                qaRun.Items.Add(new NoticeQaItem
+                {
+                    /*
+                     * TPA does not use NoticeRunLogs.
+                     * Keep this as 0. The QA view must use OpenThirdPartyPdf for TPA if needed later.
+                     */
+                    NoticeRunLogId = 0,
+
+                    ObjectionNo = string.IsNullOrWhiteSpace(row.AppealNo)
+                        ? row.ObjectionNo
+                        : row.AppealNo,
+
+                    PremiseId = row.PremiseId,
+                    PropertyType = propertyType,
+                    PropertyDesc = row.PropertyDesc,
+                    PdfPath = row.PdfPath,
+
+                    NewCategoryMvd = "",
+                    New2CategoryMvd = "",
+                    New3CategoryMvd = "",
+
+                    ExpectedCategory = "Printed PDF, Appeal No, Premise ID and Property Description must exist.",
+                    IsCategoryValid = passed,
+
+                    QaStatus = passed ? "Passed" : "Failed",
+                    QaComment = passed ? null : string.Join(" ", commentParts)
+                });
+            }
+
+            _db.NoticeQaRuns.Add(qaRun);
+            await _db.SaveChangesAsync(ct);
+
+            return qaRun.Id;
+        }
+
+        private async Task ApproveTpaQaAsync(
+            NoticeQaRun qaRun,
+            string user,
+            string? comment,
+            CancellationToken ct)
+        {
+            if (qaRun.Status == "Approved")
+                return;
+
+            if (qaRun.Items.Count == 0)
+                throw new InvalidOperationException("Cannot approve QA because there are no QA items.");
+
+            var failed = qaRun.Items
+                .Where(x => !x.IsCategoryValid || x.QaStatus == "Failed")
+                .ToList();
+
+            if (failed.Count > 0)
+                throw new InvalidOperationException("QA cannot be approved. Fix the failed TPA QA items first.");
+
+            qaRun.Status = "Approved";
+            qaRun.ApprovedBy = user;
+            qaRun.ApprovedAtUtc = DateTime.UtcNow;
+            qaRun.Comment = comment;
+
+            await _db.SaveChangesAsync(ct);
+        }
+
+        private sealed class TpaQaLite
+        {
+            public int Id { get; set; }
+            public string AppealNo { get; set; } = "";
+            public string ObjectionNo { get; set; } = "";
+            public string? PremiseId { get; set; }
+            public string? PropertyDesc { get; set; }
+            public string? PropertyType { get; set; }
+            public string? PdfPath { get; set; }
+            public string? OwnerEmail { get; set; }
+            public string? AppealPackZipPath { get; set; }
         }
         private sealed class PrintedLogLite
         {

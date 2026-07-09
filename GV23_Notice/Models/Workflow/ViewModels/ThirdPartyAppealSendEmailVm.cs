@@ -41,7 +41,7 @@ City of Johannesburg";
     public class ThirdPartyAppealSendEmailItemVm
     {
         public int Id { get; set; }
-
+        public string? PremiseId { get; set; }
         public string AppealNo { get; set; } = "";
         public string ObjectionNo { get; set; } = "";
         public string PropertyDescription { get; set; } = "";
