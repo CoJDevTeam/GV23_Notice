@@ -224,6 +224,11 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 return result;
             }
 
+            var activeRolls = await _db.RollRegistry
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .ToListAsync(ct);
+
             foreach (var notice in notices)
             {
                 try
@@ -235,10 +240,14 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                      * Link this imported record to the current workflow.
                      * This makes future dashboard/progress queries accurate.
                      */
+                    var resolvedRoll = ResolveRollFromAppealNumber(
+                        notice.Appeal_No,
+                        activeRolls);
+
                     notice.NoticeSettingsId = settings.Id;
-                    notice.RollId = settings.RollId;
-                    //notice.WorkflowKey = key;
-                    notice.ValuationPeriod = settings.ValuationPeriodCode ?? notice.ValuationPeriod;
+                    notice.RollId = resolvedRoll.RollId;
+                    notice.RollShortCode = resolvedRoll.ShortCode;
+                    notice.ValuationPeriod = resolvedRoll.Name;
                     notice.LetterDate = DateTime.Today;
 
                     notice.Status = "Printing";
@@ -285,8 +294,6 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 catch (Exception ex)
                 {
                     notice.NoticeSettingsId = settings.Id;
-                    notice.RollId = settings.RollId;
-                    //notice.WorkflowKey = key;
 
                     notice.Status = "Print-Failed";
                     notice.ErrorMessage = ex.Message;
@@ -447,6 +454,73 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
             return "GV23";
         }
+        private static Domain.Rolls.RollRegistry ResolveRollFromAppealNumber(
+            string appealNo,
+            IReadOnlyCollection<Domain.Rolls.RollRegistry> activeRolls)
+        {
+            var expectedShortCode = ResolveRollShortCodeFromAppealNumber(
+                appealNo);
+
+            var roll = activeRolls.FirstOrDefault(x =>
+                NormalizeRollShortCode(x.ShortCode) ==
+                NormalizeRollShortCode(expectedShortCode));
+
+            return roll
+                ?? throw new InvalidOperationException(
+                    $"No active RollRegistry entry was found for Appeal_No '{appealNo}' using ShortCode '{expectedShortCode}'.");
+        }
+
+        private static string ResolveRollShortCodeFromAppealNumber(
+            string appealNo)
+        {
+            if (string.IsNullOrWhiteSpace(appealNo))
+            {
+                throw new InvalidOperationException(
+                    "Appeal_No is required to resolve the valuation roll.");
+            }
+
+            var value = appealNo.Trim();
+
+            if (value.StartsWith(
+                "APP-GV23-Sup3-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 3";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-Sup2-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 2";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-Sup1-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 1";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "GV23";
+            }
+
+            throw new InvalidOperationException(
+                $"Appeal_No '{appealNo}' does not match a supported TPA roll pattern.");
+        }
+
+        private static string NormalizeRollShortCode(string? shortCode)
+        {
+            return (shortCode ?? "")
+                .Replace(" ", "")
+                .Trim()
+                .ToUpperInvariant();
+        }
+
         private static string SafeFolder(string value)
         {
             foreach (var c in Path.GetInvalidFileNameChars())

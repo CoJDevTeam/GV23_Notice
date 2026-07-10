@@ -119,6 +119,10 @@
         public string? Valuer { get; set; }
         public string? Valuer_Email { get; set; }
         public string? Objector_Status { get; set; }
+
+        public int? VabBoardId { get; set; }
+
+        public VabBoard? VabBoard { get; set; }
         public bool IsMultipurpose =>
             HasValue(AppellantRequestMarketValue2) ||
             HasValue(AppellantRequestMarketValue3) ||

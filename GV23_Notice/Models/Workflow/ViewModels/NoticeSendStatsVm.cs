@@ -34,6 +34,9 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string? DefaultToEmails { get; set; }
 
         public string? DefaultCcEmails { get; set; }
+        public bool IsTpa { get; set; }
+
+        public ThirdPartyAppealStatsVm? TpaStats { get; set; }
 
         public List<NoticeSendStatsBatchVm> Batches { get; set; } = new();
         public List<NoticeSendStatsRowVm> Rows { get; set; } = new();

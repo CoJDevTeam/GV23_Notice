@@ -22,7 +22,9 @@
 
         public DateTime? LastSentAt { get; set; }
         public string? LastSentBy { get; set; }
+        public bool IsTpa { get; set; }
 
+        public ThirdPartyAppealStatsVm? TpaStats { get; set; }
         public string ValuationEnquiriesEmail { get; set; }
             = "ValuationEnquiries@joburg.org.za";
 
@@ -55,16 +57,31 @@
 
         public List<ThirdPartyAppealStatsDetailVm> Details { get; set; }
             = new();
+
+        public List<ThirdPartyAppealBoardGroupVm> BoardGroups { get; set; }
+    = new();
     }
 
     public sealed class ThirdPartyAppealStatsDetailVm
     {
         public string PremiseId { get; set; } = "";
+
+        public string ObjectionNo { get; set; } = "";
+
         public string AppealNo { get; set; } = "";
+
         public string PropertyDescription { get; set; } = "";
+
         public string Status { get; set; } = "";
+
         public DateTime? DateSent { get; set; }
+
         public string SentBy { get; set; } = "";
+      
+
+        public int? VabBoardId { get; set; }
+
+        public DateTime? HearingDate { get; set; }
     }
 
     public sealed class ThirdPartyAppealAdminExcelVm

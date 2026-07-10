@@ -30,10 +30,10 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             var letterDate = notice.LetterDate ?? DateTime.Today;
 
             var rollDisplayName = FirstNonEmpty(
-     settings.RollName,
-     notice.ValuationPeriod,
-     settings.ValuationPeriodCode,
-     "GENERAL VALUATION ROLL 2023");
+                notice.ValuationPeriod,
+                settings.RollName,
+                settings.ValuationPeriodCode,
+                "General Valuation Roll 2023");
 
             var responseDays = 30;
 
@@ -109,7 +109,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                                 .AlignRight()
                                 .Text(t =>
                                 {
-                                    t.Span("DATE: ").Style(body10b);
+                                   //t.Span("DATE: ").Style(body10b);
                                     t.Span(letterDate.ToString(
                                             "dd MMMM yyyy",
                                             CultureInfo.GetCultureInfo("en-ZA")))
@@ -249,14 +249,45 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                     h.Cell().Element(HeaderCell).Text("Property Details")
                         .FontFamily("Arial").FontSize(9).SemiBold();
 
-                    h.Cell().Element(HeaderCell).Text($"Entry {BuildRollHeader(rollDisplayName)} Value")
-                        .FontFamily("Arial").FontSize(9).SemiBold();
+                    h.Cell()
+                        .Element(HeaderCell)
+                        .Text(text =>
+                        {
+                            text.Span($"{rollDisplayName} Value")
+                                .FontFamily("Arial")
+                                .FontSize(8.5f)
+                                .SemiBold();
+                        });
 
-                    h.Cell().Element(HeaderCell).Text($"Objection Outcome[{Display(notice.Objection_No)}]")
-                        .FontFamily("Arial").FontSize(9).SemiBold();
+                    h.Cell()
+                        .Element(HeaderCell)
+                        .Text(text =>
+                        {
+                            text.Span("Objection Outcome")
+                                .FontFamily("Arial")
+                                .FontSize(9)
+                                .SemiBold();
 
-                    h.Cell().Element(HeaderCell).Text($"Appellant Request[{Display(notice.Appeal_No)}]")
-                        .FontFamily("Arial").FontSize(9).SemiBold();
+                            text.Line(Display(notice.Objection_No))
+                                .FontFamily("Arial")
+                                .FontSize(8)
+                                .SemiBold();
+                        });
+
+                    h.Cell()
+                        .Element(HeaderCell)
+                        .Text(text =>
+                        {
+                            text.Span("Appellant Request")
+                                .FontFamily("Arial")
+                                .FontSize(9)
+                                .SemiBold();
+
+                            text.Line(Display(notice.Appeal_No))
+                                .FontFamily("Arial")
+                                .FontSize(8)
+                                .SemiBold();
+                        });
                 });
 
                 DataRow(
@@ -439,18 +470,6 @@ namespace GV23_Notice.Services.ThirdPartyApplications
              .PaddingVertical(5)
              .PaddingHorizontal(4);
 
-        private static string BuildRollHeader(string valuationPeriod)
-        {
-            var v = valuationPeriod.Trim();
-
-            if (v.Contains("2023", StringComparison.OrdinalIgnoreCase))
-                return "2023 General Valuation Roll";
-
-            if (v.Contains("GENERAL VALUATION", StringComparison.OrdinalIgnoreCase))
-                return v;
-
-            return v;
-        }
 
         private static void BuildFormalAddress(
             IContainer container,

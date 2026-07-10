@@ -29,6 +29,7 @@ namespace GV23_Notice.Controllers
         private readonly IS52RangePrintService _s52RangePrint;
         private readonly INoticeQaService _qa;
         private readonly INoticeSendStatsService _stats;
+        private readonly IThirdPartyAppealStatsService _tpaStats;
 
         // Third-Party Appeal Application
         private readonly IThirdPartyAppealPrintService _tpaPrint;
@@ -46,6 +47,7 @@ namespace GV23_Notice.Controllers
             AppDbContext db,
             INoticeQaService qa,
             INoticeSendStatsService statsService,
+            IThirdPartyAppealStatsService tpaStats,
             IThirdPartyAppealPrintService tpaPrint,
             IThirdPartyAppealEmailService tpaEmail)
         {
@@ -60,6 +62,7 @@ namespace GV23_Notice.Controllers
             _db = db;
             _s52RangePrint = s52RangePrint;
             _qa = qa;
+            _tpaStats = tpaStats;
 
             _tpaPrint = tpaPrint;
             _tpaEmail = tpaEmail;
@@ -216,11 +219,11 @@ namespace GV23_Notice.Controllers
                 SettingsId = settings.Id,
 
                 RollId = settings.RollId,
-                RollShortCode = roll?.ShortCode ??  "GV23",
+                RollShortCode = roll?.ShortCode ?? "GV23",
                 RollName = roll?.Name ?? settings.RollName ?? "General Valuation Roll 2023",
 
                 Notice = settings.Notice,
-                
+
                 Version = settings.Version,
                 VersionText = $"V{settings.Version}",
 
@@ -483,7 +486,7 @@ namespace GV23_Notice.Controllers
                 SettingsId = settings.Id,
 
                 RollId = settings.RollId,
-                RollShortCode = roll?.ShortCode ??  "GV23",
+                RollShortCode = roll?.ShortCode ?? "GV23",
                 RollName = roll?.Name ?? settings.RollName ?? "General Valuation Roll 2023",
 
                 Notice = settings.Notice,
@@ -894,8 +897,45 @@ namespace GV23_Notice.Controllers
 
         [HttpGet("SendStats")]
         public async Task<IActionResult> SendStats(
-      Guid key,
-      CancellationToken ct)
+            Guid key,
+            CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+            {
+                return BadRequest("Invalid workflow key.");
+            }
+
+            try
+            {
+                /*
+                 * NoticeSendStatsService keeps normal statistics and
+                 * delegates TPA statistics to IThirdPartyAppealStatsService.
+                 *
+                 * Both notice types use:
+                 * Views/Step3/SendStats.cshtml
+                 */
+                var vm = await _stats.BuildStatsAsync(
+                    key,
+                    ct);
+
+                return View("SendStats", vm);
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] =
+                    $"The statistics could not be loaded. {ex.Message}";
+
+                return RedirectToAction(
+                    nameof(SendEmail),
+                    new { key });
+            }
+        }
+
+        [HttpPost("SendAllTpaAdminReports")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendAllTpaAdminReports(
+            Guid key,
+            CancellationToken ct)
         {
             if (key == Guid.Empty)
             {
@@ -906,39 +946,105 @@ namespace GV23_Notice.Controllers
                 key,
                 ct);
 
-            /*
-             * TPA does not use NoticeBatches or the normal
-             * Step3/SendStats stakeholder report.
-             *
-             * Send TPA to the Admin-grouped statistics page.
-             */
-            if (settings.Notice == NoticeKind.TPA)
+            if (settings.Notice != NoticeKind.TPA)
             {
-                return RedirectToAction(
-                    "Index",
-                    "Stats",
-                    new
-                    {
-                        Notice = NoticeKind.TPA,
-                        WorkflowKey = key
-                    });
+                return BadRequest(
+                    "This action is only available for Third-Party Appeal statistics.");
             }
 
-            /*
-             * All normal notices continue using the existing
-             * Views/Step3/SendStats.cshtml page.
-             */
-            var vm = await _stats.BuildStatsAsync(
+            var performedBy =
+                User?.Identity?.Name ?? "Unknown";
+
+            try
+            {
+                /*
+                 * One button triggers the bulk operation.
+                 * ThirdPartyAppealStatsService internally generates,
+                 * archives and sends one separate workbook and .eml
+                 * evidence file per eligible Admin.
+                 */
+                var result =
+                    await _tpaStats.SendAllAdminReportsAsync(
+                        key,
+                        performedBy,
+                        ct);
+
+                TempData["Success"] =
+                    $"TPA Admin reports completed. " +
+                    $"Sent: {result.Sent}, " +
+                    $"Failed: {result.Failed}, " +
+                    $"Skipped: {result.Skipped}.";
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] =
+                    $"TPA Admin reports could not be sent. {ex.Message}";
+            }
+
+            return RedirectToAction(
+                nameof(SendStats),
+                new { key });
+        }
+
+        [HttpGet("DownloadTpaAdminExcel")]
+        public async Task<IActionResult> DownloadTpaAdminExcel(
+            Guid key,
+            string adminKey,
+            CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+            {
+                return BadRequest("Invalid workflow key.");
+            }
+
+            if (string.IsNullOrWhiteSpace(adminKey))
+            {
+                return BadRequest("Invalid Admin key.");
+            }
+
+            var settings = await GetWorkflowSettingsAsync(
                 key,
                 ct);
 
-            return View(vm);
+            if (settings.Notice != NoticeKind.TPA)
+            {
+                return BadRequest(
+                    "This download is only available for Third-Party Appeal statistics.");
+            }
+
+            try
+            {
+                /*
+                 * BuildAdminExcelAsync returns an in-memory workbook.
+                 * Downloading does not create another evidence copy.
+                 * Evidence is saved by SendAllAdminReportsAsync when sent.
+                 */
+                var excel =
+                    await _tpaStats.BuildAdminExcelAsync(
+                        key,
+                        adminKey,
+                        ct);
+
+                return File(
+                    excel.Content,
+                    excel.ContentType,
+                    excel.FileName);
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] =
+                    $"The Admin workbook could not be generated. {ex.Message}";
+
+                return RedirectToAction(
+                    nameof(SendStats),
+                    new { key });
+            }
         }
 
         [HttpGet("DownloadStatsExcel")]
         public async Task<IActionResult> DownloadStatsExcel(
-           Guid key,
-           CancellationToken ct)
+            Guid key,
+            CancellationToken ct)
         {
             if (key == Guid.Empty)
             {
@@ -949,53 +1055,65 @@ namespace GV23_Notice.Controllers
                 key,
                 ct);
 
+            /*
+             * TPA uses the per-Admin download links displayed directly
+             * on Views/Step3/SendStats.cshtml.
+             */
             if (settings.Notice == NoticeKind.TPA)
             {
+                TempData["Error"] =
+                    "Use the Download button next to the required Admin.";
+
                 return RedirectToAction(
-                    "Index",
-                    "Stats",
-                    new
-                    {
-                        Notice = NoticeKind.TPA,
-                        WorkflowKey = key
-                    });
+                    nameof(SendStats),
+                    new { key });
             }
 
             var user =
                 User?.Identity?.Name ?? "Unknown";
 
-            var path = await _stats.GenerateExcelAsync(
-                key,
-                user,
-                ct);
-
-            if (!System.IO.File.Exists(path))
+            try
             {
-                return NotFound(
-                    "The statistics workbook was not found.");
+                var path =
+                    await _stats.GenerateExcelAsync(
+                        key,
+                        user,
+                        ct);
+
+                if (!System.IO.File.Exists(path))
+                {
+                    return NotFound(
+                        "The statistics workbook was not found.");
+                }
+
+                var bytes =
+                    await System.IO.File.ReadAllBytesAsync(
+                        path,
+                        ct);
+
+                return File(
+                    bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    Path.GetFileName(path));
             }
+            catch (Exception ex)
+            {
+                TempData["Error"] =
+                    $"The statistics workbook could not be generated. {ex.Message}";
 
-            var bytes =
-                await System.IO.File.ReadAllBytesAsync(
-                    path,
-                    ct);
-
-            var fileName =
-                Path.GetFileName(path);
-
-            return File(
-                bytes,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                fileName);
+                return RedirectToAction(
+                    nameof(SendStats),
+                    new { key });
+            }
         }
 
         [HttpPost("SendStatsEmail")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SendStatsEmail(
-          Guid key,
-          string toEmails,
-          string? ccEmails,
-          CancellationToken ct)
+            Guid key,
+            string toEmails,
+            string? ccEmails,
+            CancellationToken ct)
         {
             if (key == Guid.Empty)
             {
@@ -1007,21 +1125,17 @@ namespace GV23_Notice.Controllers
                 ct);
 
             /*
-             * TPA reports are sent per Admin from StatsController.
+             * TPA has its own single bulk button on the same SendStats view.
+             * Do not redirect to StatsController.
              */
             if (settings.Notice == NoticeKind.TPA)
             {
                 TempData["Error"] =
-                    "TPA statistics reports must be sent from the Admin statistics page.";
+                    "Use Send All Admin Reports for Third-Party Appeal statistics.";
 
                 return RedirectToAction(
-                    "Index",
-                    "Stats",
-                    new
-                    {
-                        Notice = NoticeKind.TPA,
-                        WorkflowKey = key
-                    });
+                    nameof(SendStats),
+                    new { key });
             }
 
             var user =

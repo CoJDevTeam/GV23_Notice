@@ -5,7 +5,8 @@
     ViewData["Title"] = "Notice Send Statistics";
 
     var key = Model.WorkflowKey;
-    var isTpa = Model.Notice == NoticeKind.TPA;
+    var isTpa = Model.IsTpa;
+    var tpa = Model.TpaStats;
 }
 
 <link href="~/css/Step3/Step3KickOffCss1.css"
@@ -333,6 +334,7 @@
 <div class="st-wrap">
 
     <div class="st-head">
+
         <h1 class="st-title">
             @(isTpa
                 ? "Third-Party Appeal Notice Statistics"
@@ -340,6 +342,7 @@
         </h1>
 
         <div class="st-sub">
+
             @if (isTpa)
             {
                 <text>
@@ -406,17 +409,31 @@
             Back to Send Notices
         </a>
 
-        @if (isTpa)
+        @if (isTpa && tpa != null)
         {
-            <a class="st-btn st-btn-green"
-                   asp-controller="Stats"
-                   asp-action="Index"
-                   asp-route-notice="@NoticeKind.TPA"
-                   asp-route-workflowKey="@key">
-                Open TPA Admin Statistics
-            </a>
+            <form asp-controller="Step3"
+                  asp-action="SendAllTpaAdminReports"
+                  method="post"
+                  onsubmit="return confirmTpaAdminReports(this);"
+                  style="margin:0;">
+
+                @Html.AntiForgeryToken()
+
+                <input type="hidden"
+                       name="key"
+                       value="@key" />
+
+                <button type="submit"
+                        class="st-btn st-btn-green"
+                        disabled="@(
+                                            tpa.Admins.Any(x => x.HasAdminEmail)
+                                                ? null
+                                                : "disabled")">
+                    Send All Admin Reports
+                </button>
+            </form>
         }
-        else
+        else if (!isTpa)
         {
             <a class="st-btn st-btn-gold"
                    asp-action="DownloadStatsExcel"
@@ -426,208 +443,188 @@
             </a>
         }
     </div>
-
-    @if (isTpa)
+    @if (isTpa && tpa != null)
     {
         <div class="st-alert st-alert-info">
-            TPA does not use normal batches or the general stakeholder report.
-            Reports are generated and emailed separately for each responsible Admin.
+            TPA reports are grouped by the responsible Admin.
+            Each eligible Admin will receive a separate Excel workbook containing
+            the Summary Report and Detail sheets.
+            Admins with missing email addresses will be blocked and skipped.
         </div>
 
-        <div class="st-panel">
-            <div class="st-panel-head">
-                Continue to TPA Admin Reporting
+        <div class="st-grid">
+            <div class="st-card">
+                <div class="st-num">@tpa.TotalAdmins.ToString("N0")</div>
+                <div class="st-label">Admins</div>
             </div>
+            <div class="st-card">
+                <div class="st-num">@tpa.TotalRecords.ToString("N0")</div>
+                <div class="st-label">Total Records</div>
+            </div>
+            <div class="st-card">
+                <div class="st-num gold">@tpa.TotalPrinted.ToString("N0")</div>
+                <div class="st-label">Awaiting Send</div>
+            </div>
+            <div class="st-card">
+                <div class="st-num green">@tpa.TotalSent.ToString("N0")</div>
+                <div class="st-label">Notice Sent</div>
+            </div>
+            <div class="st-card">
+                <div class="st-num red">@tpa.TotalFailed.ToString("N0")</div>
+                <div class="st-label">Failed</div>
+            </div>
+            <div class="st-card">
+                <div class="st-num gold">@tpa.TotalNoEmail.ToString("N0")</div>
+                <div class="st-label">No Owner Email</div>
+            </div>
+        </div>
 
-            <div class="st-tpa-card">
-                <div class="st-tpa-icon">📊</div>
+        @if (tpa.TotalMissingAdminEmail > 0)
+        {
+            <div class="st-alert st-alert-err">
+                <strong>Action required:</strong>
+                @tpa.TotalMissingAdminEmail Admin group(s) have no Admin email address.
+                These reports will not be sent.
+            </div>
+        }
 
-                <div>
-                    <div class="st-tpa-title">
-                        TPA Admin Statistics
-                    </div>
-
-                    <div class="st-tpa-text">
-                        The TPA statistics page groups notices by Admin, pre-populates
-                        the Admin email in To, includes Valuation Enquiries and all relevant
-                        valuers in CC, generates one Excel workbook per Admin, saves the
-                        workbook and email copy as evidence, and records every send attempt
-                        in the audit trail.
-                    </div>
+        <div class="st-panel">
+            <div class="st-panel-head">TPA Statistics by Admin</div>
+            <div class="st-panel-body">
+                <div class="st-table-wrap">
+                    <table class="st-table">
+                        <thead>
+                            <tr>
+                                <th>Admin</th>
+                                <th>Admin Email</th>
+                                <th>Total</th>
+                                <th>Awaiting Send</th>
+                                <th>Notice Sent</th>
+                                <th>Failed</th>
+                                <th>No Owner Email</th>
+                                <th>Status</th>
+                                <th>Excel</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!tpa.Admins.Any())
+                            {
+                                <tr><td colspan="9">No TPA Admin statistics were found.</td></tr>
+                            }
+                            else
+                            {
+                                @foreach (var admin in tpa.Admins)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@admin.AdminName</strong>
+                                            <div class="st-help">
+                                                Last notice sent:
+                                                @(admin.LastSentAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—")
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if (admin.HasAdminEmail)
+                                            {
+                                                <span style="color:#1a8a4a;font-weight:800;">Ready</span>
+                                                <div class="st-help">@admin.AdminEmail</div>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#c0392b;font-weight:800;">Missing Admin Email</span>
+                                            }
+                                        </td>
+                                        <td>@admin.TotalRecords.ToString("N0")</td>
+                                        <td>@admin.TotalPrinted.ToString("N0")</td>
+                                        <td>@admin.TotalSent.ToString("N0")</td>
+                                        <td>@admin.TotalFailed.ToString("N0")</td>
+                                        <td>@admin.TotalNoEmail.ToString("N0")</td>
+                                        <td>
+                                            @if (!admin.HasAdminEmail)
+                                            {
+                                                <span style="color:#c0392b;font-weight:800;">Blocked</span>
+                                            }
+                                            else if (admin.TotalRecords == 0)
+                                            {
+                                                <span style="color:#d4a500;font-weight:800;">No Records</span>
+                                            }
+                                            else
+                                            {
+                                                <span style="color:#1a8a4a;font-weight:800;">Ready</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <a class="st-btn st-btn-gold"
+                                                   asp-controller="Step3"
+                                                   asp-action="DownloadTpaAdminExcel"
+                                                   asp-route-key="@key"
+                                                   asp-route-adminKey="@admin.AdminKey">
+                                                Download
+                                            </a>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
                 </div>
-
-                <a class="st-btn st-btn-green"
-                       asp-controller="Stats"
-                       asp-action="Index"
-                       asp-route-notice="@NoticeKind.TPA"
-                       asp-route-workflowKey="@key">
-                    View Admin Reports
-                </a>
             </div>
         </div>
     }
-    else
+    else if (!isTpa)
     {
         <div class="st-grid">
-            <div class="st-card">
-                <div class="st-num">
-                    @Model.TotalBatches.ToString("N0")
-                </div>
-                <div class="st-label">Batches</div>
-            </div>
-
-            <div class="st-card">
-                <div class="st-num">
-                    @Model.TotalRecords.ToString("N0")
-                </div>
-                <div class="st-label">Total Records</div>
-            </div>
-
-            <div class="st-card">
-                <div class="st-num gold">
-                    @Model.TotalPrinted.ToString("N0")
-                </div>
-                <div class="st-label">Still Printed</div>
-            </div>
-
-            <div class="st-card">
-                <div class="st-num green">
-                    @Model.TotalSent.ToString("N0")
-                </div>
-                <div class="st-label">Sent</div>
-            </div>
-
-            <div class="st-card">
-                <div class="st-num red">
-                    @Model.TotalFailed.ToString("N0")
-                </div>
-                <div class="st-label">Failed</div>
-            </div>
-
-            <div class="st-card">
-                <div class="st-num gold">
-                    @Model.TotalNoEmail.ToString("N0")
-                </div>
-                <div class="st-label">No Email</div>
-            </div>
+            <div class="st-card"><div class="st-num">@Model.TotalBatches.ToString("N0")</div><div class="st-label">Batches</div></div>
+            <div class="st-card"><div class="st-num">@Model.TotalRecords.ToString("N0")</div><div class="st-label">Total Records</div></div>
+            <div class="st-card"><div class="st-num gold">@Model.TotalPrinted.ToString("N0")</div><div class="st-label">Still Printed</div></div>
+            <div class="st-card"><div class="st-num green">@Model.TotalSent.ToString("N0")</div><div class="st-label">Sent</div></div>
+            <div class="st-card"><div class="st-num red">@Model.TotalFailed.ToString("N0")</div><div class="st-label">Failed</div></div>
+            <div class="st-card"><div class="st-num gold">@Model.TotalNoEmail.ToString("N0")</div><div class="st-label">No Email</div></div>
         </div>
 
         <div class="st-panel">
-            <div class="st-panel-head">
-                Send Stats to Stakeholders
-            </div>
-
+            <div class="st-panel-head">Send Stats to Stakeholders</div>
             <div class="st-panel-body">
-                <form asp-action="SendStatsEmail"
-                      asp-controller="Step3"
-                      method="post"
-                      id="statsEmailForm">
-
+                <form asp-action="SendStatsEmail" asp-controller="Step3" method="post" id="statsEmailForm">
                     @Html.AntiForgeryToken()
-
-                    <input type="hidden"
-                           name="key"
-                           value="@key" />
-
+                    <input type="hidden" name="key" value="@key" />
                     <div style="font-size:.76rem;color:#666;line-height:1.6;margin-bottom:14px;">
-                        Default stakeholders are loaded from
-                        <strong>appsettings.json</strong>.
-                        You can add more emails before sending.
-                        Use a comma or semicolon between addresses.
+                        Default stakeholders are loaded from <strong>appsettings.json</strong>.
+                        You can add more emails before sending. Use a comma or semicolon between emails.
                     </div>
-
                     <div class="st-form-grid">
                         <div class="st-field">
                             <label>To Emails</label>
-
-                            <input class="st-input"
-                                   id="toEmails"
-                                   name="toEmails"
-                                   value="@Model.DefaultToEmails"
-                                   placeholder="senior@joburg.org.za; manager@joburg.org.za"
-                                   required />
-
-                            <div class="st-help">
-                                Main recipients. Separate additional addresses using
-                                <strong>;</strong> or <strong>,</strong>.
-                            </div>
+                            <input class="st-input" id="toEmails" name="toEmails" value="@Model.DefaultToEmails" placeholder="senior@joburg.org.za; manager@joburg.org.za" required />
+                            <div class="st-help">Main recipients. Separate additional addresses using <strong>;</strong> or <strong>,</strong>.</div>
                         </div>
-
                         <div class="st-field">
                             <label>CC Emails</label>
-
-                            <input class="st-input"
-                                   id="ccEmails"
-                                   name="ccEmails"
-                                   value="@Model.DefaultCcEmails"
-                                   placeholder="Optional CC emails" />
-
-                            <div class="st-help">
-                                Optional copied recipients.
-                            </div>
+                            <input class="st-input" id="ccEmails" name="ccEmails" value="@Model.DefaultCcEmails" placeholder="Optional CC emails" />
+                            <div class="st-help">Optional copied recipients.</div>
                         </div>
-
-                        <button class="st-btn st-btn-green"
-                                type="submit">
-                            Send Stats Email
-                        </button>
+                        <button class="st-btn st-btn-green" type="submit">Send Stats Email</button>
                     </div>
-
                     <div class="st-quick-add">
-                        <div class="st-quick-title">
-                            Quick Add
-                        </div>
-
-                        <button type="button"
-                                class="st-mini-btn"
-                                onclick="addEmail('toEmails','senior.developer@joburg.org.za')">
-                            + Senior Developer
-                        </button>
-
-                        <button type="button"
-                                class="st-mini-btn"
-                                onclick="addEmail('toEmails','manager@joburg.org.za')">
-                            + Manager
-                        </button>
-
-                        <button type="button"
-                                class="st-mini-btn"
-                                onclick="addEmail('ccEmails','developer@joburg.org.za')">
-                            + Developer CC
-                        </button>
+                        <div class="st-quick-title">Quick Add</div>
+                        <button type="button" class="st-mini-btn" onclick="addEmail('toEmails','senior.developer@joburg.org.za')">+ Senior Developer</button>
+                        <button type="button" class="st-mini-btn" onclick="addEmail('toEmails','manager@joburg.org.za')">+ Manager</button>
+                        <button type="button" class="st-mini-btn" onclick="addEmail('ccEmails','developer@joburg.org.za')">+ Developer CC</button>
                     </div>
                 </form>
             </div>
         </div>
 
         <div class="st-panel">
-            <div class="st-panel-head">
-                Batch Summary
-            </div>
-
+            <div class="st-panel-head">Batch Summary</div>
             <div class="st-panel-body">
                 <div class="st-table-wrap">
                     <table class="st-table">
-                        <thead>
-                            <tr>
-                                <th>Batch Name</th>
-                                <th>Batch Date</th>
-                                <th>Total</th>
-                                <th>Printed</th>
-                                <th>Sent</th>
-                                <th>Failed</th>
-                                <th>No Email</th>
-                            </tr>
-                        </thead>
-
+                        <thead><tr><th>Batch Name</th><th>Batch Date</th><th>Total</th><th>Printed</th><th>Sent</th><th>Failed</th><th>No Email</th></tr></thead>
                         <tbody>
                             @if (!Model.Batches.Any())
                             {
-                                <tr>
-                                    <td colspan="7">
-                                        No batch statistics were found.
-                                    </td>
-                                </tr>
+                                <tr><td colspan="7">No batch statistics were found.</td></tr>
                             }
                             else
                             {
@@ -651,44 +648,21 @@
         </div>
 
         <div class="st-panel">
-            <div class="st-panel-head">
-                Notice Details
-            </div>
-
+            <div class="st-panel-head">Notice Details</div>
             <div class="st-panel-body">
                 <div class="st-table-wrap">
                     <table class="st-table">
-                        <thead>
-                            <tr>
-                                <th>Batch</th>
-                                <th>Reference</th>
-                                <th>Premise ID</th>
-                                <th>Property</th>
-                                <th>Recipient</th>
-                                <th>Email</th>
-                                <th>Status</th>
-                                <th>Error</th>
-                            </tr>
-                        </thead>
-
+                        <thead><tr><th>Batch</th><th>Reference</th><th>Premise ID</th><th>Property</th><th>Recipient</th><th>Email</th><th>Status</th><th>Error</th></tr></thead>
                         <tbody>
                             @if (!Model.Rows.Any())
                             {
-                                <tr>
-                                    <td colspan="8">
-                                        No notice records were found.
-                                    </td>
-                                </tr>
+                                <tr><td colspan="8">No notice records were found.</td></tr>
                             }
                             else
                             {
                                 @foreach (var x in Model.Rows.Take(200))
                                 {
-                                    var reference =
-                                        !string.IsNullOrWhiteSpace(x.ObjectionNo)
-                                            ? x.ObjectionNo
-                                            : x.AppealNo;
-
+                                    var reference = !string.IsNullOrWhiteSpace(x.ObjectionNo) ? x.ObjectionNo : x.AppealNo;
                                     <tr>
                                         <td>@x.BatchName</td>
                                         <td>@reference</td>
@@ -704,17 +678,20 @@
                         </tbody>
                     </table>
                 </div>
-
                 @if (Model.Rows.Count > 200)
                 {
-                    <div style="margin-top:10px;font-size:.75rem;color:#777;">
-                        Showing the first 200 records only.
-                        Download Excel for the full list.
-                    </div>
+                    <div style="margin-top:10px;font-size:.75rem;color:#777;">Showing the first 200 records only. Download Excel for the full list.</div>
                 }
             </div>
         </div>
     }
+    else
+    {
+        <div class="st-alert st-alert-err">
+            TPA statistics could not be loaded. Confirm that the NoticeSendStatsService populated Model.TpaStats for this workflow.
+        </div>
+    }
+
 </div>
 
 @section Scripts {
@@ -740,6 +717,37 @@
             input.value = current.length === 0
                 ? email
                 : current + '; ' + email;
+        }
+
+        function confirmTpaAdminReports(form) {
+            const eligible =
+                @(tpa?.Admins.Count(x => x.HasAdminEmail) ?? 0);
+
+            const blocked =
+                @(tpa?.Admins.Count(x => !x.HasAdminEmail) ?? 0);
+
+            const message =
+                'Send separate TPA reports to ' +
+                eligible +
+                ' Admin(s)?\n\n' +
+                blocked +
+                ' Admin report(s) with missing email addresses will be skipped.';
+
+            if (!window.confirm(message)) {
+                return false;
+            }
+
+            const button =
+                form.querySelector(
+                    'button[type="submit"]');
+
+            if (button) {
+                button.disabled = true;
+                button.textContent =
+                    'Sending Admin Reports...';
+            }
+
+            return true;
         }
     </script>
 }

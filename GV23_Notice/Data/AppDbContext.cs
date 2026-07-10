@@ -57,6 +57,10 @@ namespace GV23_Notice.Data
         public DbSet<NoticeCorrectionItem> NoticeCorrectionItems => Set<NoticeCorrectionItem>();
         public DbSet<NoticeCorrectionEmailTemplate> NoticeCorrectionEmailTemplates => Set<NoticeCorrectionEmailTemplate>();
         public DbSet<ThirdPartyAppealApplicationNotice> ThirdPartyAppealApplicationNotices { get; set; }
+
+        public DbSet<VabBoard> VabBoards =>Set<VabBoard>();
+
+        public DbSet<VabBoardMember> VabBoardMembers =>Set<VabBoardMember>();
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -477,6 +481,58 @@ namespace GV23_Notice.Data
                 entity.HasIndex(x => new { x.RollId, x.Status })
                     .HasDatabaseName("IX_ThirdPartyAppealApplicationNotices_Roll_Status");
             });
+            modelBuilder.Entity<VabBoard>(entity =>
+            {
+                entity.ToTable("VabBoards");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.BoardCode)
+                    .HasMaxLength(50)
+                    .IsRequired();
+
+                entity.Property(x => x.BoardName)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.HasIndex(x => x.BoardCode)
+                    .IsUnique();
+
+                entity.HasMany(x => x.Members)
+                    .WithOne(x => x.VabBoard)
+                    .HasForeignKey(x => x.VabBoardId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<VabBoardMember>(entity =>
+            {
+                entity.ToTable("VabBoardMembers");
+
+                entity.HasKey(x => x.Id);
+
+                entity.Property(x => x.MemberRole)
+                    .HasMaxLength(100)
+                    .IsRequired();
+
+                entity.Property(x => x.NameAndSurname)
+                    .HasMaxLength(250)
+                    .IsRequired();
+
+                entity.Property(x => x.CojValuerTeam)
+                    .HasMaxLength(200);
+
+                entity.Property(x => x.CojEmail)
+                    .HasMaxLength(320);
+
+                entity.Property(x => x.EmailAddress)
+                    .HasMaxLength(320);
+            });
+
+            modelBuilder.Entity<ThirdPartyAppealApplicationNotice>()
+                .HasOne(x => x.VabBoard)
+                .WithMany()
+                .HasForeignKey(x => x.VabBoardId)
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

@@ -4,9 +4,14 @@ namespace GV23_Notice.Services.Stats
 {
     public interface INoticeSendStatsService
     {
-        Task<NoticeSendStatsVm> BuildStatsAsync(Guid workflowKey, CancellationToken ct);
+        Task<NoticeSendStatsVm> BuildStatsAsync(
+            Guid workflowKey,
+            CancellationToken ct);
 
-        Task<string> GenerateExcelAsync(Guid workflowKey, string generatedBy, CancellationToken ct);
+        Task<string> GenerateExcelAsync(
+            Guid workflowKey,
+            string generatedBy,
+            CancellationToken ct);
 
         Task SendStatsEmailAsync(
             Guid workflowKey,
@@ -15,6 +20,6 @@ namespace GV23_Notice.Services.Stats
             string sentBy,
             CancellationToken ct);
 
-     
+      
     }
 }
