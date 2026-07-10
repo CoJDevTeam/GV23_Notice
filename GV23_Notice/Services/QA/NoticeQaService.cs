@@ -918,7 +918,7 @@ INNER JOIN @ObjectionNos n
                      * TPA does not use NoticeRunLogs.
                      * Keep this as 0. The QA view must use OpenThirdPartyPdf for TPA if needed later.
                      */
-                    NoticeRunLogId = 0,
+                    NoticeRunLogId = null,
 
                     ObjectionNo = string.IsNullOrWhiteSpace(row.AppealNo)
                         ? row.ObjectionNo

@@ -103,7 +103,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
                             r.ConstantItem(190).AlignRight().Text(t =>
                             {
-                                t.Span("DATE: ").Style(body10b);
+                                //t.Span("DATE: ").Style(body10b);
                                 t.Span(letterDate.ToString("dd MMMM yyyy", CultureInfo.GetCultureInfo("en-ZA")))
                                     .Style(value9);
                             });

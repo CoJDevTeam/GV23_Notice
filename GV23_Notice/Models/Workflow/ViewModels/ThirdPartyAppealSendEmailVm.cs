@@ -7,7 +7,8 @@
 
         public string RollShortCode { get; set; } = "";
         public string ValuationPeriod { get; set; } = "";
-        public string Notice { get; set; } = "Third-Party Appeal Application";
+        public string Notice { get; set; } =
+            "Third-Party Appeal Application";
 
         public int TotalPrinted { get; set; }
         public int TotalReadyToSend { get; set; }
@@ -35,34 +36,64 @@ Yours faithfully,
 Valuation Appeal Board Secretariat
 City of Johannesburg";
 
-        public List<ThirdPartyAppealSendEmailItemVm> Items { get; set; } = new();
+        public List<ThirdPartyAppealSendEmailGroupVm> Groups { get; set; }
+            = new();
+
+        public List<ThirdPartyAppealSendEmailItemVm> Items { get; set; }
+            = new();
+    }
+
+    public sealed class ThirdPartyAppealSendEmailGroupVm
+    {
+        public string GroupName { get; set; } = "";
+
+        public int Total { get; set; }
+
+        public int ReadyToSend { get; set; }
+
+        public int Sent { get; set; }
+
+        public int EmailFailed { get; set; }
+
+        public int MissingOwnerEmail { get; set; }
     }
 
     public class ThirdPartyAppealSendEmailItemVm
     {
         public int Id { get; set; }
+
         public string? PremiseId { get; set; }
+
         public string AppealNo { get; set; } = "";
+
         public string ObjectionNo { get; set; } = "";
+
         public string PropertyDescription { get; set; } = "";
 
         public string OwnerName { get; set; } = "";
+
         public string OwnerEmail { get; set; } = "";
 
         public string ThirdPartyName { get; set; } = "";
+
         public string ThirdPartyEmail { get; set; } = "";
 
         public string AdminName { get; set; } = "";
+
         public string AdminEmail { get; set; } = "";
 
         public string EmailTo { get; set; } = "";
+
         public string EmailCc { get; set; } = "";
 
         public string PdfPath { get; set; } = "";
+
         public string AppealPackZipPath { get; set; } = "";
+
         public string EmlPath { get; set; } = "";
 
         public string Status { get; set; } = "";
+
         public string ErrorMessage { get; set; } = "";
     }
 }

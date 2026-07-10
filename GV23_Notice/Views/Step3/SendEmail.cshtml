@@ -11,7 +11,7 @@
     var tpa = ViewBag.TpaEmail as GV23_Notice.Models.Workflow.ViewModels.ThirdPartyAppealSendEmailVm;
     bool isTpa = Model.Notice == NoticeKind.TPA;
 
-    var totalPrinted = isTpa && tpa != null ? tpa.TotalReadyToSend : Model.TotalPrinted;
+    var totalPrinted = isTpa && tpa != null ? tpa.TotalPrinted : Model.TotalPrinted;
     var totalSent = isTpa && tpa != null ? tpa.TotalSent : Model.TotalSent;
     var totalFailed = isTpa && tpa != null ? tpa.TotalFailed : 0;
     var totalNoEmail = isTpa && tpa != null ? tpa.TotalNoOwnerEmail : 0;
@@ -22,6 +22,7 @@
     var qaRequired = await QaService.RequiresQaAsync(Model.WorkflowKey, Context.RequestAborted);
 
     bool tpaCanSend = isTpa && tpa != null && tpa.TotalReadyToSend > 0;
+    bool tpaSendDisabled = !tpaCanSend || (qaRequired && !qaApproved);
 }
 
 <link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
@@ -1058,12 +1059,21 @@
                 }
             </div>
             @if (!isTpa)
-{
-            <div class="se-cap-wrap">
-                <div class="se-cap-label"><span>Selected vs Cap</span><span id="capCountLabel">0 / @cap selected</span></div>
-                <div class="se-cap-bar-wrap"><div class="se-cap-bar-fill" id="capBar" style="width:0%"></div></div>
-                <div class="se-cap-note" id="capNote">Select batches on the right to send</div>
-            </div>
+            {
+                <div class="se-cap-wrap">
+                    <div class="se-cap-label">
+                        <span>Selected vs Cap</span>
+                        <span id="capCountLabel">0 / @cap selected</span>
+                    </div>
+
+                    <div class="se-cap-bar-wrap">
+                        <div class="se-cap-bar-fill" id="capBar" style="width:0%"></div>
+                    </div>
+
+                    <div class="se-cap-note" id="capNote">
+                        Select batches on the right to send
+                    </div>
+                </div>
             }
             else
             {
@@ -1072,8 +1082,10 @@
                         <span>Third-Party Appeal Sending</span>
                         <span>@(tpa?.TotalReadyToSend ?? 0) ready</span>
                     </div>
-                    <div class="se-cap-note">
-                        TPA sends directly from printed ThirdPartyAppealApplicationNotices. No batch selection is required.
+
+                    <div class="se-cap-note" id="capNote">
+                        TPA sends directly from printed ThirdPartyAppealApplicationNotices.
+                        No batch selection is required.
                     </div>
                 </div>
             }
@@ -1156,32 +1168,59 @@
             <div class="se-right-header">
                 <div class="se-right-title">
                     <div class="se-right-icon">📧</div>
-                    Send Notices Dashboard — @(isTpa ? "Third-Party Appeal Application" : Model.Notice.ToString())
+
+                    Send Notices Dashboard —
+                    @(isTpa
+                        ? "Third-Party Appeal Application"
+                        : Model.Notice.ToString())
                 </div>
+
                 @if (isTpa && tpa != null)
                 {
-                    <span class="se-badge-info">@tpa.Items.Count record@(tpa.Items.Count == 1 ? "" : "s")</span>
+                    <span class="se-badge-info">
+                        @tpa.Groups.Count
+                        group@(tpa.Groups.Count == 1 ? "" : "s")
+                        ·
+                        @((tpa.TotalReadyToSend + tpa.TotalSent).ToString("N0"))
+                        records
+                    </span>
                 }
                 else
                 {
-                    <span class="se-badge-info">@Model.Batches.Count batch@(Model.Batches.Count == 1 ? "" : "es")</span>
+                    <span class="se-badge-info">
+                        @Model.Batches.Count
+                        batch@(Model.Batches.Count == 1 ? "" : "es")
+                    </span>
                 }
             </div>
 
-            <form id="sendForm" action="/Step3/SendEmail" method="post" style="display:contents">
+            <form id="sendForm"
+                  action="@Url.Action("SendEmail", "Step3")"
+                  method="post"
+                  style="display:contents">
+
                 @Html.AntiForgeryToken()
-                <input type="hidden" name="key" value="@key" />
+
+                <input type="hidden"
+                       name="key"
+                       value="@key" />
 
                 <div class="se-table-wrap">
+
                     @if (isTpa && tpa != null)
                     {
-                        if (!tpa.Items.Any())
+                        if (!tpa.Groups.Any())
                         {
                             <div class="se-empty">
                                 <div class="se-empty-icon">📭</div>
-                                <div class="se-empty-title">No Third-Party Appeal notices ready</div>
+
+                                <div class="se-empty-title">
+                                    No Third-Party Appeal notices ready
+                                </div>
+
                                 <div class="se-empty-sub">
-                                    Go back to the Print Dashboard and print the Third-Party Appeal notices first.
+                                    Go back to the Print Dashboard and print
+                                    the Third-Party Appeal notices first.
                                 </div>
                             </div>
                         }
@@ -1190,103 +1229,141 @@
                             <table class="se-table">
                                 <thead>
                                     <tr>
-                                        <th>Appeal No</th>
-                                        <th>Property</th>
-                                        <th>Owner</th>
-                                        <th>Third Party</th>
-                                        <th>Admin</th>
+                                        <th>Property Type</th>
+                                        <th>Total</th>
+                                        <th>Ready to Send</th>
+                                        <th>Sent</th>
+                                        <th>Failed</th>
+                                        <th>Missing Owner Email</th>
                                         <th>Status</th>
-                                        <th>PDF</th>
-                                        <th>Pack</th>
                                     </tr>
                                 </thead>
+
                                 <tbody>
-                                    @foreach (var item in tpa.Items)
+                                    @foreach (var group in tpa.Groups)
                                     {
                                         <tr>
                                             <td>
-                                                <span class="se-bt-code">@item.AppealNo</span>
-                                                @if (!string.IsNullOrWhiteSpace(item.ObjectionNo))
-                                                {
-                                                    <div class="se-bt-meta">Obj: @item.ObjectionNo</div>
-                                                }
+                                                <span class="se-bt-code">
+                                                    @group.GroupName
+                                                </span>
+
+                                                <div class="se-bt-meta">
+                                                    Third-Party Appeal Application notices
+                                                </div>
                                             </td>
 
                                             <td>
-                                                <div style="font-weight:700;max-width:360px">@item.PropertyDescription</div>
+                                                <span class="se-bt-count">
+                                                    @group.Total.ToString("N0")
+                                                </span>
                                             </td>
 
                                             <td>
-                                                <div style="font-weight:700">@item.OwnerName</div>
-                                                @if (!string.IsNullOrWhiteSpace(item.OwnerEmail))
+                                                @if (group.ReadyToSend > 0)
                                                 {
-                                                    <div class="se-bt-meta">@item.OwnerEmail</div>
+                                                    <span class="se-badge-info">
+                                                        @group.ReadyToSend.ToString("N0")
+                                                        ready
+                                                    </span>
                                                 }
                                                 else
                                                 {
-                                                    <span class="se-badge-warn">No owner email</span>
+                                                    <span style="color:#bbb">
+                                                        0
+                                                    </span>
                                                 }
                                             </td>
 
                                             <td>
-                                                <div style="font-weight:700">@item.ThirdPartyName</div>
-                                                <div class="se-bt-meta">@item.ThirdPartyEmail</div>
-                                            </td>
-
-                                            <td>
-                                                <div style="font-weight:700">@item.AdminName</div>
-                                                <div class="se-bt-meta">@item.AdminEmail</div>
-                                            </td>
-
-                                            <td>
-                                                @if (item.Status == "Sent")
+                                                @if (group.Sent > 0)
                                                 {
-                                                    <span class="se-badge-sent">✓ Sent</span>
-                                                }
-                                                else if (item.Status == "Email-Failed")
-                                                {
-                                                    <span class="se-badge-warn">⚠ Failed</span>
-                                                    @if (!string.IsNullOrWhiteSpace(item.ErrorMessage))
-                                                    {
-                                                        <div class="se-bt-meta" style="color:#c0392b">@item.ErrorMessage</div>
-                                                    }
-                                                }
-                                                else if (item.Status == "Printed")
-                                                {
-                                                    if (qaRequired && !qaApproved)
-                                                    {
-                                                        <span class="se-badge-warn">🔒 QA Required</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="se-badge-info">Ready</span>
-                                                    }
+                                                    <span class="se-badge-sent">
+                                                        ✓
+                                                        @group.Sent.ToString("N0")
+                                                        sent
+                                                    </span>
                                                 }
                                                 else
                                                 {
-                                                    <span class="se-badge-warn">@item.Status</span>
+                                                    <span style="color:#bbb">
+                                                        0
+                                                    </span>
                                                 }
                                             </td>
 
                                             <td>
-                                                @if (!string.IsNullOrWhiteSpace(item.PdfPath))
+                                                @if (group.EmailFailed > 0)
                                                 {
-                                                    <span class="se-badge-ok">PDF</span>
+                                                    <span class="se-badge-warn">
+                                                        ⚠
+                                                        @group.EmailFailed.ToString("N0")
+                                                        failed
+                                                    </span>
                                                 }
                                                 else
                                                 {
-                                                    <span class="se-badge-warn">Missing</span>
+                                                    <span style="color:#bbb">
+                                                        0
+                                                    </span>
                                                 }
                                             </td>
 
                                             <td>
-                                                @if (!string.IsNullOrWhiteSpace(item.AppealPackZipPath))
+                                                @if (group.MissingOwnerEmail > 0)
                                                 {
-                                                    <span class="se-badge-ok">ZIP</span>
+                                                    <span class="se-badge-warn">
+                                                        @group.MissingOwnerEmail.ToString("N0")
+                                                        missing
+                                                    </span>
                                                 }
                                                 else
                                                 {
-                                                    <span class="se-badge-warn">Missing</span>
+                                                    <span class="se-badge-ok">
+                                                        0
+                                                    </span>
+                                                }
+                                            </td>
+
+                                            <td>
+                                                @if (
+                                                    group.ReadyToSend > 0 &&
+                                                    qaRequired &&
+                                                    !qaApproved)
+                                                {
+                                                    <span class="se-badge-warn">
+                                                        🔒 QA Required
+                                                    </span>
+                                                }
+                                                else if (group.EmailFailed > 0 && group.ReadyToSend > 0)
+                                                {
+                                                    <span class="se-badge-warn">
+                                                        Retry Ready
+                                                    </span>
+                                                }
+                                                else if (group.ReadyToSend > 0)
+                                                {
+                                                    <span class="se-badge-info">
+                                                        Ready
+                                                    </span>
+                                                }
+                                                else if (group.Sent == group.Total)
+                                                {
+                                                    <span class="se-badge-sent">
+                                                        ✓ Complete
+                                                    </span>
+                                                }
+                                                else if (group.MissingOwnerEmail > 0)
+                                                {
+                                                    <span class="se-badge-warn">
+                                                        Email Missing
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="se-badge-ok">
+                                                        Processed
+                                                    </span>
                                                 }
                                             </td>
                                         </tr>
@@ -1421,10 +1498,20 @@
                         <button type="button"
                                 class="btn-send"
                                 id="sendBtn"
-                            @(qaRequired && !qaApproved ? "disabled" : "")
-                            @(tpaCanSend ? "" : "disabled")
+                                disabled="@(tpaSendDisabled ? "disabled" : null)"
                                 onclick="submitTpaSendForm()">
-                            @(qaRequired && !qaApproved ? "🔒 QA Required" : "📧 Send Third-Party Appeal Notices")
+                            @if (qaRequired && !qaApproved)
+                            {
+                                <text>🔒 QA Required</text>
+                            }
+                            else if (!tpaCanSend)
+                            {
+                                <text>No Third-Party Appeal Notices Ready</text>
+                            }
+                            else
+                            {
+                                <text>📧 Send Third-Party Appeal Notices</text>
+                            }
                         </button>
                     }
                     else
@@ -1475,8 +1562,14 @@
             <div class="ep-chip"><div class="ep-chip-num red" id="epChipFailed">0</div><div class="ep-chip-lbl">Failed</div></div>
             <div class="ep-chip"><div class="ep-chip-num grey" id="epChipNoEmail">0</div><div class="ep-chip-lbl">No Email</div></div>
         </div>
-        <div class="ep-path">📁 .eml copies:
-            @if (Model.IsS52)
+        <div class="ep-path">
+            📁 .eml copies:
+
+            @if (isTpa)
+            {
+                <code>[Appeal Root]\[Appeal_No]\THIRD-PARTY APPLICATION\email_[Appeal_No]_[PropertyDesc]_Third-Party Appeal Application.eml</code>
+            }
+            else if (Model.IsS52)
             {
                 var s52Sub = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
                 <code>[Appeal Root]\[Appeal_No]\@s52Sub\[Appeal_No]_[PropertyDesc]_@(Model.S52IsReview ? "S52" : "AD").eml</code>

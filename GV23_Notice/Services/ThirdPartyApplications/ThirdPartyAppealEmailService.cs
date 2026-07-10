@@ -26,71 +26,157 @@ namespace GV23_Notice.Services.ThirdPartyApplications
         }
 
         public async Task<ThirdPartyAppealSendEmailVm> BuildEmailVmAsync(
-       Guid key,
-       CancellationToken ct)
+     Guid key,
+     CancellationToken ct)
         {
             var settings = await GetSettingsAsync(key, ct);
-
             var query = BuildNoticeQuery(settings);
-
-            var totalPrinted = await query.CountAsync(x => x.Status == "Printed", ct);
-            var sent = await query.CountAsync(x => x.Status == "Sent", ct);
-            var failed = await query.CountAsync(x => x.Status == "Email-Failed", ct);
-            var noOwnerEmail = await query.CountAsync(x => string.IsNullOrWhiteSpace(x.OwnerEmail), ct);
 
             var rows = await query
                 .AsNoTracking()
-                .Where(x => x.Status == "Printed" || x.Status == "Email-Failed" || x.Status == "Sent")
-                .OrderBy(x => x.Appeal_No)
-                .Take(200)
+                .Where(x =>
+                    x.Status == "Printed" ||
+                    x.Status == "Email-Failed" ||
+                    x.Status == "Sent" ||
+                    x.Status == "No-Owner-Email")
+                .Select(x => new
+                {
+                    x.Id,
+                    x.Appeal_No,
+                    x.Objection_No,
+                    x.Premise_ID,
+                    x.Property_Description,
+                    x.Property_Type,
+                    x.OwnerName,
+                    x.OwnerEmail,
+                    x.ThirdPartyName,
+                    x.ThirdPartyEmail,
+                    x.AdminName,
+                    x.AdminEmail,
+                    x.PdfPath,
+                    x.AppealPackZipPath,
+                    x.EmlPath,
+                    x.Status,
+                    x.ErrorMessage
+                })
                 .ToListAsync(ct);
 
-            var items = rows.Select(x => new ThirdPartyAppealSendEmailItemVm
-            {
-                Id = x.Id,
-                AppealNo = x.Appeal_No ?? "",
-                ObjectionNo = x.Objection_No ?? "",
-                PremiseId = x.Premise_ID ?? "",
-                PropertyDescription = x.Property_Description ?? "",
+            var totalPrinted = rows.Count(x =>
+                x.Status == "Printed");
 
-                OwnerName = x.OwnerName ?? "",
-                OwnerEmail = x.OwnerEmail ?? "",
+            var totalFailed = rows.Count(x =>
+                x.Status == "Email-Failed");
 
-                ThirdPartyName = x.ThirdPartyName ?? "",
-                ThirdPartyEmail = x.ThirdPartyEmail ?? "",
+            // Printed notices and failed notices can both be sent.
+            var totalReady = totalPrinted + totalFailed;
 
-                AdminName = x.AdminName ?? "",
-                AdminEmail = x.AdminEmail ?? "",
+            var totalSent = rows.Count(x =>
+                x.Status == "Sent");
 
-                EmailTo = x.OwnerEmail ?? "",
-                EmailCc = BuildCc(x),
+            var totalNoOwnerEmail = rows.Count(x =>
+                string.IsNullOrWhiteSpace(x.OwnerEmail) ||
+                x.Status == "No-Owner-Email");
 
-                PdfPath = x.PdfPath ?? "",
-                AppealPackZipPath = x.AppealPackZipPath ?? "",
-                EmlPath = x.EmlPath ?? "",
+            var groups = rows
+                .GroupBy(x => NormalizeGroup(x.Property_Type))
+                .OrderBy(g => g.Key)
+                .Select(g => new ThirdPartyAppealSendEmailGroupVm
+                {
+                    GroupName = g.Key,
 
-                Status = x.Status ?? "Pending",
-                ErrorMessage = x.ErrorMessage ?? ""
-            }).ToList();
+                    Total = g.Count(),
+
+                    ReadyToSend = g.Count(x =>
+                        x.Status == "Printed" ||
+                        x.Status == "Email-Failed"),
+
+                    Sent = g.Count(x =>
+                        x.Status == "Sent"),
+
+                    EmailFailed = g.Count(x =>
+                        x.Status == "Email-Failed"),
+
+                    MissingOwnerEmail = g.Count(x =>
+                        string.IsNullOrWhiteSpace(x.OwnerEmail) ||
+                        x.Status == "No-Owner-Email")
+                })
+                .ToList();
+
+            // Keep only a small internal sample.
+            // The Send view now uses Groups instead of showing every property.
+            var items = rows
+                .OrderBy(x => x.Appeal_No)
+                .Take(20)
+                .Select(x => new ThirdPartyAppealSendEmailItemVm
+                {
+                    Id = x.Id,
+                    AppealNo = x.Appeal_No ?? "",
+                    ObjectionNo = x.Objection_No ?? "",
+                    PremiseId = x.Premise_ID ?? "",
+                    PropertyDescription = x.Property_Description ?? "",
+
+                    OwnerName = x.OwnerName ?? "",
+                    OwnerEmail = x.OwnerEmail ?? "",
+
+                    ThirdPartyName = x.ThirdPartyName ?? "",
+                    ThirdPartyEmail = x.ThirdPartyEmail ?? "",
+
+                    AdminName = x.AdminName ?? "",
+                    AdminEmail = x.AdminEmail ?? "",
+
+                    EmailTo = x.OwnerEmail ?? "",
+
+                    EmailCc = string.Join(
+                        "; ",
+                        new[]
+                        {
+                    x.ThirdPartyEmail,
+                    x.AdminEmail
+                        }
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .Select(v => v!.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)),
+
+                    PdfPath = x.PdfPath ?? "",
+                    AppealPackZipPath = x.AppealPackZipPath ?? "",
+                    EmlPath = x.EmlPath ?? "",
+
+                    Status = x.Status ?? "Pending",
+                    ErrorMessage = x.ErrorMessage ?? ""
+                })
+                .ToList();
 
             return new ThirdPartyAppealSendEmailVm
             {
                 NoticeSettingsId = settings.Id,
                 RollId = settings.RollId,
-                RollShortCode = await GetRollShortCodeAsync(settings.RollId, ct),
-                ValuationPeriod = settings.ValuationPeriodCode ?? "",
-                Notice = "Third-Party Appeal Application",
+
+                RollShortCode =
+                    await GetRollShortCodeAsync(settings.RollId, ct),
+
+                ValuationPeriod =
+                    settings.ValuationPeriodCode ?? "",
+
+                Notice =
+                    "Third-Party Appeal Application",
 
                 TotalPrinted = totalPrinted,
-                TotalReadyToSend = totalPrinted,
-                TotalSent = sent,
-                TotalFailed = failed,
-                TotalNoOwnerEmail = noOwnerEmail,
+                TotalReadyToSend = totalReady,
+                TotalSent = totalSent,
+                TotalFailed = totalFailed,
+                TotalNoOwnerEmail = totalNoOwnerEmail,
 
+                Groups = groups,
                 Items = items
             };
         }
 
+        private static string NormalizeGroup(string? propertyType)
+        {
+            return string.IsNullOrWhiteSpace(propertyType)
+                ? "Unspecified"
+                : propertyType.Trim();
+        }
         public async Task<ThirdPartyAppealEmailResultVm> SendAsync(
             Guid key,
             string sentBy,
