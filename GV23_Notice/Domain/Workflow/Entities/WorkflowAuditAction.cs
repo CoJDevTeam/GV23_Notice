@@ -7,7 +7,12 @@
         Step2CorrectionRequested = 220,
 
         CorrectionEmailSent = 230,
-        CorrectionTicketCreated = 240
+        CorrectionTicketCreated = 240,
+
+        // TPA statistics report actions
+        TpaStatsEmailSent = 600,
+        TpaStatsEmailFailed = 610,
+        TpaStatsEmailBlocked = 620
     }
 
     public sealed class NoticeWorkflowAuditLog
@@ -27,6 +32,6 @@
         public DateTime PerformedAtUtc { get; set; } = DateTime.UtcNow;
 
         public string? Notes { get; set; }
-        public string? MetaJson { get; set; } // store extra info (email recipients, etc.)
+        public string? MetaJson { get; set; }
     }
 }

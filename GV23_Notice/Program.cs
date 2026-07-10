@@ -168,13 +168,14 @@ builder.Services.AddScoped<INoticeCorrectionPrintService, NoticeCorrectionPrintS
 builder.Services.AddScoped<INoticeCorrectionEmailService, NoticeCorrectionEmailService>();
 
 // ----------------------------------------------------
-// THIRD PARTY APPEAL DATE CONFIGURATION
+// THIRD PARTY APPEAL 
 // ----------------------------------------------------
 builder.Services.AddScoped<IThirdPartyAppealDateConfigurationService, ThirdPartyAppealDateConfigurationService>();
 builder.Services.AddScoped<IThirdPartyAppealFormalNoticePdfService, ThirdPartyAppealFormalNoticePdfService>();
 builder.Services.AddScoped<IThirdPartyAppealPackZipService, ThirdPartyAppealPackZipService>();
 builder.Services.AddScoped<IThirdPartyAppealPrintService, ThirdPartyAppealPrintService>();
 builder.Services.AddScoped<IThirdPartyAppealEmailService, ThirdPartyAppealEmailService>();
+builder.Services.AddScoped<IThirdPartyAppealStatsService,ThirdPartyAppealStatsService>();
 
 // ----------------------------------------------------
 // Security

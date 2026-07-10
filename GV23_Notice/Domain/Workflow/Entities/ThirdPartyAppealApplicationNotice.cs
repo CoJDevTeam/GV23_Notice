@@ -115,6 +115,9 @@
 
         public DateTime? UpdatedAt { get; set; }
         public string? UpdatedBy { get; set; }
+        public string? VAB { get; set; }
+        public string? Valuer { get; set; }
+        public string? Valuer_Email { get; set; }
 
         public bool IsMultipurpose =>
             HasValue(AppellantRequestMarketValue2) ||

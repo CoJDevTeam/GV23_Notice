@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Domain.Workflow;
+using GV23_Notice.Models.Workflow.ViewModels;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace GV23_Notice.Models.Stats
@@ -6,6 +7,10 @@ namespace GV23_Notice.Models.Stats
     public sealed class NoticeStatsDashboardVm
     {
         public NoticeStatsFilterVm Filter { get; set; } = new();
+
+        public bool IsTpa { get; set; }
+        public Guid? WorkflowKey { get; set; }
+        public ThirdPartyAppealStatsVm? TpaStats { get; set; }
 
         public List<SelectListItem> RollOptions { get; set; } = new();
         public List<SelectListItem> NoticeOptions { get; set; } = new();
@@ -24,6 +29,7 @@ namespace GV23_Notice.Models.Stats
 
     public sealed class NoticeStatsFilterVm
     {
+        public Guid? WorkflowKey { get; set; }
         public int? RollId { get; set; }
         public NoticeKind? Notice { get; set; }
         public RunStatus? Status { get; set; }
@@ -98,4 +104,4 @@ namespace GV23_Notice.Models.Stats
         public DateTime? SentAtUtc { get; set; }
         public string? SentBy { get; set; }
     }
-}   
+}
