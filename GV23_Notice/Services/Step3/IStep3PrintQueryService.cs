@@ -26,7 +26,17 @@ namespace GV23_Notice.Services.Step3
             var (s, roll) = await ResolveAsync(workflowKey, ct);
 
             if (s.Notice == NoticeKind.TPA)
-                return await BuildTpaPrintVmAsync(s, roll, workflowKey, ct);
+            {
+                var tpaRollSummary = await SynchronizeTpaRollMetadataAsync(
+                    s,
+                    ct);
+
+                return await BuildTpaPrintVmAsync(
+                    s,
+                    tpaRollSummary,
+                    workflowKey,
+                    ct);
+            }
 
             var batches = await _db.NoticeBatches.AsNoTracking()
                 .Where(b => b.WorkflowKey == workflowKey
@@ -98,7 +108,17 @@ namespace GV23_Notice.Services.Step3
             var (s, roll) = await ResolveAsync(workflowKey, ct);
 
             if (s.Notice == NoticeKind.TPA)
-                return await BuildTpaEmailVmAsync(s, roll, workflowKey, ct);
+            {
+                var tpaRollSummary = await SynchronizeTpaRollMetadataAsync(
+                    s,
+                    ct);
+
+                return await BuildTpaEmailVmAsync(
+                    s,
+                    tpaRollSummary,
+                    workflowKey,
+                    ct);
+            }
 
             var batches = await _db.NoticeBatches.AsNoTracking()
                 .Where(b => b.WorkflowKey == workflowKey
@@ -163,7 +183,7 @@ namespace GV23_Notice.Services.Step3
 
         private async Task<Step3PrintVm> BuildTpaPrintVmAsync(
             NoticeSettings s,
-            Domain.Rolls.RollRegistry? roll,
+            TpaRollSummary rollSummary,
             Guid workflowKey,
             CancellationToken ct)
         {
@@ -201,9 +221,9 @@ namespace GV23_Notice.Services.Step3
             {
                 WorkflowKey = workflowKey,
                 SettingsId = s.Id,
-                RollId = s.RollId,
-                RollShortCode = roll?.ShortCode ?? "GV23",
-                RollName = roll?.Name ?? s.RollName ?? "General Valuation Roll 2023",
+                RollId = rollSummary.RollId,
+                RollShortCode = rollSummary.ShortCode,
+                RollName = rollSummary.Name,
 
                 Notice = s.Notice,
                 VersionText = $"V{s.Version}",
@@ -229,7 +249,7 @@ namespace GV23_Notice.Services.Step3
 
         private async Task<Step3SendEmailVm> BuildTpaEmailVmAsync(
             NoticeSettings s,
-            Domain.Rolls.RollRegistry? roll,
+            TpaRollSummary rollSummary,
             Guid workflowKey,
             CancellationToken ct)
         {
@@ -253,9 +273,9 @@ namespace GV23_Notice.Services.Step3
             {
                 WorkflowKey = workflowKey,
                 SettingsId = s.Id,
-                RollId = s.RollId,
-                RollShortCode = roll?.ShortCode ?? "GV23",
-                RollName = roll?.Name ?? s.RollName ?? "General Valuation Roll 2023",
+                RollId = rollSummary.RollId,
+                RollShortCode = rollSummary.ShortCode,
+                RollName = rollSummary.Name,
 
                 Notice = s.Notice,
                 VersionText = $"V{s.Version}",
@@ -275,6 +295,159 @@ namespace GV23_Notice.Services.Step3
                 IsS52 = false,
                 S52IsReview = false
             };
+        }
+
+
+        private async Task<TpaRollSummary> SynchronizeTpaRollMetadataAsync(
+            NoticeSettings settings,
+            CancellationToken ct)
+        {
+            var rows = await _db.ThirdPartyAppealApplicationNotices
+                .Where(x =>
+                    x.NoticeSettingsId == settings.Id &&
+                    !string.IsNullOrWhiteSpace(x.Appeal_No))
+                .ToListAsync(ct);
+
+            if (rows.Count == 0)
+            {
+                return new TpaRollSummary
+                {
+                    RollId = settings.RollId,
+                    ShortCode = "TPA",
+                    Name = settings.RollName ?? "Third-Party Appeal Applications"
+                };
+            }
+
+            var rolls = await _db.RollRegistry
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .ToListAsync(ct);
+
+            var changed = false;
+            var resolvedRolls = new List<Domain.Rolls.RollRegistry>();
+
+            foreach (var row in rows)
+            {
+                var shortCode = ResolveTpaShortCode(row.Appeal_No);
+
+                var resolvedRoll = rolls.FirstOrDefault(x =>
+                    NormalizeRollCode(x.ShortCode) ==
+                    NormalizeRollCode(shortCode));
+
+                if (resolvedRoll == null)
+                {
+                    throw new InvalidOperationException(
+                        $"No active RollRegistry record was found for Appeal Number '{row.Appeal_No}' and ShortCode '{shortCode}'.");
+                }
+
+                resolvedRolls.Add(resolvedRoll);
+
+                if (row.RollId != resolvedRoll.RollId ||
+                    !string.Equals(
+                        row.RollShortCode,
+                        resolvedRoll.ShortCode,
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(
+                        row.ValuationPeriod,
+                        resolvedRoll.Name,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    row.RollId = resolvedRoll.RollId;
+                    row.RollShortCode = resolvedRoll.ShortCode;
+                    row.ValuationPeriod = resolvedRoll.Name;
+                    row.UpdatedAt = DateTime.UtcNow;
+                    row.UpdatedBy = "SYSTEM-TPA-ROLL-SYNC";
+
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+
+            var distinctRolls = resolvedRolls
+                .GroupBy(x => x.RollId)
+                .Select(x => x.First())
+                .OrderBy(x => x.RollId)
+                .ToList();
+
+            if (distinctRolls.Count == 1)
+            {
+                var single = distinctRolls[0];
+
+                return new TpaRollSummary
+                {
+                    RollId = single.RollId,
+                    ShortCode = single.ShortCode ?? "",
+                    Name = single.Name ?? ""
+                };
+            }
+
+            return new TpaRollSummary
+            {
+                RollId = settings.RollId,
+                ShortCode = "MULTI",
+                Name = "Multiple Valuation Rolls"
+            };
+        }
+
+        private static string ResolveTpaShortCode(string? appealNo)
+        {
+            if (string.IsNullOrWhiteSpace(appealNo))
+            {
+                throw new InvalidOperationException(
+                    "Appeal number is required to resolve the TPA roll.");
+            }
+
+            var value = appealNo.Trim();
+
+            if (value.StartsWith(
+                "APP-GV23-Sup3-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 3";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-Sup2-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 2";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-Sup1-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 1";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "GV23";
+            }
+
+            throw new InvalidOperationException(
+                $"Appeal Number '{appealNo}' does not match a supported TPA roll pattern.");
+        }
+
+        private static string NormalizeRollCode(string? value)
+        {
+            return (value ?? "")
+                .Replace(" ", "")
+                .Trim()
+                .ToUpperInvariant();
+        }
+
+        private sealed class TpaRollSummary
+        {
+            public int RollId { get; set; }
+            public string ShortCode { get; set; } = "";
+            public string Name { get; set; } = "";
         }
 
         private async Task<(NoticeSettings s, Domain.Rolls.RollRegistry? roll)> ResolveAsync(

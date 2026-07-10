@@ -359,11 +359,26 @@ namespace GV23_Notice.Services.Notices
                         var preferMulti = isSplitPdf || isEmailMulti;
 
                         var db = await LoadThirdPartyAppealPreviewRowAsync(
+                            settings.Id,
                             preferMulti,
                             ct);
 
                         if (db == null)
                             throw new InvalidOperationException("No Third-Party Appeal Application records found for preview.");
+
+                        var tpaRoll = await ResolveTpaRollAsync(
+                            db.AppealNo,
+                            ct);
+
+                        db.Entity.NoticeSettingsId = settings.Id;
+                        db.Entity.RollId = tpaRoll.RollId;
+                        db.Entity.RollShortCode = tpaRoll.ShortCode;
+                        db.Entity.ValuationPeriod = tpaRoll.Name;
+
+                        roll = tpaRoll;
+                        rollId = tpaRoll.RollId;
+                        rollShortCode = tpaRoll.ShortCode ?? "";
+                        rollName = tpaRoll.Name ?? "";
 
                         sampleAppealNo = db.AppealNo ?? "";
                         sampleObjectionNo = db.ObjectionNo ?? "";
@@ -381,7 +396,7 @@ namespace GV23_Notice.Services.Notices
                          */
                         pdfBytes = _tpaPdf.BuildPdf(settings, db.Entity);
 
-                        pdfFileName = $"{rollShortCode}_TPA_PREVIEW_{sampleAppealNo}.pdf";
+                        pdfFileName = $"{SanitizeFilePart(rollShortCode)}_TPA_PREVIEW_{sampleAppealNo}.pdf";
 
                         recipientName = FirstNonEmpty(db.OwnerName, "Property Owner");
                         recipientEmail = db.OwnerEmail ?? "";
@@ -602,12 +617,15 @@ namespace GV23_Notice.Services.Notices
             };
         }
         private async Task<ThirdPartyAppealPreviewLite?> LoadThirdPartyAppealPreviewRowAsync(
-    bool preferMulti,
-    CancellationToken ct)
+            int noticeSettingsId,
+            bool preferMulti,
+            CancellationToken ct)
         {
             var query = _db.ThirdPartyAppealApplicationNotices
                 .AsNoTracking()
-                .Where(x => !string.IsNullOrWhiteSpace(x.Appeal_No));
+                .Where(x =>
+                    x.NoticeSettingsId == noticeSettingsId &&
+                    !string.IsNullOrWhiteSpace(x.Appeal_No));
 
             if (preferMulti)
             {
@@ -646,6 +664,89 @@ namespace GV23_Notice.Services.Notices
                 })
                 .FirstOrDefaultAsync(ct);
         }
+
+        private async Task<RollRegistry> ResolveTpaRollAsync(
+            string? appealNo,
+            CancellationToken ct)
+        {
+            var shortCode = ResolveTpaShortCode(appealNo);
+
+            var rolls = await _db.RollRegistry
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .ToListAsync(ct);
+
+            var roll = rolls.FirstOrDefault(x =>
+                NormalizeRollCode(x.ShortCode) ==
+                NormalizeRollCode(shortCode));
+
+            return roll
+                ?? throw new InvalidOperationException(
+                    $"No active RollRegistry record was found for Appeal Number '{appealNo}' and ShortCode '{shortCode}'.");
+        }
+
+        private static string ResolveTpaShortCode(string? appealNo)
+        {
+            if (string.IsNullOrWhiteSpace(appealNo))
+            {
+                throw new InvalidOperationException(
+                    "Appeal number is required to resolve the TPA roll.");
+            }
+
+            var value = appealNo.Trim();
+
+            if (value.StartsWith(
+                "APP-GV23-Sup3-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 3";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-Sup2-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 2";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-Sup1-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 1";
+            }
+
+            if (value.StartsWith(
+                "APP-GV23-",
+                StringComparison.OrdinalIgnoreCase))
+            {
+                return "GV23";
+            }
+
+            throw new InvalidOperationException(
+                $"Appeal Number '{appealNo}' does not match a supported TPA roll pattern.");
+        }
+
+        private static string NormalizeRollCode(string? value)
+        {
+            return (value ?? "")
+                .Replace(" ", "")
+                .Trim()
+                .ToUpperInvariant();
+        }
+
+        private static string SanitizeFilePart(string? value)
+        {
+            var text = (value ?? "").Trim();
+
+            foreach (var invalid in Path.GetInvalidFileNameChars())
+            {
+                text = text.Replace(invalid, '_');
+            }
+
+            return text.Replace(" ", "_");
+        }
+
         private static Section51NoticeData MapS51ToPdf(S51PreviewDbData db, string rollName)
         {
             string Money(decimal? v) => v.HasValue ? v.Value.ToString(CultureInfo.InvariantCulture) : "";

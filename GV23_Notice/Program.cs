@@ -176,7 +176,8 @@ builder.Services.AddScoped<IThirdPartyAppealPackZipService, ThirdPartyAppealPack
 builder.Services.AddScoped<IThirdPartyAppealPrintService, ThirdPartyAppealPrintService>();
 builder.Services.AddScoped<IThirdPartyAppealEmailService, ThirdPartyAppealEmailService>();
 builder.Services.AddScoped<IThirdPartyAppealStatsService,ThirdPartyAppealStatsService>();
-
+builder.Services.AddScoped<IThirdPartyAppealRollResolver,ThirdPartyAppealRollResolver>();
+builder.Services.AddScoped<IThirdPartyAppealWorkflowSyncService,ThirdPartyAppealWorkflowSyncService>();
 // ----------------------------------------------------
 // Security
 // ----------------------------------------------------

@@ -29,11 +29,11 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
             var letterDate = notice.LetterDate ?? DateTime.Today;
 
-            var valuationPeriod = FirstNonEmpty(
-                notice.ValuationPeriod,
-                settings.ValuationPeriodCode,
-                settings.RollName,
-                "GENERAL VALUATION ROLL 2023");
+            var rollDisplayName = FirstNonEmpty(
+     settings.RollName,
+     notice.ValuationPeriod,
+     settings.ValuationPeriodCode,
+     "GENERAL VALUATION ROLL 2023");
 
             var responseDays = 30;
 
@@ -59,9 +59,9 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                     page.Size(PageSizes.A4);
                     page.MarginLeft(30);
                     page.MarginRight(30);
-                    page.MarginTop(10);
-                    page.MarginBottom(10);
-                    page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(9.5f));
+                    page.MarginTop(8);
+                    page.MarginBottom(8);
+                    page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(9f));
 
                     page.Footer()
                         .PaddingTop(8)
@@ -78,7 +78,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
                     page.Content().Column(col =>
                     {
-                        col.Spacing(7);
+                        col.Spacing(5);
 
                         AddHeaderImage(col, headerPath, body9b);
 
@@ -88,42 +88,50 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                         {
                             r.RelativeItem().Column(left =>
                             {
-                                left.Item().Text(t =>
-                                {
-                                    t.Span("TO: ").Style(body10b);
-                                    t.Span(BuildOwnerLine(notice)).Style(value10b);
-                                });
+                                left.Item().Element(c =>
+                                    BuildFormalAddress(
+                                        c,
+                                        "TO:",
+                                        BuildOwnerAddressLines(notice),
+                                        body10b,
+                                        value9));
 
-                                left.Item().Text(t =>
-                                {
-                                    t.Span("Cc: ").Style(body10b);
-                                    t.Span(BuildThirdPartyLine(notice)).Style(value10b);
-                                });
+                                left.Item().PaddingTop(3).Element(c =>
+                                    BuildFormalAddress(
+                                        c,
+                                        "Cc:",
+                                        BuildThirdPartyAddressLines(notice),
+                                        body10b,
+                                        value9));
                             });
 
-                            r.ConstantItem(190).AlignRight().Text(t =>
-                            {
-                                //t.Span("DATE: ").Style(body10b);
-                                t.Span(letterDate.ToString("dd MMMM yyyy", CultureInfo.GetCultureInfo("en-ZA")))
-                                    .Style(value9);
-                            });
+                            r.ConstantItem(170)
+                                .AlignRight()
+                                .Text(t =>
+                                {
+                                    t.Span("DATE: ").Style(body10b);
+                                    t.Span(letterDate.ToString(
+                                            "dd MMMM yyyy",
+                                            CultureInfo.GetCultureInfo("en-ZA")))
+                                        .Style(value9);
+                                });
                         });
 
-                        col.Item().PaddingTop(20).Text("Dear Property Owner,").Style(body9b);
+                        col.Item().PaddingTop(10).Text("Dear Property Owner,").Style(body9b);
 
-                        col.Item().PaddingTop(8).AlignCenter().Text(t =>
+                        col.Item().PaddingTop(5).AlignCenter().Text(t =>
                         {
                             t.Span("NOTICE TO PROPERTY OWNER OF THIRD-PARTY APPEAL APPLICATION TO THE VALUATION APPEAL BOARD ")
                                 .Style(title12);
-                            t.Span(valuationPeriod.ToUpperInvariant()).Style(title12);
-                            
+                            t.Span(rollDisplayName.ToUpperInvariant()).Style(title12);
+
                         });
 
-                        col.Item().PaddingTop(10).Text(t =>
+                        col.Item().PaddingTop(6).Text(t =>
                         {
                             t.Span("This letter serves to formally notify you that an appeal has been lodged by ")
                                 .Style(body9);
-                            t.Span(Display(notice.ThirdPartyName)).Style(value9);
+                            t.Span(BuildDelegatedThirdPartyText(notice)).Style(value9);
                             t.Span(" concerning the municipal property valuation of your property namely, ")
                                 .Style(body9);
                             t.Span(Display(notice.Property_Description)).Style(value9);
@@ -134,7 +142,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                         {
                             t.Span("The appeal was lodged by the third party, ")
                                 .Style(body9);
-                            t.Span(Display(notice.ThirdPartyName)).Style(value9);
+                            t.Span(BuildThirdPartyIdentityText(notice)).Style(value9);
                             t.Span(" on the ")
                                 .Style(body9);
                             t.Span(FormatDate(notice.DateAdded)).Style(value9);
@@ -142,22 +150,22 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                                 .Style(body9);
                         });
 
-                        col.Item().PaddingTop(8).Element(e => BuildPropertyDetailsTable(e, notice, valuationPeriod));
+                        col.Item().PaddingTop(5).Element(e => BuildPropertyDetailsTable(e, notice, rollDisplayName));
 
-                        col.Item().PaddingTop(10).Text("Reasons for Appeal by the third party are the following:")
+                        col.Item().PaddingTop(6).Text("Reasons for Appeal by the third party are the following:")
                             .Style(body9b);
 
                         col.Item().Element(e => BuildReasonBox(e, notice.AppReason));
 
-                        col.Item().PaddingTop(8).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
+                        col.Item().PaddingTop(5).LineHorizontal(1).LineColor(Colors.Grey.Darken1);
 
-                        col.Item().PaddingTop(18).Text("Third-party submission relevant to this appeal application and supporting documents are attached for your consideration.")
+                        col.Item().PaddingTop(7).Text("Third-party submission relevant to this appeal application and supporting documents are attached for your consideration.")
                             .Style(body9)
                             .Justify();
 
-                       
 
-                        col.Item().PaddingTop(14).Text(t =>
+
+                        col.Item().PaddingTop(7).Text(t =>
                         {
                             t.Span("Upon consideration as mentioned above, you are hereby requested to electronically file submissions to the VAB Secretariat within ")
                                 .Style(body9);
@@ -172,7 +180,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                                 .Style(body9);
                         });
 
-                        col.Item().PaddingTop(8).Text(t =>
+                        col.Item().PaddingTop(5).Text(t =>
                         {
                             t.Span("The appeal hearing shall be held on ")
                                 .Style(body9);
@@ -181,21 +189,21 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                                 .Style(body9);
                         });
 
-                        col.Item().PaddingTop(8).Text("Please take note that the hearing shall proceed as scheduled, regardless of your contribution and/or adherence to the above procedure.")
+                        col.Item().PaddingTop(5).Text("Please take note that the hearing shall proceed as scheduled, regardless of your contribution and/or adherence to the above procedure.")
                             .Style(body9)
                             .Justify();
 
-                        col.Item().PaddingTop(8).Text(t =>
+                        col.Item().PaddingTop(5).Text(t =>
                         {
                             t.Span("For enquiries kindly contact ").Style(body9);
                             t.Span("valuationenquiries@joburg.org.za").Style(value9);
                         });
 
-                        col.Item().PaddingTop(14).Text("Regards,").Style(body9);
+                        col.Item().PaddingTop(7).Text("Regards,").Style(body9);
 
-                        col.Item().PaddingTop(26).Text("Valuation Appeal Board Secretariat").Style(body9);
+                        col.Item().PaddingTop(14).Text("Valuation Appeal Board Secretariat").Style(body9);
 
-                       
+
                     });
                 });
             }).GeneratePdf();
@@ -222,9 +230,9 @@ namespace GV23_Notice.Services.ThirdPartyApplications
         }
 
         private static void BuildPropertyDetailsTable(
-        IContainer container,
-        ThirdPartyAppealApplicationNotice notice,
-        string valuationPeriod)
+      IContainer container,
+      ThirdPartyAppealApplicationNotice notice,
+      string rollDisplayName)
         {
             container.Table(t =>
             {
@@ -241,7 +249,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                     h.Cell().Element(HeaderCell).Text("Property Details")
                         .FontFamily("Arial").FontSize(9).SemiBold();
 
-                    h.Cell().Element(HeaderCell).Text($"Entry {BuildRollHeader(valuationPeriod)} Value")
+                    h.Cell().Element(HeaderCell).Text($"Entry {BuildRollHeader(rollDisplayName)} Value")
                         .FontFamily("Arial").FontSize(9).SemiBold();
 
                     h.Cell().Element(HeaderCell).Text($"Objection Outcome[{Display(notice.Objection_No)}]")
@@ -351,39 +359,27 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             }
         }
 
-        private static void BuildReasonBox(IContainer container, string? reason)
+        private static void BuildReasonBox(
+            IContainer container,
+            string? reason)
         {
-            var lines = SplitReason(reason).ToList();
+            var cleanReason = string.Join(
+                Environment.NewLine,
+                SplitReason(reason));
 
-            container.Table(t =>
-            {
-                t.ColumnsDefinition(c =>
-                {
-                    c.RelativeColumn();
-                });
-
-                if (lines.Count == 0)
-                {
-                    for (var i = 0; i < 4; i++)
-                        t.Cell().Element(CellBase).Text("");
-
-                    return;
-                }
-
-                foreach (var line in lines.Take(4))
-                {
-                    t.Cell().Element(CellBase).Text(line)
-                        .FontFamily("Arial")
-                        .FontSize(9)
-                        .SemiBold()
-                        .FontColor(Colors.Black);
-                }
-
-                var remaining = 4 - lines.Take(4).Count();
-
-                for (var i = 0; i < remaining; i++)
-                    t.Cell().Element(CellBase).Text("");
-            });
+            container
+                .Border(0.8f)
+                .BorderColor(Colors.Grey.Darken2)
+                .MinHeight(48)
+                .PaddingVertical(5)
+                .PaddingHorizontal(5)
+                .Text(string.IsNullOrWhiteSpace(cleanReason)
+                    ? " "
+                    : cleanReason)
+                .FontFamily("Arial")
+                .FontSize(8.7f)
+                .SemiBold()
+                .FontColor(Colors.Black);
         }
 
         private static IEnumerable<string> SplitReason(string? value)
@@ -456,38 +452,122 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             return v;
         }
 
-        private static string BuildOwnerLine(ThirdPartyAppealApplicationNotice n)
+        private static void BuildFormalAddress(
+            IContainer container,
+            string label,
+            IReadOnlyList<string> lines,
+            TextStyle labelStyle,
+            TextStyle valueStyle)
         {
-            var parts = new[]
+            container.Row(row =>
             {
+                row.ConstantItem(28)
+                    .Text(label)
+                    .Style(labelStyle);
+
+                row.RelativeItem()
+                    .Column(column =>
+                    {
+                        if (lines.Count == 0)
+                        {
+                            column.Item().Text("—").Style(valueStyle);
+                            return;
+                        }
+
+                        foreach (var line in lines)
+                        {
+                            column.Item()
+                                .Text(line)
+                                .Style(valueStyle);
+                        }
+                    });
+            });
+        }
+
+        private static IReadOnlyList<string> BuildOwnerAddressLines(
+            ThirdPartyAppealApplicationNotice n)
+        {
+            return BuildAddressLines(
                 n.OwnerName,
                 n.OwnerAddress1,
                 n.OwnerAddress2,
                 n.OwnerAddress3,
                 n.OwnerAddress4,
-                n.OwnerAddress5
-            }
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x!.Trim());
-
-            return string.Join(", ", parts);
+                n.OwnerAddress5);
         }
 
-        private static string BuildThirdPartyLine(ThirdPartyAppealApplicationNotice n)
+        private static IReadOnlyList<string> BuildThirdPartyAddressLines(
+            ThirdPartyAppealApplicationNotice n)
         {
-            var parts = new[]
-            {
+            return BuildAddressLines(
                 n.ThirdPartyName,
                 n.ThirdPartyAddress1,
                 n.ThirdPartyAddress2,
                 n.ThirdPartyAddress3,
                 n.ThirdPartyAddress4,
-                n.ThirdPartyAddress5
-            }
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x!.Trim());
+                n.ThirdPartyAddress5);
+        }
 
-            return string.Join(", ", parts);
+        private static IReadOnlyList<string> BuildAddressLines(
+            params string?[] values)
+        {
+            return values
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x!.Trim().Trim(','))
+                .Where(x => x.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        private static string BuildDelegatedThirdPartyText(
+            ThirdPartyAppealApplicationNotice notice)
+        {
+            if (IsSihleMore(notice.ThirdPartyName))
+            {
+                return "Ms Sihle More delegated by City of Johannesburg Council";
+            }
+
+            return BuildThirdPartyWithStatus(notice);
+        }
+
+        private static string BuildThirdPartyIdentityText(
+            ThirdPartyAppealApplicationNotice notice)
+        {
+            if (IsSihleMore(notice.ThirdPartyName))
+            {
+                return "City of Johannesburg – Ms Sihle More";
+            }
+
+            return BuildThirdPartyWithStatus(notice);
+        }
+
+        private static string BuildThirdPartyWithStatus(
+            ThirdPartyAppealApplicationNotice notice)
+        {
+            var name = Display(notice.ThirdPartyName);
+            var status = notice.Objector_Status?.Trim();
+
+            return string.IsNullOrWhiteSpace(status)
+                ? name
+                : $"{name} ({status})";
+        }
+
+        private static bool IsSihleMore(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            var normalised = new string(
+                name
+                    .Where(char.IsLetterOrDigit)
+                    .Select(char.ToUpperInvariant)
+                    .ToArray());
+
+            return normalised == "SIHLEMORE"
+                || normalised == "MSSIHLEMORE"
+                || normalised.EndsWith("SIHLEMORE", StringComparison.Ordinal);
         }
 
         private static string FirstNonEmpty(params string?[] values)

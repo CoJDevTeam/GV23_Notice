@@ -893,26 +893,95 @@ namespace GV23_Notice.Controllers
         // ── STATS ───────────────────────────────────────────────────────────
 
         [HttpGet("SendStats")]
-        public async Task<IActionResult> SendStats(Guid key, CancellationToken ct)
+        public async Task<IActionResult> SendStats(
+      Guid key,
+      CancellationToken ct)
         {
             if (key == Guid.Empty)
+            {
                 return BadRequest("Invalid workflow key.");
+            }
 
-            var vm = await _stats.BuildStatsAsync(key, ct);
+            var settings = await GetWorkflowSettingsAsync(
+                key,
+                ct);
+
+            /*
+             * TPA does not use NoticeBatches or the normal
+             * Step3/SendStats stakeholder report.
+             *
+             * Send TPA to the Admin-grouped statistics page.
+             */
+            if (settings.Notice == NoticeKind.TPA)
+            {
+                return RedirectToAction(
+                    "Index",
+                    "Stats",
+                    new
+                    {
+                        Notice = NoticeKind.TPA,
+                        WorkflowKey = key
+                    });
+            }
+
+            /*
+             * All normal notices continue using the existing
+             * Views/Step3/SendStats.cshtml page.
+             */
+            var vm = await _stats.BuildStatsAsync(
+                key,
+                ct);
+
             return View(vm);
         }
 
         [HttpGet("DownloadStatsExcel")]
-        public async Task<IActionResult> DownloadStatsExcel(Guid key, CancellationToken ct)
+        public async Task<IActionResult> DownloadStatsExcel(
+           Guid key,
+           CancellationToken ct)
         {
             if (key == Guid.Empty)
+            {
                 return BadRequest("Invalid workflow key.");
+            }
 
-            var user = User?.Identity?.Name ?? "Unknown";
-            var path = await _stats.GenerateExcelAsync(key, user, ct);
+            var settings = await GetWorkflowSettingsAsync(
+                key,
+                ct);
 
-            var bytes = await System.IO.File.ReadAllBytesAsync(path, ct);
-            var fileName = Path.GetFileName(path);
+            if (settings.Notice == NoticeKind.TPA)
+            {
+                return RedirectToAction(
+                    "Index",
+                    "Stats",
+                    new
+                    {
+                        Notice = NoticeKind.TPA,
+                        WorkflowKey = key
+                    });
+            }
+
+            var user =
+                User?.Identity?.Name ?? "Unknown";
+
+            var path = await _stats.GenerateExcelAsync(
+                key,
+                user,
+                ct);
+
+            if (!System.IO.File.Exists(path))
+            {
+                return NotFound(
+                    "The statistics workbook was not found.");
+            }
+
+            var bytes =
+                await System.IO.File.ReadAllBytesAsync(
+                    path,
+                    ct);
+
+            var fileName =
+                Path.GetFileName(path);
 
             return File(
                 bytes,
@@ -923,27 +992,64 @@ namespace GV23_Notice.Controllers
         [HttpPost("SendStatsEmail")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> SendStatsEmail(
-            Guid key,
-            string toEmails,
-            string? ccEmails,
-            CancellationToken ct)
+          Guid key,
+          string toEmails,
+          string? ccEmails,
+          CancellationToken ct)
         {
             if (key == Guid.Empty)
+            {
                 return BadRequest("Invalid workflow key.");
+            }
 
-            var user = User?.Identity?.Name ?? "Unknown";
+            var settings = await GetWorkflowSettingsAsync(
+                key,
+                ct);
+
+            /*
+             * TPA reports are sent per Admin from StatsController.
+             */
+            if (settings.Notice == NoticeKind.TPA)
+            {
+                TempData["Error"] =
+                    "TPA statistics reports must be sent from the Admin statistics page.";
+
+                return RedirectToAction(
+                    "Index",
+                    "Stats",
+                    new
+                    {
+                        Notice = NoticeKind.TPA,
+                        WorkflowKey = key
+                    });
+            }
+
+            var user =
+                User?.Identity?.Name ?? "Unknown";
 
             try
             {
-                await _stats.SendStatsEmailAsync(key, toEmails, ccEmails, user, ct);
+                await _stats.SendStatsEmailAsync(
+                    key,
+                    toEmails,
+                    ccEmails,
+                    user,
+                    ct);
 
-                TempData["Success"] = "Stats report sent to stakeholders successfully.";
-                return RedirectToAction("Index", "Home");
+                TempData["Success"] =
+                    "Stats report sent to stakeholders successfully.";
+
+                return RedirectToAction(
+                    "Index",
+                    "Home");
             }
             catch (Exception ex)
             {
                 TempData["Error"] = ex.Message;
-                return RedirectToAction(nameof(SendStats), new { key });
+
+                return RedirectToAction(
+                    nameof(SendStats),
+                    new { key });
             }
         }
 

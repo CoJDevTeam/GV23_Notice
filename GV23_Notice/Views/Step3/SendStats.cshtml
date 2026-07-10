@@ -1,11 +1,15 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.NoticeSendStatsVm
+@using GV23_Notice.Domain.Workflow
 
 @{
     ViewData["Title"] = "Notice Send Statistics";
+
     var key = Model.WorkflowKey;
+    var isTpa = Model.Notice == NoticeKind.TPA;
 }
 
-<link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
+<link href="~/css/Step3/Step3KickOffCss1.css"
+      rel="stylesheet" />
 
 <style>
     .st-wrap {
@@ -32,6 +36,13 @@
         letter-spacing: .08em;
     }
 
+    .st-sub {
+        margin-top: 6px;
+        color: #ccc;
+        font-size: .76rem;
+        line-height: 1.6;
+    }
+
     .st-meta {
         margin-top: 8px;
         display: flex;
@@ -51,6 +62,7 @@
         margin-bottom: 14px;
         font-size: .8rem;
         font-weight: 700;
+        line-height: 1.5;
     }
 
     .st-alert-ok {
@@ -63,6 +75,12 @@
         background: #fff0f0;
         color: #8a1a1a;
         border: 1px solid #f0b0b0;
+    }
+
+    .st-alert-info {
+        background: #e8f0fe;
+        color: #1a56c4;
+        border: 1px solid #b3c8f8;
     }
 
     .st-grid {
@@ -150,6 +168,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 6px;
     }
 
     .st-btn-dark {
@@ -190,12 +209,18 @@
         border-radius: 9px;
         padding: 10px;
         font-size: .8rem;
+        box-sizing: border-box;
+    }
+
+    .st-table-wrap {
+        overflow-x: auto;
     }
 
     .st-table {
         width: 100%;
         border-collapse: collapse;
         font-size: .76rem;
+        min-width: 900px;
     }
 
         .st-table th {
@@ -207,22 +232,14 @@
             color: #777;
             text-transform: uppercase;
             letter-spacing: .06em;
+            white-space: nowrap;
         }
 
         .st-table td {
             padding: 10px;
             border-bottom: 1px solid #eee;
+            vertical-align: top;
         }
-
-    @@media(max-width: 1000px) {
-        .st-grid {
-            grid-template-columns: repeat(2, 1fr);
-        }
-
-        .st-form-grid {
-            grid-template-columns: 1fr;
-        }
-    }
 
     .st-help {
         margin-top: 5px;
@@ -264,28 +281,121 @@
             border-color: #2ebd6c;
             color: #1a8a4a;
         }
+
+    .st-tpa-card {
+        display: grid;
+        grid-template-columns: 64px 1fr auto;
+        gap: 18px;
+        align-items: center;
+        padding: 22px;
+    }
+
+    .st-tpa-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        background: linear-gradient(135deg,#1a8a4a,#2ebd6c);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.6rem;
+    }
+
+    .st-tpa-title {
+        font-size: 1rem;
+        font-weight: 900;
+        color: #111;
+        margin-bottom: 5px;
+    }
+
+    .st-tpa-text {
+        font-size: .76rem;
+        line-height: 1.7;
+        color: #666;
+    }
+
+    @@media(max-width: 1000px) {
+        .st-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .st-form-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .st-tpa-card {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 
 <div class="st-wrap">
 
     <div class="st-head">
-        <h1 class="st-title">Notice Send Statistics</h1>
+        <h1 class="st-title">
+            @(isTpa
+                ? "Third-Party Appeal Notice Statistics"
+                : "Notice Send Statistics")
+        </h1>
+
+        <div class="st-sub">
+            @if (isTpa)
+            {
+                <text>
+                    Third-Party Appeal statistics are managed per Admin.
+                    Each Admin receives a dedicated workbook containing a Summary Report and Detail sheet.
+                </text>
+            }
+            else
+            {
+                <text>
+                    Review notice sending totals, download the general statistics workbook,
+                    and send the report to configured stakeholders.
+                </text>
+            }
+        </div>
+
         <div class="st-meta">
-            <span>Roll: <b>@Model.RollShortCode — @Model.RollName</b></span>
-            <span>Notice: <b>@Model.Notice</b></span>
-            <span>Version: <b>@Model.VersionText</b></span>
-            <span>Last Sent: <b>@(Model.LastSentAtUtc?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—")</b></span>
+            <span>
+                Roll:
+                <b>@Model.RollShortCode — @Model.RollName</b>
+            </span>
+
+            <span>
+                Notice:
+                <b>@Model.Notice</b>
+            </span>
+
+            <span>
+                Version:
+                <b>@Model.VersionText</b>
+            </span>
+
+            <span>
+                Last Sent:
+                <b>
+                    @(Model.LastSentAtUtc
+                        ?.ToLocalTime()
+                        .ToString("dd MMM yyyy HH:mm")
+                        ?? "—")
+                </b>
+            </span>
         </div>
     </div>
 
     @if (TempData["Success"] != null)
     {
-        <div class="st-alert st-alert-ok">@TempData["Success"]</div>
+        <div class="st-alert st-alert-ok">
+            @TempData["Success"]
+        </div>
     }
 
     @if (TempData["Error"] != null)
     {
-        <div class="st-alert st-alert-err">@TempData["Error"]</div>
+        <div class="st-alert st-alert-err">
+            @TempData["Error"]
+        </div>
     }
 
     <div class="st-actions">
@@ -296,192 +406,315 @@
             Back to Send Notices
         </a>
 
-        <a class="st-btn st-btn-gold"
-               asp-action="DownloadStatsExcel"
-               asp-controller="Step3"
-               asp-route-key="@key">
-            Download Excel Stats
-        </a>
+        @if (isTpa)
+        {
+            <a class="st-btn st-btn-green"
+                   asp-controller="Stats"
+                   asp-action="Index"
+                   asp-route-notice="@NoticeKind.TPA"
+                   asp-route-workflowKey="@key">
+                Open TPA Admin Statistics
+            </a>
+        }
+        else
+        {
+            <a class="st-btn st-btn-gold"
+                   asp-action="DownloadStatsExcel"
+                   asp-controller="Step3"
+                   asp-route-key="@key">
+                Download Excel Stats
+            </a>
+        }
     </div>
 
-    <div class="st-grid">
-        <div class="st-card">
-            <div class="st-num">@Model.TotalBatches</div>
-            <div class="st-label">Batches</div>
+    @if (isTpa)
+    {
+        <div class="st-alert st-alert-info">
+            TPA does not use normal batches or the general stakeholder report.
+            Reports are generated and emailed separately for each responsible Admin.
         </div>
 
-        <div class="st-card">
-            <div class="st-num">@Model.TotalRecords</div>
-            <div class="st-label">Total Records</div>
-        </div>
+        <div class="st-panel">
+            <div class="st-panel-head">
+                Continue to TPA Admin Reporting
+            </div>
 
-        <div class="st-card">
-            <div class="st-num gold">@Model.TotalPrinted</div>
-            <div class="st-label">Still Printed</div>
-        </div>
+            <div class="st-tpa-card">
+                <div class="st-tpa-icon">📊</div>
 
-        <div class="st-card">
-            <div class="st-num green">@Model.TotalSent</div>
-            <div class="st-label">Sent</div>
-        </div>
-
-        <div class="st-card">
-            <div class="st-num red">@Model.TotalFailed</div>
-            <div class="st-label">Failed</div>
-        </div>
-
-        <div class="st-card">
-            <div class="st-num gold">@Model.TotalNoEmail</div>
-            <div class="st-label">No Email</div>
-        </div>
-    </div>
-
-    <div class="st-panel">
-        <div class="st-panel-head">Send Stats to Stakeholders</div>
-        <div class="st-panel-body">
-            <form asp-action="SendStatsEmail" asp-controller="Step3" method="post" id="statsEmailForm">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="key" value="@key" />
-
-                <div style="font-size:.76rem;color:#666;line-height:1.6;margin-bottom:14px;">
-                    Default stakeholders are loaded from <strong>appsettings.json</strong>.
-                    You can add more emails before sending. Use comma or semicolon between emails.
-                </div>
-
-                <div class="st-form-grid">
-                    <div class="st-field">
-                        <label>To Emails</label>
-                        <input class="st-input"
-                               id="toEmails"
-                               name="toEmails"
-                               value="@Model.DefaultToEmails"
-                               placeholder="senior@joburg.org.za; manager@joburg.org.za"
-                               required />
-                        <div class="st-help">
-                            Main recipients. You can add more emails using <strong>;</strong> or <strong>,</strong>.
-                        </div>
+                <div>
+                    <div class="st-tpa-title">
+                        TPA Admin Statistics
                     </div>
 
-                    <div class="st-field">
-                        <label>CC Emails</label>
-                        <input class="st-input"
-                               id="ccEmails"
-                               name="ccEmails"
-                               value="@Model.DefaultCcEmails"
-                               placeholder="optional cc emails" />
-                        <div class="st-help">
-                            Optional copied recipients.
-                        </div>
+                    <div class="st-tpa-text">
+                        The TPA statistics page groups notices by Admin, pre-populates
+                        the Admin email in To, includes Valuation Enquiries and all relevant
+                        valuers in CC, generates one Excel workbook per Admin, saves the
+                        workbook and email copy as evidence, and records every send attempt
+                        in the audit trail.
+                    </div>
+                </div>
+
+                <a class="st-btn st-btn-green"
+                       asp-controller="Stats"
+                       asp-action="Index"
+                       asp-route-notice="@NoticeKind.TPA"
+                       asp-route-workflowKey="@key">
+                    View Admin Reports
+                </a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="st-grid">
+            <div class="st-card">
+                <div class="st-num">
+                    @Model.TotalBatches.ToString("N0")
+                </div>
+                <div class="st-label">Batches</div>
+            </div>
+
+            <div class="st-card">
+                <div class="st-num">
+                    @Model.TotalRecords.ToString("N0")
+                </div>
+                <div class="st-label">Total Records</div>
+            </div>
+
+            <div class="st-card">
+                <div class="st-num gold">
+                    @Model.TotalPrinted.ToString("N0")
+                </div>
+                <div class="st-label">Still Printed</div>
+            </div>
+
+            <div class="st-card">
+                <div class="st-num green">
+                    @Model.TotalSent.ToString("N0")
+                </div>
+                <div class="st-label">Sent</div>
+            </div>
+
+            <div class="st-card">
+                <div class="st-num red">
+                    @Model.TotalFailed.ToString("N0")
+                </div>
+                <div class="st-label">Failed</div>
+            </div>
+
+            <div class="st-card">
+                <div class="st-num gold">
+                    @Model.TotalNoEmail.ToString("N0")
+                </div>
+                <div class="st-label">No Email</div>
+            </div>
+        </div>
+
+        <div class="st-panel">
+            <div class="st-panel-head">
+                Send Stats to Stakeholders
+            </div>
+
+            <div class="st-panel-body">
+                <form asp-action="SendStatsEmail"
+                      asp-controller="Step3"
+                      method="post"
+                      id="statsEmailForm">
+
+                    @Html.AntiForgeryToken()
+
+                    <input type="hidden"
+                           name="key"
+                           value="@key" />
+
+                    <div style="font-size:.76rem;color:#666;line-height:1.6;margin-bottom:14px;">
+                        Default stakeholders are loaded from
+                        <strong>appsettings.json</strong>.
+                        You can add more emails before sending.
+                        Use a comma or semicolon between addresses.
                     </div>
 
-                    <button class="st-btn st-btn-green" type="submit">
-                        Send Stats Email
-                    </button>
+                    <div class="st-form-grid">
+                        <div class="st-field">
+                            <label>To Emails</label>
+
+                            <input class="st-input"
+                                   id="toEmails"
+                                   name="toEmails"
+                                   value="@Model.DefaultToEmails"
+                                   placeholder="senior@joburg.org.za; manager@joburg.org.za"
+                                   required />
+
+                            <div class="st-help">
+                                Main recipients. Separate additional addresses using
+                                <strong>;</strong> or <strong>,</strong>.
+                            </div>
+                        </div>
+
+                        <div class="st-field">
+                            <label>CC Emails</label>
+
+                            <input class="st-input"
+                                   id="ccEmails"
+                                   name="ccEmails"
+                                   value="@Model.DefaultCcEmails"
+                                   placeholder="Optional CC emails" />
+
+                            <div class="st-help">
+                                Optional copied recipients.
+                            </div>
+                        </div>
+
+                        <button class="st-btn st-btn-green"
+                                type="submit">
+                            Send Stats Email
+                        </button>
+                    </div>
+
+                    <div class="st-quick-add">
+                        <div class="st-quick-title">
+                            Quick Add
+                        </div>
+
+                        <button type="button"
+                                class="st-mini-btn"
+                                onclick="addEmail('toEmails','senior.developer@joburg.org.za')">
+                            + Senior Developer
+                        </button>
+
+                        <button type="button"
+                                class="st-mini-btn"
+                                onclick="addEmail('toEmails','manager@joburg.org.za')">
+                            + Manager
+                        </button>
+
+                        <button type="button"
+                                class="st-mini-btn"
+                                onclick="addEmail('ccEmails','developer@joburg.org.za')">
+                            + Developer CC
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="st-panel">
+            <div class="st-panel-head">
+                Batch Summary
+            </div>
+
+            <div class="st-panel-body">
+                <div class="st-table-wrap">
+                    <table class="st-table">
+                        <thead>
+                            <tr>
+                                <th>Batch Name</th>
+                                <th>Batch Date</th>
+                                <th>Total</th>
+                                <th>Printed</th>
+                                <th>Sent</th>
+                                <th>Failed</th>
+                                <th>No Email</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @if (!Model.Batches.Any())
+                            {
+                                <tr>
+                                    <td colspan="7">
+                                        No batch statistics were found.
+                                    </td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var b in Model.Batches)
+                                {
+                                    <tr>
+                                        <td>@b.BatchName</td>
+                                        <td>@b.BatchDate.ToString("dd MMM yyyy")</td>
+                                        <td>@b.TotalRecords.ToString("N0")</td>
+                                        <td>@b.Printed.ToString("N0")</td>
+                                        <td>@b.Sent.ToString("N0")</td>
+                                        <td>@b.Failed.ToString("N0")</td>
+                                        <td>@b.NoEmail.ToString("N0")</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="st-panel">
+            <div class="st-panel-head">
+                Notice Details
+            </div>
+
+            <div class="st-panel-body">
+                <div class="st-table-wrap">
+                    <table class="st-table">
+                        <thead>
+                            <tr>
+                                <th>Batch</th>
+                                <th>Reference</th>
+                                <th>Premise ID</th>
+                                <th>Property</th>
+                                <th>Recipient</th>
+                                <th>Email</th>
+                                <th>Status</th>
+                                <th>Error</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            @if (!Model.Rows.Any())
+                            {
+                                <tr>
+                                    <td colspan="8">
+                                        No notice records were found.
+                                    </td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var x in Model.Rows.Take(200))
+                                {
+                                    var reference =
+                                        !string.IsNullOrWhiteSpace(x.ObjectionNo)
+                                            ? x.ObjectionNo
+                                            : x.AppealNo;
+
+                                    <tr>
+                                        <td>@x.BatchName</td>
+                                        <td>@reference</td>
+                                        <td>@x.PremiseId</td>
+                                        <td>@x.PropertyDesc</td>
+                                        <td>@x.RecipientName</td>
+                                        <td>@x.RecipientEmail</td>
+                                        <td>@x.Status</td>
+                                        <td>@x.ErrorMessage</td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
                 </div>
 
-                <div class="st-quick-add">
-                    <div class="st-quick-title">Quick Add</div>
-
-                    <button type="button"
-                            class="st-mini-btn"
-                            onclick="addEmail('toEmails','senior.developer@joburg.org.za')">
-                        + Senior Developer
-                    </button>
-
-                    <button type="button"
-                            class="st-mini-btn"
-                            onclick="addEmail('toEmails','manager@joburg.org.za')">
-                        + Manager
-                    </button>
-
-                    <button type="button"
-                            class="st-mini-btn"
-                            onclick="addEmail('ccEmails','developer@joburg.org.za')">
-                        + Developer CC
-                    </button>
-                </div>
-            </form>
+                @if (Model.Rows.Count > 200)
+                {
+                    <div style="margin-top:10px;font-size:.75rem;color:#777;">
+                        Showing the first 200 records only.
+                        Download Excel for the full list.
+                    </div>
+                }
+            </div>
         </div>
-    </div>
-
-    <div class="st-panel">
-        <div class="st-panel-head">Batch Summary</div>
-        <div class="st-panel-body">
-            <table class="st-table">
-                <thead>
-                    <tr>
-                        <th>Batch Name</th>
-                        <th>Batch Date</th>
-                        <th>Total</th>
-                        <th>Printed</th>
-                        <th>Sent</th>
-                        <th>Failed</th>
-                        <th>No Email</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var b in Model.Batches)
-                    {
-                        <tr>
-                            <td>@b.BatchName</td>
-                            <td>@b.BatchDate.ToString("dd MMM yyyy")</td>
-                            <td>@b.TotalRecords</td>
-                            <td>@b.Printed</td>
-                            <td>@b.Sent</td>
-                            <td>@b.Failed</td>
-                            <td>@b.NoEmail</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="st-panel">
-        <div class="st-panel-head">Notice Details</div>
-        <div class="st-panel-body">
-            <table class="st-table">
-                <thead>
-                    <tr>
-                        <th>Batch</th>
-                        <th>Reference</th>
-                        <th>Premise ID</th>
-                        <th>Property</th>
-                        <th>Recipient</th>
-                        <th>Email</th>
-                        <th>Status</th>
-                        <th>Error</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var x in Model.Rows.Take(200))
-                    {
-                        var reference = !string.IsNullOrWhiteSpace(x.ObjectionNo)
-                            ? x.ObjectionNo
-                            : x.AppealNo;
-
-                        <tr>
-                            <td>@x.BatchName</td>
-                            <td>@reference</td>
-                            <td>@x.PremiseId</td>
-                            <td>@x.PropertyDesc</td>
-                            <td>@x.RecipientName</td>
-                            <td>@x.RecipientEmail</td>
-                            <td>@x.Status</td>
-                            <td>@x.ErrorMessage</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-
-            @if (Model.Rows.Count > 200)
-            {
-                <div style="margin-top:10px;font-size:.75rem;color:#777;">
-                    Showing first 200 records only. Download Excel for the full list.
-                </div>
-            }
-        </div>
-    </div>
+    }
 </div>
 
 @section Scripts {
@@ -489,7 +722,9 @@
         function addEmail(inputId, email) {
             const input = document.getElementById(inputId);
 
-            if (!input || !email) return;
+            if (!input || !email) {
+                return;
+            }
 
             const current = input.value.trim();
 
@@ -502,11 +737,9 @@
                 return;
             }
 
-            if (current.length === 0) {
-                input.value = email;
-            } else {
-                input.value = current + '; ' + email;
-            }
+            input.value = current.length === 0
+                ? email
+                : current + '; ' + email;
         }
     </script>
 }

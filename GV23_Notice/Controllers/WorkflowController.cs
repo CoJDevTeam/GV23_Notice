@@ -15,6 +15,7 @@ using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.SnapShotStep2;
+using GV23_Notice.Services.Step3;
 using GV23_Notice.Services.ThirdPartyApplications;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -46,6 +47,7 @@ namespace GV23_Notice.Controllers
         private readonly INoticeStep2SnapshotService _snap;
         private readonly GV23_Notice.Services.Step3.IS52RangePrintService _s52Range;
         private readonly IThirdPartyAppealDateConfigurationService _thirdPartyDates;
+        private readonly IThirdPartyAppealWorkflowSyncService _tpaWorkflowSync;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -61,7 +63,9 @@ namespace GV23_Notice.Controllers
      IPreviewDbDataService previewDb,
      ITempFileStore tempFiles,
      INoticeStep2SnapshotService snap,
-     GV23_Notice.Services.Step3.IS52RangePrintService s52Range, IThirdPartyAppealDateConfigurationService thirdPartyDates)
+        IS52RangePrintService s52Range,
+     IThirdPartyAppealDateConfigurationService thirdPartyDates,
+     IThirdPartyAppealWorkflowSyncService tpaWorkflowSync)
         {
             _db = db;
             _settings = settings;
@@ -79,7 +83,8 @@ namespace GV23_Notice.Controllers
             _snap = snap;
             _s52Range = s52Range;
             _thirdPartyDates = thirdPartyDates;
-            _tempFiles = tempFiles;     
+            _tempFiles = tempFiles;
+            _tpaWorkflowSync = tpaWorkflowSync;
         }
 
         // GET: /Workflow/Step1
@@ -608,7 +613,30 @@ namespace GV23_Notice.Controllers
                     comment: "Third-Party Appeal Application configuration approved.",
                     ct: ct);
             }
+            if (s.Notice == NoticeKind.TPA)
+            {
+                var updatedRows =
+                    await _tpaWorkflowSync.SynchronizeAsync(
+                        s.Id,
+                        user,
+                        ct);
 
+                await _audit.WriteAsync(
+                    settingsId: s.Id,
+                    step: "Step1Summary",
+                    action: "SYNC_TPA_ROLL_FROM_APPEAL_NUMBER",
+                    by: user,
+                    snapshot: new
+                    {
+                        s.Id,
+                        UpdatedRows = updatedRows,
+                        Rule =
+                            "RollId, RollShortCode and ValuationPeriod resolved from Appeal_No using RollRegistry."
+                    },
+                    comment:
+                        $"{updatedRows} TPA records were linked to the workflow and roll.",
+                    ct: ct);
+            }
             await _settings.ApproveAsync(s.Id, user, "Admin approved via Step1Summary.", ct);
 
             TempData["Success"] = "Approved. Redirecting to Step 2.";
