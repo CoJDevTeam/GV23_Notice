@@ -8,6 +8,10 @@
 
         public string BoardName { get; set; } = "";
 
+        public DateTime? EffectiveFrom { get; set; }
+
+        public DateTime? EffectiveTo { get; set; }
+
         public DateTime? HearingDate { get; set; }
 
         public List<ThirdPartyAppealBoardMemberVm> Members { get; set; }

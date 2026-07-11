@@ -30,6 +30,7 @@ using GV23_Notice.Services.Workflow;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 // QuestPDF license — Community
 QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
@@ -194,15 +195,72 @@ builder.Services.AddAuthorization(options =>
 {
     options.FallbackPolicy = options.DefaultPolicy;
 
-    foreach (var policy in accessControlSection.Policies)
+    foreach (var configuredPolicy in accessControlSection.Policies)
     {
-        var roles = policy.Value ?? Array.Empty<string>();
+        var policyName =
+            configuredPolicy.Key;
 
-        options.AddPolicy(policy.Key, p =>
-        {
-            p.RequireAuthenticatedUser();
-            p.RequireRole(roles);
-        });
+        var allowedRoles =
+            configuredPolicy.Value?
+                .Where(role =>
+                    !string.IsNullOrWhiteSpace(role))
+                .Select(role =>
+                    role.Trim())
+                .Distinct(
+                    StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            ?? Array.Empty<string>();
+
+        options.AddPolicy(
+            policyName,
+            policy =>
+            {
+                policy.RequireAuthenticatedUser();
+
+                policy.RequireAssertion(context =>
+                {
+                    if (allowedRoles.Length == 0)
+                    {
+                        return false;
+                    }
+
+                    /*
+                     * Read application claims directly.
+                     *
+                     * Do not use:
+                     * context.User.IsInRole(...)
+                     * policy.RequireRole(...)
+                     *
+                     * Those can call WindowsPrincipal.IsInRole
+                     * and attempt an Active Directory lookup.
+                     */
+                    var userRoles = context.User.Claims
+                        .Where(claim =>
+                            string.Equals(
+                                claim.Type,
+                                ClaimTypes.Role,
+                                StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(
+                                claim.Type,
+                                "Role",
+                                StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(
+                                claim.Type,
+                                "Position",
+                                StringComparison.OrdinalIgnoreCase))
+                        .Select(claim =>
+                            claim.Value?.Trim())
+                        .Where(value =>
+                            !string.IsNullOrWhiteSpace(value))
+                        .ToHashSet(
+                            StringComparer.OrdinalIgnoreCase);
+
+                    return allowedRoles.Any(
+                        allowedRole =>
+                            userRoles.Contains(
+                                allowedRole));
+                });
+            });
     }
 });
 

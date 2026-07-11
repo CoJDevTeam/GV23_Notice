@@ -23,7 +23,9 @@ namespace GV23_Notice.Services.Stats
             string subject,
             string htmlBody,
             string attachmentPath,
-            CancellationToken ct)
+            CancellationToken ct,
+            string? fromAddress = null,
+            string? fromName = null)
         {
             if (string.IsNullOrWhiteSpace(toEmails))
                 throw new InvalidOperationException("Please enter at least one stakeholder email address.");
@@ -34,9 +36,17 @@ namespace GV23_Notice.Services.Stats
             if (string.IsNullOrWhiteSpace(attachmentPath) || !File.Exists(attachmentPath))
                 throw new FileNotFoundException($"Stats Excel file not found: {attachmentPath}");
 
+            var senderAddress = string.IsNullOrWhiteSpace(fromAddress)
+                ? _emailOpt.FromAddress
+                : fromAddress.Trim();
+
+            var senderName = string.IsNullOrWhiteSpace(fromName)
+                ? _emailOpt.FromName
+                : fromName.Trim();
+
             using var msg = new MailMessage
             {
-                From = new MailAddress(_emailOpt.FromAddress, _emailOpt.FromName),
+                From = new MailAddress(senderAddress, senderName),
                 Subject = subject,
                 Body = htmlBody,
                 IsBodyHtml = true

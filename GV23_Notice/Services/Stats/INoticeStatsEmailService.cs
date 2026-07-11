@@ -8,6 +8,8 @@
             string subject,
             string htmlBody,
             string attachmentPath,
-            CancellationToken ct);
+            CancellationToken ct,
+            string? fromAddress = null,
+            string? fromName = null);
     }
 }
