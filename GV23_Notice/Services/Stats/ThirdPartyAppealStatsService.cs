@@ -51,6 +51,18 @@ namespace GV23_Notice.Services.Stats
             _config["TpaStats:ValuationEnquiriesEmail"]?.Trim()
             ?? "ValuationEnquiries@joburg.org.za";
 
+        private string TpaCcEmails =>
+            string.Join(
+                "; ",
+                new[]
+                {
+                    ValuationEnquiriesEmail,
+                    TpaFromAddress
+                }
+                .Where(email => !string.IsNullOrWhiteSpace(email))
+                .Select(email => email.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+
         public async Task<ThirdPartyAppealStatsVm> BuildStatsAsync(
             Guid workflowKey,
             CancellationToken ct)
@@ -99,7 +111,7 @@ namespace GV23_Notice.Services.Stats
                     x.SentAt,
                     x.SentBy,
                     x.VabBoardId,
-                    x.HearingDate
+                    HearingDate = x.ScheduleDate
                 })
                 .OrderBy(x => x.AdminName)
                 .ThenBy(x => x.Appeal_No)
@@ -130,15 +142,7 @@ namespace GV23_Notice.Services.Stats
                 {
                     var first = group.First();
 
-                    var ccEmails = new[]
-                        {
-                        valuationEnquiriesEmail
-                        }
-                        .Where(x =>
-                            !string.IsNullOrWhiteSpace(x))
-                        .Distinct(
-                            StringComparer.OrdinalIgnoreCase)
-                        .ToList();
+                    var ccEmails = TpaCcEmails;
 
                     return new ThirdPartyAppealAdminStatsVm
                     {
@@ -154,9 +158,7 @@ namespace GV23_Notice.Services.Stats
                             first.AdminEmail?.Trim() ?? "",
 
                         DefaultCcEmails =
-                            string.Join(
-                                "; ",
-                                ccEmails),
+                            ccEmails,
 
                         TotalRecords =
                             group.Count(),
@@ -263,12 +265,19 @@ namespace GV23_Notice.Services.Stats
                                         board?.BoardName
                                         ?? "Board not assigned",
 
+                                    EffectiveFrom =
+                                        board?.EffectiveFrom,
+
+                                    EffectiveTo =
+                                        board?.EffectiveTo,
+
                                     HearingDate =
                                         boardGroup.Key.HearingDate,
 
                                     Members = board?.Members
                                         .Where(member => member.IsActive)
                                         .OrderBy(member => member.DisplayOrder)
+                                        .ThenBy(member => member.NameAndSurname)
                                         .Select(member =>
                                             new ThirdPartyAppealBoardMemberVm
                                             {
@@ -487,7 +496,7 @@ namespace GV23_Notice.Services.Stats
             {
                 AdminName = admin.AdminName,
                 AdminEmail = admin.AdminEmail,
-                CcEmails = ValuationEnquiriesEmail
+                CcEmails = TpaCcEmails
             };
 
             try
@@ -521,7 +530,7 @@ namespace GV23_Notice.Services.Stats
 
                 SaveEmailEvidence(
                     toEmails: admin.AdminEmail,
-                    ccEmails: ValuationEnquiriesEmail,
+                    ccEmails: TpaCcEmails,
                     subject: subject,
                     htmlBody: htmlBody,
                     attachmentPath: result.ExcelPath,
@@ -529,7 +538,7 @@ namespace GV23_Notice.Services.Stats
 
                 await _statsEmail.SendStatsEmailAsync(
                     toEmails: admin.AdminEmail,
-                    ccEmails: ValuationEnquiriesEmail,
+                    ccEmails: TpaCcEmails,
                     subject: subject,
                     htmlBody: htmlBody,
                     attachmentPath: result.ExcelPath,
@@ -616,7 +625,7 @@ namespace GV23_Notice.Services.Stats
                         Success = false,
                         AdminName = admin.AdminName,
                         AdminEmail = admin.AdminEmail,
-                        CcEmails = ValuationEnquiriesEmail,
+                        CcEmails = TpaCcEmails,
                         ErrorMessage = "Skipped because the Admin email is missing."
                     };
 
@@ -741,7 +750,7 @@ namespace GV23_Notice.Services.Stats
         </p>
 
         <p>
-            Copy the Premise ID from(<strong> Sheet 2, Column A</strong>) of the attached file and paste it into a new Excel spreadsheet for upload to the AKON system.
+            Copy the Premise ID from (<strong>Sheet 2, Column A</strong>) of the attached file and paste it into a new Excel spreadsheet for upload to the AKON system.
         </p>
 
         <p>
@@ -766,11 +775,11 @@ namespace GV23_Notice.Services.Stats
         {
             var effectiveFrom = boardGroup.EffectiveFrom.HasValue
                 ? boardGroup.EffectiveFrom.Value.ToString("d MMMM yyyy")
-                : "Start date not assigned";
+                : "02 January 2024";
 
             var effectiveTo = boardGroup.EffectiveTo.HasValue
                 ? boardGroup.EffectiveTo.Value.ToString("d MMMM yyyy")
-                : "End date not assigned";
+                : "31 December 2027";
 
             var boardCode = string.IsNullOrWhiteSpace(boardGroup.BoardCode)
                 ? "VAB"
@@ -798,7 +807,7 @@ namespace GV23_Notice.Services.Stats
                         .Select(member => $"""
                         <tr>
                             <td style="border:1px solid #b7b7b7;padding:6px;color:#ff5b3d;">
-                                {EncodeHtml(member.MemberRole)}
+                                {EncodeHtml(member.NameAndSurname)}
                             </td>
                             <td style="border:1px solid #b7b7b7;padding:6px;color:#ffffff;">
                                 {EncodeHtml(member.CojValuerTeam)}
@@ -961,7 +970,7 @@ namespace GV23_Notice.Services.Stats
                 admin.AdminKey,
                 admin.AdminName,
                 admin.AdminEmail,
-                CcEmails = ValuationEnquiriesEmail,
+                CcEmails = TpaCcEmails,
                 admin.TotalRecords,
                 admin.TotalSent,
                 admin.TotalFailed,
