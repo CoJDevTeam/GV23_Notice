@@ -260,30 +260,38 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                         });
 
                     h.Cell()
-                        .Element(HeaderCell)
-                        .Text(text =>
-                        {
-                            text.Span("Objection Outcome")
-                                .FontFamily("Arial")
-                                .FontSize(9)
-                                .SemiBold();
+      .Element(HeaderCell)
+      .Column(column =>
+      {
+          column.Spacing(3);
 
-                            text.Line(Display(notice.Objection_No))
-                                .FontFamily("Arial")
-                                .FontSize(8)
-                                .SemiBold();
-                        });
+          column.Item()
+              .Text("Objection Outcome")
+              .FontFamily("Arial")
+              .FontSize(9)
+              .SemiBold();
+
+          column.Item()
+              .Text(Display(notice.Objection_No))
+              .FontFamily("Arial")
+              .FontSize(8)
+              .SemiBold();
+      });
 
                     h.Cell()
                         .Element(HeaderCell)
-                        .Text(text =>
+                        .Column(column =>
                         {
-                            text.Span("Appellant Request")
+                            column.Spacing(3);
+
+                            column.Item()
+                                .Text("Appellant Request")
                                 .FontFamily("Arial")
                                 .FontSize(9)
                                 .SemiBold();
 
-                            text.Line(Display(notice.Appeal_No))
+                            column.Item()
+                                .Text(Display(notice.Appeal_No))
                                 .FontFamily("Arial")
                                 .FontSize(8)
                                 .SemiBold();

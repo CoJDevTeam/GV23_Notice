@@ -263,12 +263,12 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                     var pdfBytes = _pdf.BuildPdf(settings, notice);
 
                     var pdfPrefix =
-     _config["Storage:ThirdPartyAppealApplication:PdfFilePrefix"]
-     ?? "Valuation Appeal Board formal notice";
+               _config["Storage:ThirdPartyAppealApplication:PdfFilePrefix"]
+               ?? "Valuation Appeal Board formal notice";
 
                     var pdfPath = Path.Combine(
                         folder,
-                        $"{pdfPrefix}{SafeFile(notice.Appeal_No)}.pdf");
+                        $"{pdfPrefix.TrimEnd()} {SafeFile(notice.Appeal_No)}.pdf");
 
                     await File.WriteAllBytesAsync(pdfPath, pdfBytes, ct);
 
@@ -422,17 +422,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
         }
 
 
-        private string ResolveShortCode(NoticeSettings settings)
-        {
-            if (!string.IsNullOrWhiteSpace(settings.RollId.ToString()))
-                return settings.RollId.ToString().Trim();
-
-            if (!string.IsNullOrWhiteSpace(settings.ValuationPeriodCode))
-                return settings.ValuationPeriodCode.Trim();
-
-            return "GV23";
-        }
-
+      
         private static string ResolveAppealRootKeyFromAppealNo(string? appealNo)
         {
             if (string.IsNullOrWhiteSpace(appealNo))
