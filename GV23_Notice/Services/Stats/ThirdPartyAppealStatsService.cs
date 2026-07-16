@@ -5,6 +5,7 @@ using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services.Stats;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using System.Net.Mail;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -127,9 +128,15 @@ namespace GV23_Notice.Services.Stats
                 ? new Dictionary<int, VabBoard>()
                 : await _db.VabBoards
                     .AsNoTracking()
-                    .Include(x => x.Members)
                     .Where(x => boardIds.Contains(x.Id))
                     .ToDictionaryAsync(x => x.Id, ct);
+
+            /*
+             * Load the exact Chairperson, Member 1 and Member 2 for each
+             * VAB and hearing date from dbo.Members. This prevents all
+             * historical board members from appearing in one email.
+             */
+            var hearingMembers = await LoadHearingMembersAsync(ct);
 
             var valuationEnquiriesEmail = ValuationEnquiriesEmail;
 
@@ -274,33 +281,10 @@ namespace GV23_Notice.Services.Stats
                                     HearingDate =
                                         boardGroup.Key.HearingDate,
 
-                                    Members = board?.Members
-                                        .Where(member => member.IsActive)
-                                        .OrderBy(member => member.DisplayOrder)
-                                        .ThenBy(member => member.NameAndSurname)
-                                        .Select(member =>
-                                            new ThirdPartyAppealBoardMemberVm
-                                            {
-                                                MemberRole =
-                                                    member.MemberRole,
-
-                                                NameAndSurname =
-                                                    member.NameAndSurname,
-
-                                                CojValuerTeam =
-                                                    member.CojValuerTeam ?? "",
-
-                                                CojEmail =
-                                                    member.CojEmail ?? "",
-
-                                                EmailAddress =
-                                                    member.EmailAddress ?? "",
-
-                                                DisplayOrder =
-                                                    member.DisplayOrder
-                                            })
-                                        .ToList()
-                                        ?? new List<ThirdPartyAppealBoardMemberVm>()
+                                    Members = GetHearingMembers(
+                                        hearingMembers,
+                                        board?.BoardCode,
+                                        boardGroup.Key.HearingDate)
                                 };
                             })
                             .OrderBy(x => x.HearingDate)
@@ -665,6 +649,264 @@ namespace GV23_Notice.Services.Stats
             return bulk;
         }
 
+
+        private async Task<List<HearingMemberRow>> LoadHearingMembersAsync(
+            CancellationToken ct)
+        {
+            var results = new List<HearingMemberRow>();
+
+            var connection = _db.Database.GetDbConnection();
+            var shouldClose = connection.State != ConnectionState.Open;
+
+            if (shouldClose)
+            {
+                await connection.OpenAsync(ct);
+            }
+
+            try
+            {
+                await using var command = connection.CreateCommand();
+
+                command.CommandText = """
+                    ;WITH SourceMembers AS
+                    (
+                        SELECT DISTINCT
+                            BoardCode =
+                                UPPER(REPLACE(LTRIM(RTRIM([VAB])), ' ', '')),
+                            HearingDate =
+                                TRY_CONVERT(date, [HEARING_DATE]),
+                            MemberRole =
+                                N'Chairperson',
+                            NameAndSurname =
+                                NULLIF(LTRIM(RTRIM([Chairpeson])), N''),
+                            CojValuerTeam =
+                                NULLIF(LTRIM(RTRIM([Valuer])), N''),
+                            CojEmail =
+                                NULLIF(LTRIM(RTRIM([COJ Email])), N''),
+                            EmailAddress =
+                                NULLIF(LTRIM(RTRIM([Personal Email])), N''),
+                            DisplayOrder = 1
+                        FROM dbo.Members
+
+                        UNION ALL
+
+                        SELECT DISTINCT
+                            UPPER(REPLACE(LTRIM(RTRIM([VAB])), ' ', '')),
+                            TRY_CONVERT(date, [HEARING_DATE]),
+                            N'Member 1',
+                            NULLIF(LTRIM(RTRIM([Member 1])), N''),
+                            NULLIF(LTRIM(RTRIM([Valuer])), N''),
+                            NULLIF(LTRIM(RTRIM([Member1 COJ Email])), N''),
+                            NULLIF(LTRIM(RTRIM([Member1 Personal Email])), N''),
+                            2
+                        FROM dbo.Members
+
+                        UNION ALL
+
+                        SELECT DISTINCT
+                            UPPER(REPLACE(LTRIM(RTRIM([VAB])), ' ', '')),
+                            TRY_CONVERT(date, [HEARING_DATE]),
+                            N'Member 2',
+                            NULLIF(LTRIM(RTRIM([Member 2])), N''),
+                            NULLIF(LTRIM(RTRIM([Valuer])), N''),
+                            NULLIF(LTRIM(RTRIM([Member2  COJ Email])), N''),
+                            NULLIF(LTRIM(RTRIM([Member2 Personal Email])), N''),
+                            3
+                        FROM dbo.Members
+                    ),
+                    RankedMembers AS
+                    (
+                        SELECT
+                            BoardCode,
+                            HearingDate,
+                            MemberRole,
+                            NameAndSurname,
+                            CojValuerTeam,
+                            CojEmail,
+                            EmailAddress,
+                            DisplayOrder,
+                            RowNumber =
+                                ROW_NUMBER() OVER
+                                (
+                                    PARTITION BY
+                                        BoardCode,
+                                        HearingDate,
+                                        MemberRole
+                                    ORDER BY
+                                        NameAndSurname
+                                )
+                        FROM SourceMembers
+                        WHERE BoardCode IN
+                        (
+                            N'VAB1',
+                            N'VAB2',
+                            N'VAB3',
+                            N'VAB4'
+                        )
+                        AND HearingDate IS NOT NULL
+                        AND NameAndSurname IS NOT NULL
+                    )
+                    SELECT
+                        BoardCode,
+                        HearingDate,
+                        MemberRole,
+                        NameAndSurname,
+                        CojValuerTeam,
+                        CojEmail,
+                        EmailAddress,
+                        DisplayOrder
+                    FROM RankedMembers
+                    WHERE RowNumber = 1
+                    ORDER BY
+                        BoardCode,
+                        HearingDate,
+                        DisplayOrder;
+                    """;
+
+                await using var reader =
+                    await command.ExecuteReaderAsync(ct);
+
+                var boardCodeOrdinal =
+                    reader.GetOrdinal("BoardCode");
+
+                var hearingDateOrdinal =
+                    reader.GetOrdinal("HearingDate");
+
+                var memberRoleOrdinal =
+                    reader.GetOrdinal("MemberRole");
+
+                var nameOrdinal =
+                    reader.GetOrdinal("NameAndSurname");
+
+                var valuerOrdinal =
+                    reader.GetOrdinal("CojValuerTeam");
+
+                var cojEmailOrdinal =
+                    reader.GetOrdinal("CojEmail");
+
+                var emailOrdinal =
+                    reader.GetOrdinal("EmailAddress");
+
+                var displayOrderOrdinal =
+                    reader.GetOrdinal("DisplayOrder");
+
+                while (await reader.ReadAsync(ct))
+                {
+                    results.Add(
+                        new HearingMemberRow
+                        {
+                            BoardCode =
+                                reader.GetString(boardCodeOrdinal),
+
+                            HearingDate =
+                                reader.GetDateTime(hearingDateOrdinal),
+
+                            MemberRole =
+                                reader.GetString(memberRoleOrdinal),
+
+                            NameAndSurname =
+                                reader.GetString(nameOrdinal),
+
+                            CojValuerTeam =
+                                reader.IsDBNull(valuerOrdinal)
+                                    ? ""
+                                    : reader.GetString(valuerOrdinal),
+
+                            CojEmail =
+                                reader.IsDBNull(cojEmailOrdinal)
+                                    ? ""
+                                    : reader.GetString(cojEmailOrdinal),
+
+                            EmailAddress =
+                                reader.IsDBNull(emailOrdinal)
+                                    ? ""
+                                    : reader.GetString(emailOrdinal),
+
+                            DisplayOrder =
+                                reader.GetInt32(displayOrderOrdinal)
+                        });
+                }
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
+            }
+
+            return results;
+        }
+
+        private static List<ThirdPartyAppealBoardMemberVm>
+            GetHearingMembers(
+                IReadOnlyCollection<HearingMemberRow> hearingMembers,
+                string? boardCode,
+                DateTime? hearingDate)
+        {
+            if (string.IsNullOrWhiteSpace(boardCode) ||
+                !hearingDate.HasValue)
+            {
+                return new List<ThirdPartyAppealBoardMemberVm>();
+            }
+
+            var normalisedBoardCode =
+                boardCode.Replace(" ", "")
+                    .Trim()
+                    .ToUpperInvariant();
+
+            return hearingMembers
+                .Where(member =>
+                    string.Equals(
+                        member.BoardCode,
+                        normalisedBoardCode,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    member.HearingDate.Date ==
+                        hearingDate.Value.Date)
+                .OrderBy(member => member.DisplayOrder)
+                .Select(member =>
+                    new ThirdPartyAppealBoardMemberVm
+                    {
+                        MemberRole =
+                            member.MemberRole,
+
+                        NameAndSurname =
+                            member.NameAndSurname,
+
+                        CojValuerTeam =
+                            member.CojValuerTeam,
+
+                        CojEmail =
+                            member.CojEmail,
+
+                        EmailAddress =
+                            member.EmailAddress,
+
+                        DisplayOrder =
+                            member.DisplayOrder
+                    })
+                .ToList();
+        }
+
+        private sealed class HearingMemberRow
+        {
+            public string BoardCode { get; set; } = "";
+
+            public DateTime HearingDate { get; set; }
+
+            public string MemberRole { get; set; } = "";
+
+            public string NameAndSurname { get; set; } = "";
+
+            public string CojValuerTeam { get; set; } = "";
+
+            public string CojEmail { get; set; } = "";
+
+            public string EmailAddress { get; set; } = "";
+
+            public int DisplayOrder { get; set; }
+        }
+
         private string BuildEvidenceFolder(
             ThirdPartyAppealStatsVm stats,
             ThirdPartyAppealAdminStatsVm admin)
@@ -809,9 +1051,9 @@ namespace GV23_Notice.Services.Stats
                             <td style="border:1px solid #b7b7b7;padding:6px;color:#ff5b3d;">
                                 {EncodeHtml(member.NameAndSurname)}
                             </td>
-                            <td style="border:1px solid #b7b7b7;padding:6px;color:#ffffff;">
-                                {EncodeHtml(member.CojValuerTeam)}
-                            </td>
+                           <td style="border:1px solid #b7b7b7;padding:6px;color:#ffffff;">
+                            Legal Team
+                        </td>
                             <td style="border:1px solid #b7b7b7;padding:6px;color:#ff5b3d;">
                                 {EncodeHtml(hearingDate)}
                             </td>

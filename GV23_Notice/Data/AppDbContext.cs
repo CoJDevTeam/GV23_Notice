@@ -57,7 +57,8 @@ namespace GV23_Notice.Data
         public DbSet<NoticeCorrectionItem> NoticeCorrectionItems => Set<NoticeCorrectionItem>();
         public DbSet<NoticeCorrectionEmailTemplate> NoticeCorrectionEmailTemplates => Set<NoticeCorrectionEmailTemplate>();
         public DbSet<ThirdPartyAppealApplicationNotice> ThirdPartyAppealApplicationNotices { get; set; }
-
+        public DbSet<VabBoardHearingMember> VabBoardHearingMembers =>
+    Set<VabBoardHearingMember>();
         public DbSet<VabBoard> VabBoards =>Set<VabBoard>();
 
         public DbSet<VabBoardMember> VabBoardMembers =>Set<VabBoardMember>();
