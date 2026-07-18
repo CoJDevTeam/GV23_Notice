@@ -38,6 +38,19 @@ namespace GV23_Notice.Services.Step3
                     ct);
             }
 
+            if (s.Notice == NoticeKind.CLA_TPA)
+            {
+                var claRollSummary = await SynchronizeClaRollMetadataAsync(
+                    s,
+                    ct);
+
+                return await BuildClaPrintVmAsync(
+                    s,
+                    claRollSummary,
+                    workflowKey,
+                    ct);
+            }
+
             var batches = await _db.NoticeBatches.AsNoTracking()
                 .Where(b => b.WorkflowKey == workflowKey
                          && b.RollId == s.RollId
@@ -116,6 +129,19 @@ namespace GV23_Notice.Services.Step3
                 return await BuildTpaEmailVmAsync(
                     s,
                     tpaRollSummary,
+                    workflowKey,
+                    ct);
+            }
+
+            if (s.Notice == NoticeKind.CLA_TPA)
+            {
+                var claRollSummary = await SynchronizeClaRollMetadataAsync(
+                    s,
+                    ct);
+
+                return await BuildClaEmailVmAsync(
+                    s,
+                    claRollSummary,
                     workflowKey,
                     ct);
             }
@@ -298,6 +324,319 @@ namespace GV23_Notice.Services.Step3
         }
 
 
+
+        private async Task<Step3PrintVm> BuildClaPrintVmAsync(
+            NoticeSettings settings,
+            TpaRollSummary rollSummary,
+            Guid workflowKey,
+            CancellationToken ct)
+        {
+            var query = BuildClaNoticeQuery(settings);
+
+            var totalRecords = await query.CountAsync(ct);
+
+            var totalPrinted = await query.CountAsync(
+                x =>
+                    (x.Status == "Printed" ||
+                     x.Status == "Sent" ||
+                     x.Status == "Email-Failed") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "",
+                ct);
+
+            var totalFailed = await query.CountAsync(
+                x => x.Status == "Print-Failed",
+                ct);
+
+            return new Step3PrintVm
+            {
+                WorkflowKey = workflowKey,
+                SettingsId = settings.Id,
+
+                RollId = rollSummary.RollId,
+                RollShortCode = rollSummary.ShortCode,
+                RollName = rollSummary.Name,
+
+                Notice = settings.Notice,
+                VersionText = $"V{settings.Version}",
+
+                LetterDate = settings.LetterDate,
+                FinancialYearsText = settings.FinancialYearsText,
+                ObjectionStartDate = settings.ObjectionStartDate,
+                ObjectionEndDate = settings.ObjectionEndDate,
+                ExtensionDate = settings.ExtensionDate,
+                SignaturePath = settings.SignaturePath,
+
+                TotalBatches = 0,
+                TotalRecordsBatched = totalRecords,
+                TotalPrinted = totalPrinted,
+                TotalFailed = totalFailed,
+                Batches = new(),
+
+                IsS52 = false,
+                S52IsReview = false,
+                BulkFromDate = settings.BulkFromDate,
+                BulkToDate = settings.BulkToDate
+            };
+        }
+
+        private async Task<Step3SendEmailVm> BuildClaEmailVmAsync(
+            NoticeSettings settings,
+            TpaRollSummary rollSummary,
+            Guid workflowKey,
+            CancellationToken ct)
+        {
+            var query = BuildClaNoticeQuery(settings);
+
+            var totalReady = await query.CountAsync(
+                x =>
+                    (x.Status == "Printed" ||
+                     x.Status == "Email-Failed") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "",
+                ct);
+
+            var totalSent = await query.CountAsync(
+                x => x.Status == "Sent",
+                ct);
+
+            return new Step3SendEmailVm
+            {
+                WorkflowKey = workflowKey,
+                SettingsId = settings.Id,
+
+                RollId = rollSummary.RollId,
+                RollShortCode = rollSummary.ShortCode,
+                RollName = rollSummary.Name,
+
+                Notice = settings.Notice,
+                VersionText = $"V{settings.Version}",
+
+                LetterDate = settings.LetterDate,
+                FinancialYearsText = settings.FinancialYearsText,
+                ObjectionStartDate = settings.ObjectionStartDate,
+                ObjectionEndDate = settings.ObjectionEndDate,
+                ExtensionDate = settings.ExtensionDate,
+                SignaturePath = settings.SignaturePath,
+
+                TotalBatches = 0,
+                TotalPrinted = totalReady,
+                TotalSent = totalSent,
+                MaxEmailsPerSend = 999999,
+                Batches = new(),
+
+                IsS52 = false,
+                S52IsReview = false
+            };
+        }
+
+        private IQueryable<ClaThirdPartyApplicationNotice> BuildClaNoticeQuery(
+            NoticeSettings settings)
+        {
+            var query = _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .Where(x => x.IsActive);
+
+            var hasLinkedRows = _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .Any(x =>
+                    x.IsActive &&
+                    x.NoticeSettingsId == settings.Id);
+
+            return hasLinkedRows
+                ? query.Where(x => x.NoticeSettingsId == settings.Id)
+                : query.Where(x =>
+                    x.NoticeSettingsId == null ||
+                    x.NoticeSettingsId == 0);
+        }
+
+        private async Task<TpaRollSummary> SynchronizeClaRollMetadataAsync(
+            NoticeSettings settings,
+            CancellationToken ct)
+        {
+            var rows = await _db.ClaThirdPartyApplicationNotices
+                .Where(x =>
+                    x.IsActive &&
+                    (x.NoticeSettingsId == settings.Id ||
+                     x.NoticeSettingsId == null ||
+                     x.NoticeSettingsId == 0))
+                .ToListAsync(ct);
+
+            if (rows.Count == 0)
+            {
+                return new TpaRollSummary
+                {
+                    RollId = settings.RollId,
+                    ShortCode = FirstNonEmpty(
+                        settings.Roll.ToString(),
+                        "GV23"),
+                    Name = FirstNonEmpty(
+                        settings.RollName,
+                        settings.ValuationPeriodCode,
+                        "CLA Third-Party Applications")
+                };
+            }
+
+            var rolls = await _db.RollRegistry
+                .AsNoTracking()
+                .Where(x => x.IsActive)
+                .ToListAsync(ct);
+
+            var changed = false;
+            var resolvedRolls = new List<Domain.Rolls.RollRegistry>();
+
+            foreach (var row in rows)
+            {
+                var rowChanged = false;
+
+                var resolvedRoll = ResolveClaRoll(
+                    row,
+                    settings,
+                    rolls);
+
+                if (resolvedRoll is not null)
+                {
+                    resolvedRolls.Add(resolvedRoll);
+
+                    if (row.RollId != resolvedRoll.RollId ||
+                        !string.Equals(
+                            row.RollShortCode,
+                            resolvedRoll.ShortCode,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        !string.Equals(
+                            row.ValuationPeriod,
+                            resolvedRoll.Name,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        row.RollId = resolvedRoll.RollId;
+                        row.RollShortCode = resolvedRoll.ShortCode;
+                        row.ValuationPeriod = resolvedRoll.Name;
+                        rowChanged = true;
+                    }
+                }
+
+                if (row.NoticeSettingsId != settings.Id)
+                {
+                    row.NoticeSettingsId = settings.Id;
+                    rowChanged = true;
+                }
+
+                var representationCloseDate =
+                    settings.ObjectionEndDate ??
+                    settings.LetterDate.AddDays(30);
+
+                if (row.LetterDate != settings.LetterDate.Date)
+                {
+                    row.LetterDate = settings.LetterDate.Date;
+                    rowChanged = true;
+                }
+
+                if (row.RepresentationCloseDate != representationCloseDate.Date)
+                {
+                    row.RepresentationCloseDate =
+                        representationCloseDate.Date;
+
+                    rowChanged = true;
+                }
+
+                if (rowChanged)
+                {
+                    row.UpdatedAtUtc = DateTime.UtcNow;
+                    row.UpdatedBy = "SYSTEM-CLA-ROLL-SYNC";
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+
+            var distinctRolls = resolvedRolls
+                .GroupBy(x => x.RollId)
+                .Select(x => x.First())
+                .OrderBy(x => x.RollId)
+                .ToList();
+
+            if (distinctRolls.Count == 1)
+            {
+                var single = distinctRolls[0];
+
+                return new TpaRollSummary
+                {
+                    RollId = single.RollId,
+                    ShortCode = single.ShortCode ?? "",
+                    Name = single.Name ?? ""
+                };
+            }
+
+            if (distinctRolls.Count > 1)
+            {
+                return new TpaRollSummary
+                {
+                    RollId = settings.RollId,
+                    ShortCode = "MULTI",
+                    Name = "Multiple Valuation Rolls"
+                };
+            }
+
+            return new TpaRollSummary
+            {
+                RollId = settings.RollId,
+                ShortCode = FirstNonEmpty(
+                    rows.Select(x => x.RollShortCode)
+                        .FirstOrDefault(x =>
+                            !string.IsNullOrWhiteSpace(x)),
+                    settings.Roll.ToString(),
+                    "GV23"),
+
+                Name = FirstNonEmpty(
+                    rows.Select(x => x.ValuationPeriod)
+                        .FirstOrDefault(x =>
+                            !string.IsNullOrWhiteSpace(x)),
+                    settings.RollName,
+                    settings.ValuationPeriodCode,
+                    "CLA Third-Party Applications")
+            };
+        }
+
+        private static Domain.Rolls.RollRegistry? ResolveClaRoll(
+            ClaThirdPartyApplicationNotice row,
+            NoticeSettings settings,
+            IReadOnlyCollection<Domain.Rolls.RollRegistry> activeRolls)
+        {
+            if (row.RollId.HasValue)
+            {
+                var byId = activeRolls.FirstOrDefault(
+                    x => x.RollId == row.RollId.Value);
+
+                if (byId is not null)
+                    return byId;
+            }
+
+            var expectedShortCode = FirstNonEmpty(
+                row.RollShortCode,
+                settings.Roll.ToString(),
+                settings.ValuationPeriodCode);
+
+            if (string.IsNullOrWhiteSpace(expectedShortCode))
+                return null;
+
+            return activeRolls.FirstOrDefault(x =>
+                NormalizeRollCode(x.ShortCode) ==
+                NormalizeRollCode(expectedShortCode));
+        }
+
+        private static string FirstNonEmpty(
+            params string?[] values)
+        {
+            return values
+                .FirstOrDefault(x =>
+                    !string.IsNullOrWhiteSpace(x))
+                ?.Trim()
+                ?? "";
+        }
+
         private async Task<TpaRollSummary> SynchronizeTpaRollMetadataAsync(
             NoticeSettings settings,
             CancellationToken ct)
@@ -463,8 +802,12 @@ namespace GV23_Notice.Services.Step3
             var roll = await _db.RollRegistry.AsNoTracking()
                 .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
 
-            if (roll == null && s.Notice != NoticeKind.TPA)
+            if (roll == null &&
+                s.Notice != NoticeKind.TPA &&
+                s.Notice != NoticeKind.CLA_TPA)
+            {
                 throw new InvalidOperationException("Roll not found.");
+            }
 
             return (s, roll);
         }

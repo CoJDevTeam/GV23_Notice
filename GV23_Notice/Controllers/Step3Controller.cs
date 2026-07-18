@@ -2,6 +2,7 @@
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
+using GV23_Notice.Services.ClaThirdPartyApplications;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.QA;
 using GV23_Notice.Services.Stats;
@@ -30,10 +31,11 @@ namespace GV23_Notice.Controllers
         private readonly INoticeQaService _qa;
         private readonly INoticeSendStatsService _stats;
         private readonly IThirdPartyAppealStatsService _tpaStats;
-
-        // Third-Party Appeal Application
         private readonly IThirdPartyAppealPrintService _tpaPrint;
         private readonly IThirdPartyAppealEmailService _tpaEmail;
+        private readonly IClaThirdPartyApplicationPrintService _claThirdPartyApplicationPrintService;
+        private readonly IClaThirdPartyApplicationEmailService _claEmail;
+
 
         public Step3Controller(
             IStep3Step1Service svc,
@@ -49,7 +51,9 @@ namespace GV23_Notice.Controllers
             INoticeSendStatsService statsService,
             IThirdPartyAppealStatsService tpaStats,
             IThirdPartyAppealPrintService tpaPrint,
-            IThirdPartyAppealEmailService tpaEmail)
+            IThirdPartyAppealEmailService tpaEmail,
+            IClaThirdPartyApplicationPrintService claThirdPartyApplicationPrintService,
+            IClaThirdPartyApplicationEmailService claEmail)
         {
             _svc = svc;
             _select = select;
@@ -66,6 +70,9 @@ namespace GV23_Notice.Controllers
 
             _tpaPrint = tpaPrint;
             _tpaEmail = tpaEmail;
+
+            _claThirdPartyApplicationPrintService = claThirdPartyApplicationPrintService;
+            _claEmail = claEmail;
         }
 
         // ── Index ───────────────────────────────────────────────────────────
@@ -117,11 +124,12 @@ namespace GV23_Notice.Controllers
 
             var settings = await GetWorkflowSettingsAsync(key, ct);
 
-            if (settings.Notice == NoticeKind.TPA)
+            if (settings.Notice == NoticeKind.TPA ||
+                settings.Notice == NoticeKind.CLA_TPA)
             {
                 /*
-                 * TPA does not use normal NoticeBatches.
-                 * Send user straight to Print dashboard.
+                 * TPA and CLA-TPA are direct workflows.
+                 * Neither notice type uses normal NoticeBatches.
                  */
                 return RedirectToAction(nameof(Print), new { key });
             }
@@ -146,9 +154,14 @@ namespace GV23_Notice.Controllers
 
             var s = await GetWorkflowSettingsAsync(key, ct);
 
-            if (s.Notice == NoticeKind.TPA)
+            if (s.Notice == NoticeKind.TPA ||
+                s.Notice == NoticeKind.CLA_TPA)
             {
-                TempData["Error"] = "Third-Party Appeal Application notices do not use batch creation. Go directly to Print.";
+                TempData["Error"] =
+                    s.Notice == NoticeKind.CLA_TPA
+                        ? "CLA Third-Party Application notices do not use batch creation. Go directly to Print."
+                        : "Third-Party Appeal Application notices do not use batch creation. Go directly to Print.";
+
                 return RedirectToAction(nameof(Print), new { key });
             }
 
@@ -186,16 +199,31 @@ namespace GV23_Notice.Controllers
                 .FirstOrDefaultAsync(x => x.ApprovalKey == key || x.WorkflowKey == key, ct)
                 ?? throw new InvalidOperationException("Workflow settings not found.");
 
-            if (settings.Notice == NoticeKind.TPA)
+            if (settings.Notice == NoticeKind.TPA ||
+                settings.Notice == NoticeKind.CLA_TPA)
             {
                 /*
                  * TPA does not use NoticeBatches.
-                 * We still return the normal Step3PrintVm because Print.cshtml expects it.
-                 * TPA-specific data goes through ViewBag.
+                 * The existing Print view receives TPA data through ViewBag.
                  */
                 ViewBag.TpaPrint = await _tpaPrint.BuildPrintVmAsync(key, ct);
 
-                var vm = await BuildTpaStep3PrintVmAsync(settings, key, ct);
+                var vm = await BuildDirectStep3PrintVmAsync(settings, key, ct);
+
+                return View("Print", vm);
+            }
+
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                /*
+                 * CLA-TPA also prints directly from
+                 * ClaThirdPartyApplicationNotices and does not create a batch.
+                 */
+                ViewBag.ClaPrint =
+                    await _claThirdPartyApplicationPrintService
+                        .BuildPrintVmAsync(key, ct);
+
+                var vm = await BuildDirectStep3PrintVmAsync(settings, key, ct);
 
                 return View("Print", vm);
             }
@@ -204,7 +232,7 @@ namespace GV23_Notice.Controllers
             return View("Print", normalVm);
         }
 
-        private async Task<Step3PrintVm> BuildTpaStep3PrintVmAsync(
+        private async Task<Step3PrintVm> BuildDirectStep3PrintVmAsync(
     NoticeSettings settings,
     Guid key,
     CancellationToken ct)
@@ -255,9 +283,14 @@ namespace GV23_Notice.Controllers
         {
             var settings = await GetWorkflowSettingsAsync(key, ct);
 
-            if (settings.Notice == NoticeKind.TPA)
+            if (settings.Notice == NoticeKind.TPA ||
+                settings.Notice == NoticeKind.CLA_TPA)
             {
-                TempData["Error"] = "Third-Party Appeal Application notices do not use batch printing. Use Print Third-Party Appeal Applications.";
+                TempData["Error"] =
+                    settings.Notice == NoticeKind.CLA_TPA
+                        ? "CLA Third-Party Application notices do not use batch printing. Use Print CLA Applications."
+                        : "Third-Party Appeal Application notices do not use batch printing. Use Print Third-Party Appeal Applications.";
+
                 return RedirectToAction(nameof(Print), new { key });
             }
 
@@ -287,9 +320,12 @@ namespace GV23_Notice.Controllers
 
             var settings = await GetWorkflowSettingsAsync(key, ct);
 
-            if (settings.Notice == NoticeKind.TPA)
+            if (settings.Notice == NoticeKind.TPA ||
+                settings.Notice == NoticeKind.CLA_TPA)
             {
-                TempData["Error"] = "Third-Party Appeal Application notices do not use S52 range printing.";
+                TempData["Error"] =
+                    "Direct third-party notice workflows do not use Section 52 range printing.";
+
                 return RedirectToAction(nameof(Print), new { key });
             }
 
@@ -399,6 +435,71 @@ namespace GV23_Notice.Controllers
             }
         }
 
+
+        // POST: Print CLA notices directly. No ranges. No batches.
+        [HttpPost("PrintClaThirdPartyApplications")]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> PrintClaThirdPartyApplications(
+            Guid key,
+            bool forceReprint,
+            CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var user = User?.Identity?.Name ?? "Unknown";
+
+            try
+            {
+                var settings = await GetWorkflowSettingsAsync(key, ct);
+
+                if (settings.Notice != NoticeKind.CLA_TPA)
+                {
+                    return BadRequest(
+                        "This print action is only for CLA Third-Party Application notices.");
+                }
+
+                var result =
+                    await _claThirdPartyApplicationPrintService.PrintAsync(
+                        key,
+                        user,
+                        forceReprint,
+                        ct);
+
+                if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+                {
+                    TempData["Error"] = result.ErrorMessage;
+                    return RedirectToAction(nameof(Print), new { key });
+                }
+
+                if (result.Failed > 0 && result.Printed == 0)
+                {
+                    TempData["Error"] =
+                        $"CLA Third-Party Application printing failed. Failed: {result.Failed}.";
+
+                    return RedirectToAction(nameof(Print), new { key });
+                }
+
+                /*
+                 * QA support for CLA will be added to INoticeQaService.
+                 * Until that service supports CLA records, do not create a
+                 * normal NoticeBatch QA run here.
+                 */
+                TempData["Success"] = forceReprint
+                    ? $"CLA Third-Party Application notices reprinted: {result.Printed}. " +
+                      (result.Failed > 0 ? $"Failed: {result.Failed}." : "")
+                    : $"CLA Third-Party Application notices printed: {result.Printed}. " +
+                      (result.Failed > 0 ? $"Failed: {result.Failed}." : "");
+
+                return RedirectToAction(nameof(Print), new { key });
+            }
+            catch (Exception ex)
+            {
+                TempData["Error"] = ex.Message;
+                return RedirectToAction(nameof(Print), new { key });
+            }
+        }
+
         // POST: Print ALL batches in this workflow
         [HttpPost("PrintAll")]
         [ValidateAntiForgeryToken]
@@ -411,7 +512,18 @@ namespace GV23_Notice.Controllers
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                return await PrintThirdPartyAppealApplications(key, false, ct);
+                return await PrintThirdPartyAppealApplications(
+                    key,
+                    false,
+                    ct);
+            }
+
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                return await PrintClaThirdPartyApplications(
+                    key,
+                    false,
+                    ct);
             }
 
             var user = User?.Identity?.Name ?? "Unknown";
@@ -440,14 +552,24 @@ namespace GV23_Notice.Controllers
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                /*
-                 * TPA does not use NoticeBatches.
-                 * SendEmail.cshtml still expects Step3SendEmailVm as the main model.
-                 * TPA-specific data must go through ViewBag.
-                 */
                 ViewBag.TpaEmail = await _tpaEmail.BuildEmailVmAsync(key, ct);
 
-                var vm = await BuildTpaStep3SendEmailVmAsync(settings, key, ct);
+                var vm = await BuildDirectStep3SendEmailVmAsync(settings, key, ct);
+
+                return View("SendEmail", vm);
+            }
+
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                ViewBag.ClaEmail =
+                    await _claEmail.BuildEmailVmAsync(
+                        key,
+                        ct);
+
+                var vm = await BuildDirectStep3SendEmailVmAsync(
+                    settings,
+                    key,
+                    ct);
 
                 return View("SendEmail", vm);
             }
@@ -456,7 +578,7 @@ namespace GV23_Notice.Controllers
             return View("SendEmail", normalVm);
         }
 
-        private async Task<Step3SendEmailVm> BuildTpaStep3SendEmailVmAsync(
+        private async Task<Step3SendEmailVm> BuildDirectStep3SendEmailVmAsync(
     NoticeSettings settings,
     Guid key,
     CancellationToken ct)
@@ -465,20 +587,47 @@ namespace GV23_Notice.Controllers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x => x.RollId == settings.RollId, ct);
 
-            var totalReady = await _db.ThirdPartyAppealApplicationNotices
-                .AsNoTracking()
-                .CountAsync(x =>
-                    x.NoticeSettingsId == settings.Id &&
-                    (x.Status == "Printed" || x.Status == "Email-Failed") &&
-                    !string.IsNullOrWhiteSpace(x.PdfPath),
-                    ct);
+            int totalReady;
+            int totalSent;
 
-            var totalSent = await _db.ThirdPartyAppealApplicationNotices
-                .AsNoTracking()
-                .CountAsync(x =>
-                    x.NoticeSettingsId == settings.Id &&
-                    x.Status == "Sent",
-                    ct);
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                totalReady = await _db.ClaThirdPartyApplicationNotices
+                    .AsNoTracking()
+                    .CountAsync(x =>
+                        x.NoticeSettingsId == settings.Id &&
+                        x.IsActive &&
+                        (x.Status == "Printed" ||
+                         x.Status == "Email-Failed") &&
+                        !string.IsNullOrWhiteSpace(x.PdfPath),
+                        ct);
+
+                totalSent = await _db.ClaThirdPartyApplicationNotices
+                    .AsNoTracking()
+                    .CountAsync(x =>
+                        x.NoticeSettingsId == settings.Id &&
+                        x.IsActive &&
+                        x.Status == "Sent",
+                        ct);
+            }
+            else
+            {
+                totalReady = await _db.ThirdPartyAppealApplicationNotices
+                    .AsNoTracking()
+                    .CountAsync(x =>
+                        x.NoticeSettingsId == settings.Id &&
+                        (x.Status == "Printed" ||
+                         x.Status == "Email-Failed") &&
+                        !string.IsNullOrWhiteSpace(x.PdfPath),
+                        ct);
+
+                totalSent = await _db.ThirdPartyAppealApplicationNotices
+                    .AsNoTracking()
+                    .CountAsync(x =>
+                        x.NoticeSettingsId == settings.Id &&
+                        x.Status == "Sent",
+                        ct);
+            }
 
             return new Step3SendEmailVm
             {
@@ -531,6 +680,49 @@ namespace GV23_Notice.Controllers
              * It sends directly from ThirdPartyAppealApplicationNotices
              * where Status = Printed / Email-Failed.
              */
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                var user = User?.Identity?.Name ?? "Unknown";
+
+                try
+                {
+                    var result = await _claEmail.SendAsync(
+                        key,
+                        user,
+                        ct);
+
+                    if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+                    {
+                        TempData["Error"] = result.ErrorMessage;
+
+                        return RedirectToAction(
+                            nameof(SendEmail),
+                            new { key });
+                    }
+
+                    TempData["Success"] =
+                        $"CLA notices sent: {result.Sent}. " +
+                        (result.Failed > 0
+                            ? $"Failed: {result.Failed}. "
+                            : "") +
+                        (result.Skipped > 0
+                            ? $"Skipped: {result.Skipped}."
+                            : "");
+
+                    return RedirectToAction(
+                        nameof(SendStats),
+                        new { key });
+                }
+                catch (Exception ex)
+                {
+                    TempData["Error"] = ex.Message;
+
+                    return RedirectToAction(
+                        nameof(SendEmail),
+                        new { key });
+                }
+            }
+
             if (settings.Notice == NoticeKind.TPA)
             {
                 var user = User?.Identity?.Name ?? "Unknown";
@@ -609,6 +801,23 @@ namespace GV23_Notice.Controllers
                 });
             }
 
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                var progress =
+                    await _claThirdPartyApplicationPrintService
+                        .GetProgressAsync(key, ct);
+
+                return Json(new
+                {
+                    total = progress.Total,
+                    printed = progress.Printed,
+                    sent = 0,
+                    failed = progress.Failed,
+                    generated = progress.Pending,
+                    done = progress.Done
+                });
+            }
+
             var batchIds = await _db.NoticeBatches
                 .Where(b => b.WorkflowKey == key && b.BatchKind == "STEP3")
                 .Select(b => b.Id)
@@ -673,6 +882,38 @@ namespace GV23_Notice.Controllers
             });
         }
 
+
+        // CLA direct print progress endpoint
+        [HttpGet("ClaThirdPartyPrintProgress")]
+        public async Task<IActionResult> ClaThirdPartyPrintProgress(
+            Guid key,
+            CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var settings = await GetWorkflowSettingsAsync(key, ct);
+
+            if (settings.Notice != NoticeKind.CLA_TPA)
+            {
+                return BadRequest(
+                    "This progress endpoint is only for CLA Third-Party Application notices.");
+            }
+
+            var progress =
+                await _claThirdPartyApplicationPrintService
+                    .GetProgressAsync(key, ct);
+
+            return Json(new
+            {
+                total = progress.Total,
+                pending = progress.Pending,
+                printed = progress.Printed,
+                failed = progress.Failed,
+                done = progress.Done
+            });
+        }
+
         // AJAX: count records in selected batches
         [HttpPost("CountSelected")]
         public async Task<IActionResult> CountSelected(
@@ -711,6 +952,23 @@ namespace GV23_Notice.Controllers
                 return BadRequest("Invalid workflow key.");
 
             var settings = await GetWorkflowSettingsAsync(key, ct);
+
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                var progress = await _claEmail.GetProgressAsync(
+                    key,
+                    ct);
+
+                return Json(new
+                {
+                    total = progress.Total,
+                    printed = progress.Pending,
+                    sent = progress.Sent,
+                    failed = progress.Failed,
+                    noEmail = progress.Skipped,
+                    done = progress.Done
+                });
+            }
 
             if (settings.Notice == NoticeKind.TPA)
             {
@@ -771,6 +1029,41 @@ namespace GV23_Notice.Controllers
             });
         }
 
+
+        // CLA email progress direct endpoint
+        [HttpGet("ClaThirdPartyEmailProgress")]
+        public async Task<IActionResult> ClaThirdPartyEmailProgress(
+            Guid key,
+            CancellationToken ct)
+        {
+            if (key == Guid.Empty)
+                return BadRequest("Invalid workflow key.");
+
+            var settings = await GetWorkflowSettingsAsync(
+                key,
+                ct);
+
+            if (settings.Notice != NoticeKind.CLA_TPA)
+            {
+                return BadRequest(
+                    "This progress endpoint is only for CLA Third-Party Application notices.");
+            }
+
+            var progress = await _claEmail.GetProgressAsync(
+                key,
+                ct);
+
+            return Json(new
+            {
+                total = progress.Total,
+                pending = progress.Pending,
+                sent = progress.Sent,
+                failed = progress.Failed,
+                skipped = progress.Skipped,
+                done = progress.Done
+            });
+        }
+
         // ── QA ───────────────────────────────────────────────────────────────
 
         // ── QA ───────────────────────────────────────────────────────────────
@@ -785,6 +1078,8 @@ namespace GV23_Notice.Controllers
              * Same QA view for all notices.
              * Normal notices use NoticeBatches / NoticeRunLogs inside the service.
              * TPA uses ThirdPartyAppealApplicationNotices inside the service.
+             * CLA support requires INoticeQaService to read
+             * ClaThirdPartyApplicationNotices.
              */
             var vm = await _qa.BuildQaVmAsync(key, ct);
 
@@ -893,6 +1188,41 @@ namespace GV23_Notice.Controllers
             return File(bytes, "application/pdf");
         }
 
+
+        [HttpGet("OpenClaThirdPartyPdf")]
+        public async Task<IActionResult> OpenClaThirdPartyPdf(
+            int id,
+            CancellationToken ct)
+        {
+            var notice = await _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == id, ct);
+
+            if (notice == null)
+            {
+                return NotFound(
+                    "CLA Third-Party Application notice was not found.");
+            }
+
+            if (string.IsNullOrWhiteSpace(notice.PdfPath))
+                return NotFound("PDF path is empty.");
+
+            if (!System.IO.File.Exists(notice.PdfPath))
+                return NotFound("PDF file was not found.");
+
+            var fileName = Path.GetFileName(notice.PdfPath);
+            var bytes = await System.IO.File.ReadAllBytesAsync(
+                notice.PdfPath,
+                ct);
+
+            Response.Headers["Content-Disposition"] =
+                $"inline; filename=\"{fileName}\"";
+
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+
+            return File(bytes, "application/pdf");
+        }
+
         // ── STATS ───────────────────────────────────────────────────────────
 
         [HttpGet("SendStats")]
@@ -905,6 +1235,8 @@ namespace GV23_Notice.Controllers
                 return BadRequest("Invalid workflow key.");
             }
 
+            var settings = await GetWorkflowSettingsAsync(key, ct);
+
             try
             {
                 /*
@@ -914,9 +1246,27 @@ namespace GV23_Notice.Controllers
                  * Both notice types use:
                  * Views/Step3/SendStats.cshtml
                  */
-                var vm = await _stats.BuildStatsAsync(
-                    key,
-                    ct);
+                NoticeSendStatsVm vm;
+
+                if (settings.Notice == NoticeKind.TPA ||
+                    settings.Notice == NoticeKind.CLA_TPA)
+                {
+                    var thirdPartyStats =
+                        await _tpaStats.BuildStatsAsync(
+                            key,
+                            ct);
+
+                    vm = BuildThirdPartySendStatsVm(
+                        settings,
+                        thirdPartyStats,
+                        key);
+                }
+                else
+                {
+                    vm = await _stats.BuildStatsAsync(
+                        key,
+                        ct);
+                }
 
                 return View("SendStats", vm);
             }
@@ -946,10 +1296,11 @@ namespace GV23_Notice.Controllers
                 key,
                 ct);
 
-            if (settings.Notice != NoticeKind.TPA)
+            if (settings.Notice != NoticeKind.TPA &&
+                settings.Notice != NoticeKind.CLA_TPA)
             {
                 return BadRequest(
-                    "This action is only available for Third-Party Appeal statistics.");
+                    "This action is only available for TPA or CLA third-party statistics.");
             }
 
             var performedBy =
@@ -970,7 +1321,7 @@ namespace GV23_Notice.Controllers
                         ct);
 
                 TempData["Success"] =
-                    $"TPA Admin reports completed. " +
+                    $"{(settings.Notice == NoticeKind.CLA_TPA ? "CLA" : "TPA")} Admin reports completed. " +
                     $"Sent: {result.Sent}, " +
                     $"Failed: {result.Failed}, " +
                     $"Skipped: {result.Skipped}.";
@@ -978,7 +1329,7 @@ namespace GV23_Notice.Controllers
             catch (Exception ex)
             {
                 TempData["Error"] =
-                    $"TPA Admin reports could not be sent. {ex.Message}";
+                    $"{(settings.Notice == NoticeKind.CLA_TPA ? "CLA" : "TPA")} Admin reports could not be sent. {ex.Message}";
             }
 
             return RedirectToAction(
@@ -1006,10 +1357,11 @@ namespace GV23_Notice.Controllers
                 key,
                 ct);
 
-            if (settings.Notice != NoticeKind.TPA)
+            if (settings.Notice != NoticeKind.TPA &&
+                settings.Notice != NoticeKind.CLA_TPA)
             {
                 return BadRequest(
-                    "This download is only available for Third-Party Appeal statistics.");
+                    "This download is only available for TPA or CLA third-party statistics.");
             }
 
             try
@@ -1059,6 +1411,16 @@ namespace GV23_Notice.Controllers
              * TPA uses the per-Admin download links displayed directly
              * on Views/Step3/SendStats.cshtml.
              */
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                TempData["Error"] =
+                    "CLA statistics are not configured yet.";
+
+                return RedirectToAction(
+                    nameof(Print),
+                    new { key });
+            }
+
             if (settings.Notice == NoticeKind.TPA)
             {
                 TempData["Error"] =
@@ -1128,10 +1490,21 @@ namespace GV23_Notice.Controllers
              * TPA has its own single bulk button on the same SendStats view.
              * Do not redirect to StatsController.
              */
-            if (settings.Notice == NoticeKind.TPA)
+            if (settings.Notice == NoticeKind.CLA_TPA)
             {
                 TempData["Error"] =
-                    "Use Send All Admin Reports for Third-Party Appeal statistics.";
+                    "CLA statistics email is not configured yet.";
+
+                return RedirectToAction(
+                    nameof(Print),
+                    new { key });
+            }
+
+            if (settings.Notice == NoticeKind.TPA ||
+                settings.Notice == NoticeKind.CLA_TPA)
+            {
+                TempData["Error"] =
+                    "Use Send All Admin Reports for TPA or CLA third-party statistics.";
 
                 return RedirectToAction(
                     nameof(SendStats),
@@ -1168,6 +1541,75 @@ namespace GV23_Notice.Controllers
         }
 
         // ── Helpers ─────────────────────────────────────────────────────────
+
+        private static NoticeSendStatsVm BuildThirdPartySendStatsVm(
+            NoticeSettings settings,
+            ThirdPartyAppealStatsVm stats,
+            Guid workflowKey)
+        {
+            return new NoticeSendStatsVm
+            {
+                WorkflowKey = workflowKey,
+                SettingsId = settings.Id,
+
+                /*
+                 * IsTpa is the legacy flag used by the shared SendStats view.
+                 * CLA intentionally uses the same Admin-statistics layout.
+                 */
+                IsTpa = true,
+                TpaStats = stats,
+
+                RollShortCode =
+                    stats.RollShortCode ?? "",
+
+                RollName =
+                    stats.RollName ?? "",
+
+                Notice =
+                    settings.Notice,
+
+                VersionText =
+                    string.IsNullOrWhiteSpace(stats.VersionText)
+                        ? $"V{settings.Version}"
+                        : stats.VersionText,
+
+                TotalBatches =
+                    stats.TotalAdmins,
+
+                TotalRecords =
+                    stats.TotalRecords,
+
+                TotalPrinted =
+                    stats.TotalPrinted,
+
+                TotalSent =
+                    stats.TotalSent,
+
+                TotalFailed =
+                    stats.TotalFailed,
+
+                TotalNoEmail =
+                    stats.TotalNoEmail,
+
+                SentBy =
+                    stats.LastSentBy,
+
+                LastSentAtUtc =
+                    stats.LastSentAt,
+
+                QaRequired = false,
+                QaApproved = false,
+                QaApprovedBy = null,
+                QaApprovedAtUtc = null,
+
+                DefaultToEmails = null,
+                DefaultCcEmails =
+                    stats.ValuationEnquiriesEmail,
+
+                Batches = new(),
+                Rows = new()
+            };
+        }
 
         private async Task<NoticeSettings> GetWorkflowSettingsAsync(
             Guid key,

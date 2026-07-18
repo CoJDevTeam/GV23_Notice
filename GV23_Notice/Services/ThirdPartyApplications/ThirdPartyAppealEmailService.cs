@@ -362,11 +362,14 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             NoticeSettings settings,
             ThirdPartyAppealApplicationNotice notice)
         {
-            var period = !string.IsNullOrWhiteSpace(notice.ValuationPeriod)
-                ? notice.ValuationPeriod
+            var period = !string.IsNullOrWhiteSpace(notice.ValuationPeriod?.ToUpper()
+                )
+                ? notice.ValuationPeriod.ToUpper()
                 : settings.ValuationPeriodCode ?? "GENERAL VALUATION ROLL 2023";
 
-            return $"NOTICE OF THIRD PARTY APPEAL APPLICATION FOR THE {period} – {notice.Property_Description}";
+            return $"NOTICE OF THIRD PARTY APPEAL APPLICATION FOR THE {period} – {notice.Property_Description?.ToUpper()}";
+            
+
         }
 
         private static string BuildBody(

@@ -5,8 +5,20 @@
     ViewData["Title"] = "Notice Send Statistics";
 
     var key = Model.WorkflowKey;
-    var isTpa = Model.IsTpa;
+
+    bool isClaTpa = Model.Notice == NoticeKind.CLA_TPA;
+    bool isTpa = Model.Notice == NoticeKind.TPA;
+    bool isThirdPartyStats = isTpa || isClaTpa;
+
     var tpa = Model.TpaStats;
+
+    string thirdPartyLabel = isClaTpa
+        ? "CLA Third-Party Application"
+        : "Third-Party Appeal";
+
+    string thirdPartyCode = isClaTpa
+        ? "CLA"
+        : "TPA";
 }
 
 <link href="~/css/Step3/Step3KickOffCss1.css"
@@ -336,17 +348,19 @@
     <div class="st-head">
 
         <h1 class="st-title">
-            @(isTpa
-                ? "Third-Party Appeal Notice Statistics"
-                : "Notice Send Statistics")
+            @(isClaTpa
+                ? "CLA Third-Party Application Statistics"
+                : isTpa
+                    ? "Third-Party Appeal Notice Statistics"
+                    : "Notice Send Statistics")
         </h1>
 
         <div class="st-sub">
 
-            @if (isTpa)
+            @if (isThirdPartyStats)
             {
                 <text>
-                    Third-Party Appeal statistics are managed per Admin.
+                    @thirdPartyLabel statistics are managed per Admin.
                     Each Admin receives a dedicated workbook containing a Summary Report and Detail sheet.
                 </text>
             }
@@ -367,7 +381,7 @@
 
             <span>
                 Notice:
-                <b>@Model.Notice</b>
+                <b>@(isClaTpa ? "CLA-THIRD PARTY APPLICATION NOTICE" : Model.Notice.ToString())</b>
             </span>
 
             <span>
@@ -409,12 +423,12 @@
             Back to Send Notices
         </a>
 
-        @if (isTpa && tpa != null)
+        @if (isThirdPartyStats && tpa != null)
         {
             <form asp-controller="Step3"
                   asp-action="SendAllTpaAdminReports"
                   method="post"
-                  onsubmit="return confirmTpaAdminReports(this);"
+                  onsubmit="return confirmThirdPartyAdminReports(this);"
                   style="margin:0;">
 
                 @Html.AntiForgeryToken()
@@ -429,11 +443,11 @@
                                             tpa.Admins.Any(x => x.HasAdminEmail)
                                                 ? null
                                                 : "disabled")">
-                    Send All Admin Reports
+                    Send All @thirdPartyCode Admin Reports
                 </button>
             </form>
         }
-        else if (!isTpa)
+        else if (!isThirdPartyStats)
         {
             <a class="st-btn st-btn-gold"
                    asp-action="DownloadStatsExcel"
@@ -443,14 +457,23 @@
             </a>
         }
     </div>
-    @if (isTpa && tpa != null)
+    @if (isThirdPartyStats && tpa != null)
     {
         <div class="st-alert st-alert-info">
-            TPA reports are grouped by the responsible Admin.
+            @thirdPartyCode reports are grouped by the responsible Admin.
             Each eligible Admin will receive a separate Excel workbook containing
             the Summary Report and Detail sheets.
             Admins with missing email addresses will be blocked and skipped.
         </div>
+
+        @if (isClaTpa)
+        {
+            <div class="st-alert st-alert-info">
+                CLA uses the same Admin report layout as TPA.
+                The shared Appeal Number column contains the CLA Number for CLA records.
+                VAB board-member sections remain empty where CLA records do not contain board scheduling information.
+            </div>
+        }
 
         <div class="st-grid">
             <div class="st-card">
@@ -489,7 +512,7 @@
         }
 
         <div class="st-panel">
-            <div class="st-panel-head">TPA Statistics by Admin</div>
+            <div class="st-panel-head">@thirdPartyCode Statistics by Admin</div>
             <div class="st-panel-body">
                 <div class="st-table-wrap">
                     <table class="st-table">
@@ -509,7 +532,7 @@
                         <tbody>
                             @if (!tpa.Admins.Any())
                             {
-                                <tr><td colspan="9">No TPA Admin statistics were found.</td></tr>
+                                <tr><td colspan="9">No @thirdPartyCode Admin statistics were found.</td></tr>
                             }
                             else
                             {
@@ -571,7 +594,7 @@
             </div>
         </div>
     }
-    else if (!isTpa)
+    else if (!isThirdPartyStats)
     {
         <div class="st-grid">
             <div class="st-card"><div class="st-num">@Model.TotalBatches.ToString("N0")</div><div class="st-label">Batches</div></div>
@@ -688,7 +711,7 @@
     else
     {
         <div class="st-alert st-alert-err">
-            TPA statistics could not be loaded. Confirm that the NoticeSendStatsService populated Model.TpaStats for this workflow.
+            @thirdPartyCode statistics could not be loaded. Confirm that the controller populated Model.TpaStats for this workflow.
         </div>
     }
 
@@ -719,15 +742,19 @@
                 : current + '; ' + email;
         }
 
-        function confirmTpaAdminReports(form) {
+        function confirmThirdPartyAdminReports(form) {
             const eligible =
                 @(tpa?.Admins.Count(x => x.HasAdminEmail) ?? 0);
 
             const blocked =
                 @(tpa?.Admins.Count(x => !x.HasAdminEmail) ?? 0);
 
+            const reportCode = '@thirdPartyCode';
+
             const message =
-                'Send separate TPA reports to ' +
+                'Send separate ' +
+                reportCode +
+                ' reports to ' +
                 eligible +
                 ' Admin(s)?\n\n' +
                 blocked +

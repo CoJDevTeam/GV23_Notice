@@ -15,6 +15,7 @@
         NoticeKind.IN => "Invalid Notice",
         NoticeKind.S78 => "Section 78 — Property Verification Review",
         NoticeKind.TPA => "Third-Party Appeal Application",
+        NoticeKind.CLA_TPA => "CLA-THIRD PARTY APPLICATION NOTICE",
         _ => n.ToString()
     };
 
@@ -30,6 +31,7 @@
         NoticeKind.IN => "IN",
         NoticeKind.S78 => "78",
         NoticeKind.TPA => "TPA",
+        NoticeKind.CLA_TPA => "CLA",
         _ => "?"
     };
 
@@ -38,6 +40,7 @@
     bool canApprove = !sigRequired || hasSignature;
     bool isS53Family = Model.Notice == NoticeKind.S53 || Model.Notice == NoticeKind.S53Rev;
     bool isThirdPartyAppeal = Model.Notice == NoticeKind.TPA;
+    bool isClaThirdPartyApplication = Model.Notice == NoticeKind.CLA_TPA;
 }
 
 
@@ -179,7 +182,11 @@
 
                 <div class="ss-detail-grid">
                     <div class="ss-detail-row">
-                        <span class="ss-detail-label">Letter Date</span>
+                        <span class="ss-detail-label">
+                            @(isClaThirdPartyApplication
+                                ? "Notification Letter Date"
+                                : "Letter Date")
+                        </span>
                         <span class="ss-detail-value ss-mono">@Model.LetterDate.ToString("dd MMMM yyyy")</span>
                     </div>
                     @if (!string.IsNullOrWhiteSpace(Model.PortalUrl))
@@ -460,6 +467,78 @@
                     </div>
                 </div>
             }
+   
+            
+            @if (isClaThirdPartyApplication)
+            {
+                <div class="ss-card">
+                    <div class="ss-card-header">
+                        <div class="ss-card-header-left">
+                            <div class="ss-card-icon ss-icon-s52">CLA</div>
+                            <div>
+                                <div class="ss-card-title">
+                                    CLA-THIRD PARTY APPLICATION NOTICE
+                                </div>
+                                <div class="ss-card-sub">
+                                    Property-owner notification and representation period
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="ss-detail-grid">
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">
+                                Notification Letter Date
+                            </span>
+                            <span class="ss-detail-value ss-mono">
+                                @Model.LetterDate.ToString("dd MMMM yyyy")
+                            </span>
+                        </div>
+
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">
+                                Representation Start Date
+                            </span>
+                            <span class="ss-detail-value ss-mono">
+                                @(Model.ObjectionStartDate?.ToString("dd MMMM yyyy")
+                                    ?? Model.LetterDate.ToString("dd MMMM yyyy"))
+                            </span>
+                        </div>
+
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">
+                                Representation Period
+                            </span>
+                            <span class="ss-detail-value ss-detail-strong">
+                                30 calendar days
+                            </span>
+                        </div>
+
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">
+                                Representation Closing Date
+                            </span>
+                            <span class="ss-detail-value ss-mono ss-detail-strong">
+                                @(Model.ObjectionEndDate?.ToString("dd MMMM yyyy")
+                                    ?? Model.LetterDate.AddDays(30).ToString("dd MMMM yyyy"))
+                            </span>
+                        </div>
+
+                        <div class="ss-detail-row">
+                            <span class="ss-detail-label">
+                                Email Process
+                            </span>
+                            <span class="ss-detail-value">
+                                The notice will be sent to the property owner.
+                                The appeal pack and supporting documents must be attached.
+                                The third party and Valuation Enquiries will be copied.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            }
+       
         
         </div>
 
@@ -520,6 +599,46 @@
                             </div>
                         }
                     }
+
+                    @if (isClaThirdPartyApplication)
+                    {
+                        <div class="ss-check">
+                            <div class="ss-check-dot ok">✓</div>
+                            <span>
+                                Notification letter date —
+                                <strong>
+                                    @Model.LetterDate.ToString("dd MMM yyyy")
+                                </strong>
+                            </span>
+                        </div>
+
+                        <div class="ss-check">
+                            <div class="ss-check-dot ok">✓</div>
+                            <span>
+                                Representation period —
+                                <strong>30 calendar days</strong>
+                            </span>
+                        </div>
+
+                        <div class="ss-check">
+                            <div class="ss-check-dot ok">✓</div>
+                            <span>
+                                Representation closes —
+                                <strong>
+                                    @(Model.ObjectionEndDate?.ToString("dd MMM yyyy")
+                                        ?? Model.LetterDate.AddDays(30).ToString("dd MMM yyyy"))
+                                </strong>
+                            </span>
+                        </div>
+
+                        <div class="ss-check">
+                            <div class="ss-check-dot ok">✓</div>
+                            <span>
+                                CLA workflow uses owner email, third-party CC,
+                                appeal pack and supporting documents
+                            </span>
+                        </div>
+                    }
                 </div>
 
                 <!-- Meta -->
@@ -529,7 +648,11 @@
                         <span class="ss-meta-val ss-mono">#@Model.SettingsId</span>
                     </div>
                     <div class="ss-meta-row">
-                        <span class="ss-meta-label">Letter Date</span>
+                        <span class="ss-meta-label">
+                            @(isClaThirdPartyApplication
+                                ? "Notification Date"
+                                : "Letter Date")
+                        </span>
                         <span class="ss-meta-val ss-mono">@Model.LetterDate.ToString("yyyy-MM-dd")</span>
                     </div>
                     <div class="ss-meta-row">
@@ -553,7 +676,9 @@
                                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                                     <polyline points="20 6 9 17 4 12" />
                                 </svg>
-                                Continue to Step 2 
+                                @(isClaThirdPartyApplication
+     ? "Continue to CLA Preview"
+     : "Continue to Step 2")
                             </span>
                         </button>
                     </form>

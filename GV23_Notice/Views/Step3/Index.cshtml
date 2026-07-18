@@ -18,6 +18,7 @@
         NoticeKind.IN => "Invalid Notice",
         NoticeKind.S78 => "Section 78 — Review Period",
         NoticeKind.TPA => "Third-Party Appeal Application",
+        NoticeKind.CLA_TPA => "CLA-THIRD PARTY APPLICATION NOTICE",
         _ => n.ToString()
     };
 
@@ -31,13 +32,15 @@
         NoticeKind.DJ => "s3i-chip-dj",
         NoticeKind.IN => "s3i-chip-in",
         NoticeKind.S78 => "s3i-chip-s78",
-        NoticeKind.TPA => "s3i-chip-s52",
+        NoticeKind.TPA => "s3i-chip-tpa",
+        NoticeKind.CLA_TPA => "s3i-chip-cla",
         _ => ""
     };
 
     string ActionText(NoticeKind n) => n switch
     {
         NoticeKind.TPA => "Start TPA Processing",
+        NoticeKind.CLA_TPA => "Start CLA Processing",
         NoticeKind.S52 => "Start Range Processing",
         _ => "Start Processing"
     };
@@ -45,6 +48,7 @@
     string HelperText(NoticeKind n) => n switch
     {
         NoticeKind.TPA => "Print formal owner notices and send emails. No batches or date ranges required.",
+        NoticeKind.CLA_TPA => "Print CLA owner notices and prepare appeal-pack ZIP files. No batches or date ranges required.",
         NoticeKind.S52 => "Start range-based appeal processing.",
         _ => "Create batches, print PDFs and send notices."
     };
@@ -53,7 +57,14 @@
     var readyRows = allRows.Where(r => r.Step2Approved).ToList();
     var corrRows = allRows.Where(r => r.Step2CorrectionRequested && !r.Step2Approved).ToList();
     var tpaRows = allRows.Where(r => r.Notice == NoticeKind.TPA).ToList();
+    var claTpaRows = allRows.Where(r => r.Notice == NoticeKind.CLA_TPA).ToList();
+    var directRows = allRows
+        .Where(r =>
+            r.Notice == NoticeKind.TPA ||
+            r.Notice == NoticeKind.CLA_TPA)
+        .ToList();
 }
+
 
 <link href="~/css/step3/step3indexcss.css" rel="stylesheet" asp-append-version="true" />
 
@@ -76,6 +87,25 @@
         color: #fff !important;
         border-color: #1e1b4b !important;
     }
+
+    .s3i-chip-cla {
+        background: #fff7d6;
+        color: #8a6200;
+        border-color: #e8c85a;
+    }
+
+    .s3i-action-cla {
+        background: #d4a500 !important;
+        color: #111 !important;
+        border-color: #d4a500 !important;
+    }
+
+    .s3i-cla-note {
+        margin-top: 5px;
+        font-size: 11.5px;
+        color: var(--s3i-mu);
+        line-height: 1.35;
+    }
 </style>
 
 <div class="s3i-page">
@@ -91,7 +121,7 @@
                 <h1 class="s3i-hero-title">Step 3 — <em>Processing</em></h1>
                 <p class="s3i-hero-sub">
                     Select an approved configuration to process notices.
-                    Normal notices use batches. Third-Party Appeal Application prints directly from its extract.
+                    Normal notices use batches. TPA and CLA Third-Party Application workflows print directly without batches.
                 </p>
             </div>
 
@@ -118,9 +148,11 @@
             </div>
 
             <div class="s3i-stat">
-                <div class="s3i-stat-lbl">TPA Workflows</div>
-                <div class="s3i-stat-num">@tpaRows.Count</div>
-                <div class="s3i-stat-sub">Third-party appeal notices</div>
+                <div class="s3i-stat-lbl">Direct Workflows</div>
+                <div class="s3i-stat-num">@directRows.Count</div>
+                <div class="s3i-stat-sub">
+                    TPA: @tpaRows.Count · CLA: @claTpaRows.Count
+                </div>
             </div>
 
             <div class="s3i-stat">
@@ -139,7 +171,7 @@
 
             <span style="font-size:11.5px;color:var(--s3i-mu)">
                 Click <strong>Start Processing</strong> to continue to Step 3.
-                TPA will go directly to print and email.
+                TPA and CLA workflows go directly to print without batch creation.
             </span>
         </div>
 
@@ -187,7 +219,12 @@
                             @foreach (var r in allRows)
                             {
                                 bool isTpa = r.Notice == NoticeKind.TPA;
-                                bool canStart = r.Step2Approved && r.ApprovalKey != Guid.Empty;
+                                bool isClaTpa = r.Notice == NoticeKind.CLA_TPA;
+                                bool isDirectThirdParty = isTpa || isClaTpa;
+
+                                bool canStart =
+                                    r.Step2Approved &&
+                                    r.ApprovalKey != Guid.Empty;
 
                                 string? kickUrl = canStart
                                     ? Url.Action("Step3Kickoff", "Workflow", new
@@ -213,16 +250,28 @@
                                     </td>
 
                                     <td>
-                                        <span class="s3i-notice-chip @(isTpa ? "s3i-chip-tpa" : NoticeChip(r.Notice))">
-                                            @(isTpa ? "TPA" : r.Notice.ToString())
+                                        <span class="s3i-notice-chip @NoticeChip(r.Notice)">
+                                            @(isClaTpa
+                                                ? "CLA-TPA"
+                                                : isTpa
+                                                    ? "TPA"
+                                                    : r.Notice.ToString())
                                         </span>
 
-                                        <div class="s3i-notice-name">@NoticeName(r.Notice)</div>
+                                        <div class="s3i-notice-name">
+                                            @NoticeName(r.Notice)
+                                        </div>
 
-                                        @if (isTpa)
+                                        @if (isClaTpa)
+                                        {
+                                            <div class="s3i-cla-note">
+                                                No batches. Prints CLA owner notices directly and creates the appeal-pack ZIP.
+                                            </div>
+                                        }
+                                        else if (isTpa)
                                         {
                                             <div class="s3i-tpa-note">
-                                                No batches. No ranges. Print formal owner notices directly from TPA extract.
+                                                No batches. No ranges. Print formal owner notices directly from the TPA extract.
                                             </div>
                                         }
                                     </td>
@@ -230,7 +279,9 @@
                                     <td>
                                         <span class="s3i-status"
                                               style="background:var(--s3i-surf);color:var(--s3i-mu);border-color:var(--s3i-bord)">
-                                            @r.Mode
+                                            @(isDirectThirdParty
+                                                ? "Direct"
+                                                : r.Mode)
                                         </span>
                                     </td>
 
@@ -260,7 +311,7 @@
                                         <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
                                             @if (canStart)
                                             {
-                                                <a class="s3i-action s3i-action-primary @(isTpa ? "s3i-action-tpa" : "")"
+                                                <a class="s3i-action s3i-action-primary @(isClaTpa ? "s3i-action-cla" : isTpa ? "s3i-action-tpa" : "")"
                                                        href="@kickUrl"
                                                        title="@HelperText(r.Notice)">
                                                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none"

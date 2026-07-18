@@ -4,6 +4,8 @@
     ViewData["Title"] = "Step 1 — Notice Configuration";
     var rolls = ViewBag.Rolls as List<SelectListItem> ?? new List<SelectListItem>();
     var isEdit = Model.SettingsId.HasValue;
+    var isClaTpa = Model.Notice == NoticeKind.CLA_TPA;
+    var isTpa = Model.Notice == NoticeKind.TPA;
 }
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -94,8 +96,16 @@
                 <div style="padding:0 20px">
                     <div class="s1-sidebar-label">Notice</div>
                     <div style="font-size:13px;color:var(--s1-text-m);padding:8px 12px;background:var(--s1-surface);border-radius:7px;">
-                        <span id="sb-notice-label" style="font-family:var(--fm);font-weight:600;color:var(--s1-text)">S49</span><br>
-                        <span id="sb-notice-desc" style="font-size:11.5px;">Section 49 Notice</span>
+                        <span id="sb-notice-label" style="font-family:var(--fm);font-weight:600;color:var(--s1-text)">
+                            @(Model.Notice == NoticeKind.CLA_TPA ? "CLA-TPA" : Model.Notice.ToString())
+                        </span><br>
+                        <span id="sb-notice-desc" style="font-size:11.5px;">
+                            @(Model.Notice == NoticeKind.CLA_TPA
+                                ? "CLA-Third Party Application Notice"
+                                : Model.Notice == NoticeKind.TPA
+                                    ? "Third-Party Appeal Application"
+                                    : "")
+                        </span>
                     </div>
                 </div>
             </div>
@@ -185,6 +195,9 @@
                                     <option value="DJ" selected="@(Model.Notice == NoticeKind.DJ)">Dear Jonny Notice</option>
                                     <option value="IN" selected="@(Model.Notice == NoticeKind.IN)">Invalidity Notices</option>
                                     <option value="TPA" selected="@(Model.Notice == NoticeKind.TPA)">Third-Party Appeal Application</option>
+                                    <option value="CLA_TPA" selected="@(Model.Notice == NoticeKind.CLA_TPA)">
+                                        CLA-THIRD PARTY APPLICATION NOTICE
+                                    </option>
                                     @*   <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option> *@
                                 </select>
                               
@@ -220,7 +233,7 @@
                     <div class="s1-fields">
                         <div class="s1-row s1-row-2">
                             <div class="s1-field">
-                                <label class="s1-label">Letter Date</label>
+                                <label class="s1-label" id="letterDateLabel">Letter Date</label>
                                 <input type="date" asp-for="LetterDate" id="letterDate"
                                        class="s1-input" onchange="runAll()" />
                             </div>
@@ -520,6 +533,54 @@
                             </div>
                         </div>
 
+                        <!-- CLA Third-Party Application Notice -->
+                        <div id="blockCLATPA" class="notice-block">
+                            <div class="s1-notice-header s1-notice-s52">
+                                CLA-THIRD PARTY APPLICATION NOTICE — Owner Representation Period
+                            </div>
+
+                            <div class="s1-row s1-row-3">
+                                <div class="s1-field">
+                                    <label class="s1-label">Notification Letter Date</label>
+                                    <input type="date"
+                                           id="claLetterDateDisplay"
+                                           class="s1-input"
+                                           value="@Model.LetterDate.ToString("yyyy-MM-dd")"
+                                           readonly />
+                                    <div class="s1-info-note" style="margin-top:6px">
+                                        This date comes from the Letter Date selected above.
+                                    </div>
+                                </div>
+
+                                <div class="s1-field">
+                                    <label class="s1-label">Representation Period</label>
+                                    <input type="number"
+                                           id="claResponseDays"
+                                           class="s1-input"
+                                           value="30"
+                                           readonly />
+                                    <div class="s1-info-note" style="margin-top:6px">
+                                        The owner receives 30 calendar days to submit written representations.
+                                    </div>
+                                </div>
+
+                                <div class="s1-field">
+                                    <label class="s1-label">Representation Closing Date</label>
+                                    <input type="date"
+                                           id="claEstimatedDueDate"
+                                           class="s1-input"
+                                           value="@Model.LetterDate.AddDays(30).ToString("yyyy-MM-dd")"
+                                           readonly />
+                                </div>
+                            </div>
+
+                            <div class="s1-info-note" style="margin-top:12px">
+                                The system will generate the CLA third-party application notice, attach the uploaded appeal pack
+                                and supporting documents, send the notice to the property owner, and copy the third party and
+                                Valuation Enquiries.
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
@@ -646,18 +707,18 @@
         /* ── TempData toasts ────────────────────────────── */
         @if (TempData["Success"] != null)
         {
-                <text>
-                        document.addEventListener('DOMContentLoaded', () =>
-                            WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
-                </text>
+                    <text>
+                                document.addEventListener('DOMContentLoaded', () =>
+                                    WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
+                    </text>
         }
 
         @if (TempData["Error"] != null)
         {
-                <text>
-                        document.addEventListener('DOMContentLoaded', () =>
-                            WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
-                </text>
+                    <text>
+                                document.addEventListener('DOMContentLoaded', () =>
+                                    WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
+                    </text>
         }
 
         /* ── Helpers ────────────────────────────────────── */
@@ -712,8 +773,8 @@
             check: () => {
                 const notice = document.getElementById('noticeSelect')?.value;
 
-                // TPA / Application to Valuation Appeal does not require roll.
-                if (notice === 'TPA') {
+                // TPA and CLA-TPA resolve the roll from the valuation period.
+                if (notice === 'TPA' || notice === 'CLA_TPA') {
                     return true;
                 }
 
@@ -783,7 +844,8 @@
             DJ: 'Dear Johnny — only letter date required',
             IN: 'Invalid notice — objection or omission sub-type',
             S78: 'Section 78 — review period and extraction settings',
-            TPA: 'Third-Party Appeal Application — owner notification and 51-day response period'
+            TPA: 'Third-Party Appeal Application — owner notification and 51-day response period',
+            CLA_TPA: 'CLA-Third Party Application Notice — owner notification and 30-day representation period'
         };
 
         const NOTICE_BADGE = {
@@ -795,7 +857,8 @@
             DJ: 's1-badge-dj',
             IN: 's1-badge-in',
             S78: 's1-badge-s78',
-            TPA: 's1-badge-s52'
+            TPA: 's1-badge-s52',
+            CLA_TPA: 's1-badge-s52'
         };
 
         function calculateTpaEstimatedDates() {
@@ -815,13 +878,38 @@
             if (dueDate) dueDate.value = dueIso;
         }
 
+        function calculateClaEstimatedDates() {
+            const notice = document.getElementById('noticeSelect')?.value;
+
+            if (notice !== 'CLA_TPA') return;
+
+            const letterDate = document.getElementById('letterDate')?.value;
+            const displayDate = document.getElementById('claLetterDateDisplay');
+            const responseDays = document.getElementById('claResponseDays');
+            const closingDate = document.getElementById('claEstimatedDueDate');
+
+            if (displayDate) {
+                displayDate.value = letterDate || '';
+            }
+
+            if (responseDays) {
+                responseDays.value = '30';
+            }
+
+            if (closingDate) {
+                closingDate.value = letterDate
+                    ? addDaysIso(letterDate, 30)
+                    : '';
+            }
+        }
+
         function showBlocks() {
             const notice = document.getElementById('noticeSelect')?.value || 'S49';
                     const rollField = document.getElementById('field-RollId');
         const rollSelect = document.getElementById('rollSelect');
         const rollStar = document.getElementById('rollRequiredStar');
 
-        if (notice === 'TPA') {
+        if (notice === 'TPA' || notice === 'CLA_TPA') {
             if (rollField) {
                 rollField.style.display = 'none';
             }
@@ -849,7 +937,18 @@
                 rollStar.style.display = '';
             }
         }
-            const mode = document.getElementById('modeSelect')?.value || '2';
+            const modeSelect = document.getElementById('modeSelect');
+
+            if (notice === 'CLA_TPA') {
+                if (modeSelect) {
+                    modeSelect.value = '@BatchMode.Bulk';
+                    modeSelect.disabled = true;
+                }
+            } else if (modeSelect) {
+                modeSelect.disabled = false;
+            }
+
+            const mode = modeSelect?.value || '@BatchMode.Bulk';
 
             const noticeHidden = document.getElementById('noticeHidden');
             if (noticeHidden) noticeHidden.value = notice;
@@ -857,7 +956,7 @@
             const badge = document.getElementById('noticeBadge');
 
             if (badge) {
-                badge.textContent = notice;
+                badge.textContent = notice === 'CLA_TPA' ? 'CLA-TPA' : notice;
                 badge.className = `s1-notice-badge ${NOTICE_BADGE[notice] || ''}`;
             }
 
@@ -870,8 +969,22 @@
             const sbl = document.getElementById('sb-notice-label');
             const sbd = document.getElementById('sb-notice-desc');
 
-            if (sbl) sbl.textContent = notice;
-            if (sbd) sbd.textContent = NOTICE_DESCS[notice] || '';
+            if (sbl) {
+                sbl.textContent = notice === 'CLA_TPA' ? 'CLA-TPA' : notice;
+            }
+
+            if (sbd) {
+                sbd.textContent = NOTICE_DESCS[notice] || '';
+            }
+
+            const letterDateLabel = document.getElementById('letterDateLabel');
+
+            if (letterDateLabel) {
+                letterDateLabel.textContent =
+                    notice === 'CLA_TPA'
+                        ? 'Notification Letter Date'
+                        : 'Letter Date';
+            }
 
             const revBox = document.getElementById('s53RevNotice');
 
@@ -898,7 +1011,8 @@
                 S53: 'blockS53',
                 S53Rev: 'blockS53',
                 S78: 'blockS78',
-                TPA: 'blockTPA'
+                TPA: 'blockTPA',
+                CLA_TPA: 'blockCLATPA'
             };
 
             if (map[notice]) {
@@ -959,6 +1073,7 @@
             }
 
             calculateTpaEstimatedDates();
+            calculateClaEstimatedDates();
         }
 
         function calcS51EvidenceClose() {
@@ -1018,6 +1133,7 @@
             showBlocks();
             calcS51EvidenceClose();
             calculateTpaEstimatedDates();
+            calculateClaEstimatedDates();
             await calcS53AppealClose();
         }
 
@@ -1177,6 +1293,13 @@
                 if (banner) {
                     banner.style.display = 'none';
                 }
+
+                const rollSelect = document.getElementById('rollSelect');
+                const modeSelect = document.getElementById('modeSelect');
+
+                // Re-enable disabled controls before submit so their values are posted.
+                if (rollSelect) rollSelect.disabled = false;
+                if (modeSelect) modeSelect.disabled = false;
 
                 document.getElementById('wf-submit-btn')?.classList.add('loading');
 

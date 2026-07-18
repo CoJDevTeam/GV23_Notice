@@ -9,20 +9,47 @@
     var key = Model.WorkflowKey;
 
     var tpa = ViewBag.TpaEmail as GV23_Notice.Models.Workflow.ViewModels.ThirdPartyAppealSendEmailVm;
-    bool isTpa = Model.Notice == NoticeKind.TPA;
+    var cla = ViewBag.ClaEmail as GV23_Notice.Models.Workflow.ViewModels.ThirdPartyAppealSendEmailVm;
 
-    var totalPrinted = isTpa && tpa != null ? tpa.TotalPrinted : Model.TotalPrinted;
-    var totalSent = isTpa && tpa != null ? tpa.TotalSent : Model.TotalSent;
-    var totalFailed = isTpa && tpa != null ? tpa.TotalFailed : 0;
-    var totalNoEmail = isTpa && tpa != null ? tpa.TotalNoOwnerEmail : 0;
+    bool isTpa = Model.Notice == NoticeKind.TPA;
+    bool isClaTpa = Model.Notice == NoticeKind.CLA_TPA;
+    bool isDirectThirdParty = isTpa || isClaTpa;
+
+    var directEmail = isClaTpa ? cla : tpa;
+
+    var totalPrinted =
+        isDirectThirdParty && directEmail != null
+            ? directEmail.TotalPrinted
+            : Model.TotalPrinted;
+
+    var totalSent =
+        isDirectThirdParty && directEmail != null
+            ? directEmail.TotalSent
+            : Model.TotalSent;
+
+    var totalFailed =
+        isDirectThirdParty && directEmail != null
+            ? directEmail.TotalFailed
+            : 0;
+
+    var totalNoEmail =
+        isDirectThirdParty && directEmail != null
+            ? directEmail.TotalNoOwnerEmail
+            : 0;
 
     var cap = Model.MaxEmailsPerSend;
 
     var qaApproved = await QaService.IsQaApprovedAsync(Model.WorkflowKey, Context.RequestAborted);
     var qaRequired = await QaService.RequiresQaAsync(Model.WorkflowKey, Context.RequestAborted);
 
-    bool tpaCanSend = isTpa && tpa != null && tpa.TotalReadyToSend > 0;
-    bool tpaSendDisabled = !tpaCanSend || (qaRequired && !qaApproved);
+    bool directCanSend =
+        isDirectThirdParty &&
+        directEmail != null &&
+        directEmail.TotalReadyToSend > 0;
+
+    bool directSendDisabled =
+        !directCanSend ||
+        (qaRequired && !qaApproved);
 }
 
 <link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
@@ -929,13 +956,13 @@
         <div class="se-chip"><span class="se-chip-lbl">Roll</span><span class="se-chip-val gold">@Model.RollShortCode — @Model.RollName</span></div>
         <div class="se-chip"><span class="se-chip-lbl">Notice</span><span class="se-chip-val gold">@Model.Notice</span></div>
         <div class="se-chip"><span class="se-chip-lbl">Version</span><span class="se-chip-val gold">@Model.VersionText</span></div>
-        @if (isTpa && tpa != null)
+        @if (isDirectThirdParty && directEmail != null)
         {
             <div class="se-chip"><span class="se-chip-lbl">Mode</span><span class="se-chip-val">Direct Send</span></div>
-            <div class="se-chip"><span class="se-chip-lbl">Ready</span><span class="se-chip-val">@tpa.TotalReadyToSend</span></div>
-            <div class="se-chip"><span class="se-chip-lbl">Sent</span><span class="se-chip-val">@tpa.TotalSent</span></div>
-            <div class="se-chip"><span class="se-chip-lbl">Failed</span><span class="se-chip-val">@tpa.TotalFailed</span></div>
-            <div class="se-chip"><span class="se-chip-lbl">No Email</span><span class="se-chip-val">@tpa.TotalNoOwnerEmail</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Ready</span><span class="se-chip-val">@directEmail.TotalReadyToSend</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Sent</span><span class="se-chip-val">@directEmail.TotalSent</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">Failed</span><span class="se-chip-val">@directEmail.TotalFailed</span></div>
+            <div class="se-chip"><span class="se-chip-lbl">No Email</span><span class="se-chip-val">@directEmail.TotalNoOwnerEmail</span></div>
         }
         else
         {
@@ -963,7 +990,7 @@
             <div class="se-bc-arrow">›</div>
             <div class="se-bc done"><div class="se-bc-dot">✓</div>Kickoff</div>
             <div class="se-bc-arrow">›</div>
-            @if (!isTpa)
+            @if (!isDirectThirdParty)
             {
                 <div class="se-bc done"><div class="se-bc-dot">✓</div>Batches</div>
                 <div class="se-bc-arrow">›</div>
@@ -1031,22 +1058,22 @@
             }
             <a href="@Url.Action("Print", "Step3", new { key })" class="se-back">← Back to Print Dashboard</a>
             <div class="se-stats">
-                @if (isTpa && tpa != null)
+                @if (isDirectThirdParty && directEmail != null)
                 {
                     <div class="se-stat">
-                        <div class="se-stat-num gold">@tpa.TotalReadyToSend.ToString("N0")</div>
+                        <div class="se-stat-num gold">@directEmail.TotalReadyToSend.ToString("N0")</div>
                         <div class="se-stat-lbl">Ready</div>
                     </div>
                     <div class="se-stat">
-                        <div class="se-stat-num green">@tpa.TotalSent.ToString("N0")</div>
+                        <div class="se-stat-num green">@directEmail.TotalSent.ToString("N0")</div>
                         <div class="se-stat-lbl">Sent</div>
                     </div>
                     <div class="se-stat">
-                        <div class="se-stat-num">@tpa.TotalNoOwnerEmail.ToString("N0")</div>
+                        <div class="se-stat-num">@directEmail.TotalNoOwnerEmail.ToString("N0")</div>
                         <div class="se-stat-lbl">No Owner Email</div>
                     </div>
                     <div class="se-stat">
-                        <div class="se-stat-num @(tpa.TotalFailed > 0 ? "gold" : "")">@tpa.TotalFailed.ToString("N0")</div>
+                        <div class="se-stat-num @(directEmail.TotalFailed > 0 ? "gold" : "")">@directEmail.TotalFailed.ToString("N0")</div>
                         <div class="se-stat-lbl">Failed</div>
                     </div>
                 }
@@ -1058,7 +1085,7 @@
                     <div class="se-stat"><div class="se-stat-num green">@totalSent.ToString("N0")</div><div class="se-stat-lbl">Already Sent</div></div>
                 }
             </div>
-            @if (!isTpa)
+            @if (!isDirectThirdParty)
             {
                 <div class="se-cap-wrap">
                     <div class="se-cap-label">
@@ -1079,13 +1106,14 @@
             {
                 <div class="se-cap-wrap">
                     <div class="se-cap-label">
-                        <span>Third-Party Appeal Sending</span>
-                        <span>@(tpa?.TotalReadyToSend ?? 0) ready</span>
+                        <span>@(isClaTpa ? "CLA Direct Sending" : "Third-Party Appeal Sending")</span>
+                        <span>@(directEmail?.TotalReadyToSend ?? 0) ready</span>
                     </div>
 
                     <div class="se-cap-note" id="capNote">
-                        TPA sends directly from printed ThirdPartyAppealApplicationNotices.
-                        No batch selection is required.
+                        @(isClaTpa
+                            ? "CLA sends directly from printed ClaThirdPartyApplicationNotices. No batch selection is required."
+                            : "TPA sends directly from printed ThirdPartyAppealApplicationNotices. No batch selection is required.")
                     </div>
                 </div>
             }
@@ -1145,11 +1173,15 @@
                         <div class="se-fl">.eml Copies Saved To</div>
 
                         <div class="se-fv" style="font-size:.65rem;color:#666;font-weight:400;word-break:break-all;line-height:1.5">
-                            @if (isTpa)
+                            @if (isClaTpa)
                             {
-                                <text>[Appeal Root]\[Appeal_No]\THIRD-PARTY APPLICATION\email_[Appeal_No]_[PropertyDesc]_Third-Party Appeal Application.eml</text>
+                                <text>[Appeal Root]\[CLA Number]\CLA-THIRD-PARTY APPLICATION\CLA EMAIL COPIES\email_[CLA Number]_[PropertyDesc]_CLA_Third_Party_Application.eml</text>
                             }
-                            @if (Model.IsS52)
+                            else if (isTpa)
+                            {
+                                <text>[Appeal Root]\[Appeal_No]\THIRD-PARTY APPLICATION\EMAIL COPIES\email_[Appeal_No]_[PropertyDesc]_Third-Party Appeal Application.eml</text>
+                            }
+                            else if (Model.IsS52)
                             {
                                 var s52Sub = Model.S52IsReview ? "Section 52 Review" : "Appeal Decision";
                                 <text>[Appeal Root]\[Appeal_No]\@s52Sub\[Appeal_No]_[PropertyDesc]_@(Model.S52IsReview ? "S52" : "AD").eml</text>
@@ -1170,18 +1202,20 @@
                     <div class="se-right-icon">📧</div>
 
                     Send Notices Dashboard —
-                    @(isTpa
-                        ? "Third-Party Appeal Application"
-                        : Model.Notice.ToString())
+                    @(isClaTpa
+                        ? "CLA Third-Party Application"
+                        : isTpa
+                            ? "Third-Party Appeal Application"
+                            : Model.Notice.ToString())
                 </div>
 
-                @if (isTpa && tpa != null)
+                @if (isDirectThirdParty && directEmail != null)
                 {
                     <span class="se-badge-info">
-                        @tpa.Groups.Count
+                        @directEmail.Groups.Count
                         group@(tpa.Groups.Count == 1 ? "" : "s")
                         ·
-                        @((tpa.TotalReadyToSend + tpa.TotalSent).ToString("N0"))
+                        @((directEmail.TotalReadyToSend + directEmail.TotalSent).ToString("N0"))
                         records
                     </span>
                 }
@@ -1207,20 +1241,20 @@
 
                 <div class="se-table-wrap">
 
-                    @if (isTpa && tpa != null)
+                    @if (isDirectThirdParty && directEmail != null)
                     {
-                        if (!tpa.Groups.Any())
+                        if (!directEmail.Groups.Any())
                         {
                             <div class="se-empty">
                                 <div class="se-empty-icon">📭</div>
 
                                 <div class="se-empty-title">
-                                    No Third-Party Appeal notices ready
+                                    @(isClaTpa ? "No CLA notices ready" : "No Third-Party Appeal notices ready")
                                 </div>
 
                                 <div class="se-empty-sub">
                                     Go back to the Print Dashboard and print
-                                    the Third-Party Appeal notices first.
+                                    @(isClaTpa ? "the CLA notices first." : "the Third-Party Appeal notices first.")
                                 </div>
                             </div>
                         }
@@ -1240,7 +1274,7 @@
                                 </thead>
 
                                 <tbody>
-                                    @foreach (var group in tpa.Groups)
+                                    @foreach (var group in directEmail.Groups)
                                     {
                                         <tr>
                                             <td>
@@ -1249,7 +1283,7 @@
                                                 </span>
 
                                                 <div class="se-bt-meta">
-                                                    Third-Party Appeal Application notices
+                                                    @(isClaTpa ? "CLA Third-Party Application notices" : "Third-Party Appeal Application notices")
                                                 </div>
                                             </td>
 
@@ -1485,12 +1519,12 @@
                 </div>
 
                 <div class="se-send-footer">
-                    @if (isTpa && tpa != null)
+                    @if (isDirectThirdParty && directEmail != null)
                     {
                         <div class="se-sel-info">
-                            <strong>@tpa.TotalReadyToSend</strong> Third-Party Appeal notices ready
+                            <strong>@directEmail.TotalReadyToSend</strong> @(isClaTpa ? "CLA notices ready" : "Third-Party Appeal notices ready")
                             &nbsp;·&nbsp;
-                            <strong>@tpa.TotalSent</strong> sent
+                            <strong>@directEmail.TotalSent</strong> sent
                         </div>
 
                         <div class="se-footer-spacer"></div>
@@ -1498,19 +1532,19 @@
                         <button type="button"
                                 class="btn-send"
                                 id="sendBtn"
-                                disabled="@(tpaSendDisabled ? "disabled" : null)"
-                                onclick="submitTpaSendForm()">
+                                disabled="@(directSendDisabled ? "disabled" : null)"
+                                onclick="submitDirectSendForm()">
                             @if (qaRequired && !qaApproved)
                             {
                                 <text>🔒 QA Required</text>
                             }
-                            else if (!tpaCanSend)
+                            else if (!directCanSend)
                             {
-                                <text>No Third-Party Appeal Notices Ready</text>
+                                <text>@(isClaTpa ? "No CLA Notices Ready" : "No Third-Party Appeal Notices Ready")</text>
                             }
                             else
                             {
-                                <text>📧 Send Third-Party Appeal Notices</text>
+                                <text>@(isClaTpa ? "📧 Send CLA Notices" : "📧 Send Third-Party Appeal Notices")</text>
                             }
                         </button>
                     }
@@ -1565,9 +1599,13 @@
         <div class="ep-path">
             📁 .eml copies:
 
-            @if (isTpa)
+            @if (isClaTpa)
             {
-                <code>[Appeal Root]\[Appeal_No]\THIRD-PARTY APPLICATION\email_[Appeal_No]_[PropertyDesc]_Third-Party Appeal Application.eml</code>
+                <code>[Appeal Root]\[CLA Number]\CLA-THIRD-PARTY APPLICATION\CLA EMAIL COPIES\email_[CLA Number]_[PropertyDesc]_CLA_Third_Party_Application.eml</code>
+            }
+            else if (isTpa)
+            {
+                <code>[Appeal Root]\[Appeal_No]\THIRD-PARTY APPLICATION\EMAIL COPIES\email_[Appeal_No]_[PropertyDesc]_Third-Party Appeal Application.eml</code>
             }
             else if (Model.IsS52)
             {
@@ -1603,7 +1641,9 @@
         const QA_REQUIRED = @(qaRequired.ToString().ToLowerInvariant());
         const QA_APPROVED = @(qaApproved.ToString().ToLowerInvariant());
         const IS_TPA = @(isTpa.ToString().ToLowerInvariant());
-        const TPA_READY = @(tpa?.TotalReadyToSend ?? 0);
+        const IS_CLA_TPA = @(isClaTpa.ToString().ToLowerInvariant());
+        const IS_DIRECT_THIRD_PARTY = @(isDirectThirdParty.ToString().ToLowerInvariant());
+        const DIRECT_READY = @(directEmail?.TotalReadyToSend ?? 0);
 
         // ─────────────────────────────────────────────────────────────
         // NORMAL BATCH SEND FUNCTIONS
@@ -1612,7 +1652,7 @@
         // ─────────────────────────────────────────────────────────────
 
         function onChkChange() {
-            if (IS_TPA) return;
+            if (IS_DIRECT_THIRD_PARTY) return;
 
             _selCount = 0;
             _selRecords = 0;
@@ -1626,7 +1666,7 @@
         }
 
         function toggleRow(id) {
-            if (IS_TPA) return;
+            if (IS_DIRECT_THIRD_PARTY) return;
 
             if (QA_REQUIRED && !QA_APPROVED) {
                 alert('QA must be approved before selecting batches to send.');
@@ -1648,7 +1688,7 @@
         }
 
         function toggleAll(m) {
-            if (IS_TPA) return;
+            if (IS_DIRECT_THIRD_PARTY) return;
 
             if (QA_REQUIRED && !QA_APPROVED) {
                 alert('QA must be approved before selecting batches to send.');
@@ -1670,7 +1710,7 @@
         }
 
         function updateCapUI() {
-            if (IS_TPA) return;
+            if (IS_DIRECT_THIRD_PARTY) return;
 
             const selCountEl = document.getElementById('selCount');
             const selRecordsEl = document.getElementById('selRecords');
@@ -1732,8 +1772,8 @@
         }
 
         function submitSendForm() {
-            if (IS_TPA) {
-                submitTpaSendForm();
+            if (IS_DIRECT_THIRD_PARTY) {
+                submitDirectSendForm();
                 return;
             }
 
@@ -1766,8 +1806,8 @@
         }
 
         function showEmailOverlay() {
-            if (IS_TPA) {
-                showTpaEmailOverlay();
+            if (IS_DIRECT_THIRD_PARTY) {
+                showDirectEmailOverlay();
                 return;
             }
 
@@ -1800,8 +1840,8 @@
         }
 
         function pollEmailProgress() {
-            if (IS_TPA) {
-                pollTpaEmailProgress();
+            if (IS_DIRECT_THIRD_PARTY) {
+                pollDirectEmailProgress();
                 return;
             }
 
@@ -1864,8 +1904,8 @@
         // No batchIds are required.
         // ─────────────────────────────────────────────────────────────
 
-        function submitTpaSendForm() {
-            if (!IS_TPA) {
+        function submitDirectSendForm() {
+            if (!IS_DIRECT_THIRD_PARTY) {
                 submitSendForm();
                 return;
             }
@@ -1876,8 +1916,8 @@
                 return;
             }
 
-            if (TPA_READY <= 0) {
-                alert('There are no Third-Party Appeal notices ready to send.');
+            if (DIRECT_READY <= 0) {
+                alert(IS_CLA_TPA ? 'There are no CLA notices ready to send.' : 'There are no Third-Party Appeal notices ready to send.');
                 return;
             }
 
@@ -1888,7 +1928,7 @@
                 btn.innerHTML = '<span class="se-spin"></span> Sending…';
             }
 
-            showTpaEmailOverlay();
+            showDirectEmailOverlay();
 
             const form = document.getElementById('sendForm');
 
@@ -1897,15 +1937,15 @@
             }
         }
 
-        function showTpaEmailOverlay() {
+        function showDirectEmailOverlay() {
             document.getElementById('epOverlay').classList.add('active');
-            document.getElementById('epTitle').textContent = 'Sending Third-Party Appeal notices…';
+            document.getElementById('epTitle').textContent = IS_CLA_TPA ? 'Sending CLA notices…' : 'Sending Third-Party Appeal notices…';
             document.getElementById('epSub').textContent =
-                TPA_READY.toLocaleString() + ' notices — please wait';
+                DIRECT_READY.toLocaleString() + ' notices — please wait';
 
-            document.getElementById('epTotal').textContent = TPA_READY.toLocaleString();
-            document.getElementById('epRemaining').textContent = TPA_READY.toLocaleString();
-            document.getElementById('epChipPending').textContent = TPA_READY.toLocaleString();
+            document.getElementById('epTotal').textContent = DIRECT_READY.toLocaleString();
+            document.getElementById('epRemaining').textContent = DIRECT_READY.toLocaleString();
+            document.getElementById('epChipPending').textContent = DIRECT_READY.toLocaleString();
 
             document.getElementById('epSent').textContent = '0';
             document.getElementById('epPct').textContent = '0';
@@ -1924,8 +1964,8 @@
             _pollTimer = setInterval(pollTpaEmailProgress, 700);
         }
 
-        function pollTpaEmailProgress() {
-            fetch('/Step3/ThirdPartyEmailProgress?key=' + encodeURIComponent(WF_KEY))
+        function pollDirectEmailProgress() {
+            fetch((IS_CLA_TPA ? '/Step3/ClaThirdPartyEmailProgress?key=' : '/Step3/ThirdPartyEmailProgress?key=') + encodeURIComponent(WF_KEY))
                 .then(r => r.json())
                 .then(d => {
                     const total = d.total || 0;
@@ -1960,7 +2000,7 @@
 
                         document.getElementById('epDoneTitle').textContent = failed > 0
                             ? 'Done — ' + sent.toLocaleString() + ' sent, ' + failed.toLocaleString() + ' failed'
-                            : sent.toLocaleString() + ' Third-Party Appeal notices sent successfully';
+                            : sent.toLocaleString() + (IS_CLA_TPA ? ' CLA notices sent successfully' : ' Third-Party Appeal notices sent successfully');
 
                         document.getElementById('epDoneSub').textContent =
                             '.eml copies saved · ' + skipped.toLocaleString() + ' skipped';
@@ -2008,16 +2048,20 @@
                 return;
             }
 
-            if (IS_TPA) {
+            if (IS_DIRECT_THIRD_PARTY) {
                 if (btn) {
-                    btn.disabled = TPA_READY <= 0;
-                    btn.innerHTML = TPA_READY > 0
-                        ? '📧 Send Third-Party Appeal Notices'
-                        : 'No Third-Party Appeal Notices Ready';
+                    btn.disabled = DIRECT_READY <= 0;
+                    btn.innerHTML = DIRECT_READY > 0
+                        ? (IS_CLA_TPA
+                            ? '📧 Send CLA Notices'
+                            : '📧 Send Third-Party Appeal Notices')
+                        : (IS_CLA_TPA
+                            ? 'No CLA Notices Ready'
+                            : 'No Third-Party Appeal Notices Ready');
                 }
 
                 if (note) {
-                    note.textContent = 'TPA sends directly. No batch selection is required.';
+                    note.textContent = IS_CLA_TPA ? 'CLA sends directly. No batch selection is required.' : 'TPA sends directly. No batch selection is required.';
                     note.className = 'se-cap-note';
                 }
 

@@ -4,6 +4,7 @@ using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.DTOs;
 using GV23_Notice.Services.Email;
+using GV23_Notice.Services.ClaThirdPartyApplications;
 using GV23_Notice.Services.Notices.DearJohnny;
 using GV23_Notice.Services.Notices.Invalidity;
 using GV23_Notice.Services.Notices.Section49;
@@ -35,6 +36,7 @@ namespace GV23_Notice.Services.Notices
         private readonly IDearJonnyPdfService _dj;
         private readonly IInvalidNoticePdfService _inv;
         private readonly IThirdPartyAppealFormalNoticePdfService _tpaPdf;
+        private readonly IClaThirdPartyFormalNoticePdfService _claTpaPdf;
 
         public NoticePreviewService(
             AppDbContext db,
@@ -47,6 +49,7 @@ namespace GV23_Notice.Services.Notices
             IDearJonnyPdfService dj,
             IInvalidNoticePdfService inv,
             IThirdPartyAppealFormalNoticePdfService tpaPdf,
+            IClaThirdPartyFormalNoticePdfService claTpaPdf,
             INoticeEmailTemplateService email)
         {
             _db = db;
@@ -61,6 +64,7 @@ namespace GV23_Notice.Services.Notices
             _inv = inv;
             _email = email;
             _tpaPdf = tpaPdf;
+            _claTpaPdf = claTpaPdf;
         }
 
         public async Task<NoticePreviewResult> BuildPreviewAsync(
@@ -81,6 +85,8 @@ namespace GV23_Notice.Services.Notices
                 throw new InvalidOperationException("Step1 settings must be approved before Step2 preview.");
 
             var isTpa = settings.Notice == NoticeKind.TPA;
+            var isClaTpa = settings.Notice == NoticeKind.CLA_TPA;
+            var isDirectThirdPartyNotice = isTpa || isClaTpa;
 
             var roll = await _db.RollRegistry
                 .AsNoTracking()
@@ -90,7 +96,7 @@ namespace GV23_Notice.Services.Notices
              * Normal notices still require RollRegistry.
              * TPA / Application to the Valuation Appeal does not require the user to select a roll.
              */
-            if (roll is null && !isTpa)
+            if (roll is null && !isDirectThirdPartyNotice)
                 throw new InvalidOperationException("RollRegistry not found.");
 
             var rollName = roll?.Name ?? settings.RollName ?? "Valuation Roll";
@@ -410,6 +416,86 @@ namespace GV23_Notice.Services.Notices
                         break;
                     }
 
+
+                case NoticeKind.CLA_TPA:
+                    {
+                        var db = await LoadClaThirdPartyPreviewRowAsync(
+                            settings.Id,
+                            ct);
+
+                        if (db is null)
+                        {
+                            throw new InvalidOperationException(
+                                "No CLA Third-Party Application Notice records were found for preview.");
+                        }
+
+                        var claRollId = db.RollId ?? settings.RollId;
+
+                        var claRoll = await _db.RollRegistry
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(
+                                x => x.RollId == claRollId,
+                                ct);
+
+                        if (claRoll is not null)
+                        {
+                            roll = claRoll;
+                            rollId = claRoll.RollId;
+                            rollShortCode = claRoll.ShortCode ?? db.RollShortCode ?? "GV23";
+                            rollName = claRoll.Name ?? db.ValuationPeriod ?? settings.RollName ?? "General Valuation Roll 2023";
+                        }
+                        else
+                        {
+                            rollId = claRollId;
+                            rollShortCode = FirstNonEmpty(
+                                db.RollShortCode,
+                                settings.Roll.ToString(),
+                                "GV23");
+
+                            rollName = FirstNonEmpty(
+                                db.ValuationPeriod,
+                                settings.RollName,
+                                settings.ValuationPeriodCode,
+                                "General Valuation Roll 2023");
+                        }
+
+                        sampleAppealNo = db.ClaNumber ?? "";
+                        sampleObjectionNo = db.ObjectionNumber ?? "";
+                        valuationKey = db.PremiseId ?? "";
+                        samplePropertyDesc = db.PropertyDescription ?? "";
+
+                        db.NoticeSettingsId = settings.Id;
+                        db.RollId = rollId;
+                        db.RollShortCode = rollShortCode;
+                        db.ValuationPeriod = rollName;
+                        db.LetterDate ??= settings.LetterDate;
+                        db.RepresentationCloseDate ??=
+                            settings.ObjectionEndDate ??
+                            settings.LetterDate.AddDays(30);
+
+                        pdfBytes = _claTpaPdf.BuildPdf(
+                            settings,
+                            db);
+
+                        pdfFileName =
+                            $"{SanitizeFilePart(rollShortCode)}_CLA_TPA_PREVIEW_{SanitizeFilePart(db.ClaNumber)}.pdf";
+
+                        recipientName = FirstNonEmpty(
+                            db.OwnerName,
+                            "Property Owner");
+
+                        recipientEmail = db.OwnerEmail ?? "";
+
+                        addressLine = BuildAddrLine(
+                            db.OwnerAddress1,
+                            db.OwnerAddress2,
+                            db.OwnerAddress3,
+                            db.OwnerAddress4,
+                            db.OwnerAddress5);
+
+                        break;
+                    }
+
                 default:
                     throw new NotSupportedException($"Preview not implemented for notice {settings.Notice}.");
             }
@@ -417,19 +503,45 @@ namespace GV23_Notice.Services.Notices
             // =========================
             // 2) Email preview
             // =========================
-            var emailReq = BuildEmailReqFromReal(
-                settings,
-                roll,
-                recipientName,
-                recipientEmail,
-                sampleObjectionNo,
-                sampleAppealNo,
-                samplePropertyDesc,
-                valuationKey,
-                variant,
-                isEmailMulti);
+            string subject;
+            string body;
 
-            var (subject, body) = _email.Build(emailReq);
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                subject = BuildClaPreviewEmailSubject(
+                    sampleAppealNo,
+                    samplePropertyDesc);
+
+                body = BuildClaPreviewEmailBody(
+                    recipientName,
+                    sampleAppealNo,
+                    sampleObjectionNo,
+                    samplePropertyDesc,
+                    settings.ObjectionEndDate ??
+                        settings.LetterDate.AddDays(30));
+            }
+            else
+            {
+                if (roll is null)
+                {
+                    throw new InvalidOperationException(
+                        "RollRegistry is required to build the email preview.");
+                }
+
+                var emailReq = BuildEmailReqFromReal(
+                    settings,
+                    roll,
+                    recipientName,
+                    recipientEmail,
+                    sampleObjectionNo,
+                    sampleAppealNo,
+                    samplePropertyDesc,
+                    valuationKey,
+                    variant,
+                    isEmailMulti);
+
+                (subject, body) = _email.Build(emailReq);
+            }
 
             return new NoticePreviewResult
             {
@@ -616,6 +728,77 @@ namespace GV23_Notice.Services.Notices
                 PropertyRows = rows
             };
         }
+
+        private async Task<ClaThirdPartyApplicationNotice?>
+            LoadClaThirdPartyPreviewRowAsync(
+                int noticeSettingsId,
+                CancellationToken ct)
+        {
+            var linked = await _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .Where(x =>
+                    x.NoticeSettingsId == noticeSettingsId &&
+                    !string.IsNullOrWhiteSpace(x.ClaNumber))
+                .OrderBy(x => x.ClaNumber)
+                .FirstOrDefaultAsync(ct);
+
+            if (linked is not null)
+            {
+                return linked;
+            }
+
+            return await _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .Where(x =>
+                    !string.IsNullOrWhiteSpace(x.ClaNumber))
+                .OrderBy(x => x.ClaNumber)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        private static string BuildClaPreviewEmailSubject(
+            string? claNumber,
+            string? propertyDescription)
+        {
+            var reference = FirstNonEmpty(
+                claNumber,
+                "CLA application");
+
+            var property = FirstNonEmpty(
+                propertyDescription,
+                "your property");
+
+            return $"CLA Third-Party Application Notice - {reference} - {property}";
+        }
+
+        private static string BuildClaPreviewEmailBody(
+            string? ownerName,
+            string? claNumber,
+            string? objectionNumber,
+            string? propertyDescription,
+            DateTime representationCloseDate)
+        {
+            var safeOwner = System.Net.WebUtility.HtmlEncode(
+                FirstNonEmpty(ownerName, "Property Owner"));
+
+            var safeCla = System.Net.WebUtility.HtmlEncode(
+                FirstNonEmpty(claNumber, "—"));
+
+            var safeObjection = System.Net.WebUtility.HtmlEncode(
+                FirstNonEmpty(objectionNumber, "—"));
+
+            var safeProperty = System.Net.WebUtility.HtmlEncode(
+                FirstNonEmpty(propertyDescription, "the property"));
+
+            return $@"<p>Dear {safeOwner},</p>
+<p>Please find attached the <strong>CLA Third-Party Application Notice</strong> relating to {safeProperty}.</p>
+<p><strong>CLA Number:</strong> {safeCla}<br />
+<strong>Objection Number:</strong> {safeObjection}<br />
+<strong>Representation Closing Date:</strong> {representationCloseDate:dd MMMM yyyy}</p>
+<p>The third-party application for condonation of a late appeal, the appeal application and the supporting documentation will accompany the final email.</p>
+<p>You may submit written representations within 30 calendar days to <strong>valuationenquiries@joburg.org.za</strong>.</p>
+<p>Regards,<br />Condonation for Late Appeal Committee</p>";
+        }
+
         private async Task<ThirdPartyAppealPreviewLite?> LoadThirdPartyAppealPreviewRowAsync(
             int noticeSettingsId,
             bool preferMulti,

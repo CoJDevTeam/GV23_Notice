@@ -5,6 +5,9 @@
 
     bool isInvalid = Model.Notice == NoticeKind.IN;
     bool isS52 = Model.Notice == NoticeKind.S52;
+    bool isTpa = Model.Notice == NoticeKind.TPA;
+    bool isClaTpa = Model.Notice == NoticeKind.CLA_TPA;
+    bool isDirectThirdPartyNotice = isTpa || isClaTpa;
     bool supportsSingleEmailMulti =
         Model.Notice is NoticeKind.S49 or NoticeKind.S51 or NoticeKind.S53
                      or NoticeKind.S78 or NoticeKind.S52;
@@ -26,7 +29,10 @@
 
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
     bool isDJ = Model.Notice == NoticeKind.DJ;
-    bool allowSplitPdf = !isInvalid && !isDJ;
+    bool allowSplitPdf =
+      !isInvalid &&
+      !isDJ &&
+      !isDirectThirdPartyNotice;
 
     string NoticeName(NoticeKind n) => n switch
     {
@@ -37,6 +43,8 @@
         NoticeKind.DJ => "Dear Johnny Notice",
         NoticeKind.IN => "Invalid Notice",
         NoticeKind.S78 => "Section 78 — Review Period",
+        NoticeKind.TPA => "Third-Party Appeal Application",
+        NoticeKind.CLA_TPA => "CLA-THIRD PARTY APPLICATION NOTICE",
         _ => n.ToString()
     };
 }
@@ -106,9 +114,36 @@
     <div class="s2-meta-bar">
         <span class="s2-meta-pill s2-notice-pill">@NoticeName(Model.Notice)</span>
         <span class="s2-meta-pill"><strong>Roll:</strong> @Model.RollShortCode — @Model.RollName</span>
-        <span class="s2-meta-pill"><strong>Letter Date:</strong> @Model.LetterDate.ToString("dd MMM yyyy")</span>
+        <span class="s2-meta-pill"><strong>@(isClaTpa
+                    ? "Notification Date:"
+                    : "Letter Date:")
+            </strong>
+
+            @Model.LetterDate.ToString("dd MMM yyyy")
+        </span>
         <span class="s2-meta-pill"><strong>Recipient:</strong> @Model.RecipientName</span>
-        <span class="s2-meta-pill"><strong>Mode:</strong> @selectedMode &nbsp;|&nbsp; <strong>Variant:</strong> @selectedVariant</span>
+        @if (!isDirectThirdPartyNotice)
+        {
+            <span class="s2-meta-pill">
+                <strong>Mode:</strong> @selectedMode
+                &nbsp;|&nbsp;
+                <strong>Variant:</strong> @selectedVariant
+            </span>
+        }
+        else if (isClaTpa)
+        {
+            <span class="s2-meta-pill">
+                <strong>Representation Period:</strong>
+                30 calendar days
+            </span>
+        }
+        else
+        {
+            <span class="s2-meta-pill">
+                <strong>Owner Response Period:</strong>
+                51 calendar days
+            </span>
+        }
     </div>
 
     <!-- Variant / Mode tabs -->
@@ -207,9 +242,29 @@ else
                         @await Html.PartialAsync("_NotFoundPartial", Model)
                     }
             </div>
-            <div class="s2-card-foot">
-                <strong>Single</strong> = Standard notice · <strong>Email Multi</strong> = Recipient holds multiple properties · <strong>Split PDF</strong> = Rows split by category
-            </div>
+                <div class="s2-card-foot">
+                    @if (isClaTpa)
+                    {
+                        <span>
+                            Preview of one CLA property-owner notification.
+                            Bulk printing will process all linked CLA records during Step 3.
+                        </span>
+                    }
+                    else if (isTpa)
+                    {
+                        <span>
+                            Preview of one Third-Party Appeal Application notice.
+                        </span>
+                    }
+                    else
+                    {
+                        <span>
+                            <strong>Single</strong> = Standard notice ·
+                            <strong>Email Multi</strong> = Recipient holds multiple properties ·
+                            <strong>Split PDF</strong> = Rows split by category
+                        </span>
+                    }
+                </div>
         </div>
 
         <!-- Side panel -->
@@ -240,7 +295,11 @@ else
                 </div>
                 <div class="s2-snap-grid">
                     <div class="s2-snap-item">
-                        <span class="s2-snap-label">Letter Date</span>
+                            <span class="s2-snap-label">
+                                @(isClaTpa
+                                    ? "Notification Letter Date"
+                                    : "Letter Date")
+                            </span>
                         <span class="s2-snap-value">@Model.LetterDate.ToString("dd MMM yyyy")</span>
                     </div>
                     <div class="s2-snap-item">
@@ -249,21 +308,34 @@ else
                             @(Model.CityManagerSignDate?.ToString("dd MMM yyyy") ?? "—")
                         </span>
                     </div>
-                    @if (Model.ObjectionStartDate != null || Model.ObjectionEndDate != null)
-                    {
-                        <div class="s2-snap-item">
-                            <span class="s2-snap-label">Objection Start</span>
-                            <span class="s2-snap-value @(Model.ObjectionStartDate == null ? "empty" : "")">
-                                @(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")
-                            </span>
-                        </div>
-                        <div class="s2-snap-item">
-                            <span class="s2-snap-label">Objection End</span>
-                            <span class="s2-snap-value @(Model.ObjectionEndDate == null ? "empty" : "")">
-                                @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")
-                            </span>
-                        </div>
-                    }
+                        @if (Model.ObjectionStartDate != null ||
+         Model.ObjectionEndDate != null)
+                        {
+                            <div class="s2-snap-item">
+                                <span class="s2-snap-label">
+                                    @(isClaTpa
+                                        ? "Representation Starts"
+                                        : "Objection Start")
+                                </span>
+
+                                <span class="s2-snap-value @(Model.ObjectionStartDate == null ? "empty" : "")">
+                                    @(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")
+                                </span>
+                            </div>
+
+                            <div class="s2-snap-item">
+                                <span class="s2-snap-label">
+                                    @(isClaTpa
+                                        ? "Representation Closes"
+                                        : "Objection End")
+                                </span>
+
+                                <span class="s2-snap-value @(Model.ObjectionEndDate == null ? "empty" : "")">
+                                    @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")
+                                </span>
+                            </div>
+                        }
+                    
                     @if (Model.AppealCloseDate != null)
                     {
                         <div class="s2-snap-item">
@@ -302,19 +374,28 @@ else
                         </div>
                     }
                 </div>
-                <div class="s2-sig-row">
-                    <span class="s2-sig-label">Signature</span>
-                    @if (hasSignature)
+                    @if (!isDirectThirdPartyNotice)
                     {
-                        <span class="s2-badge s2-badge-ok">✓ Uploaded</span>
-                        <span class="s2-sig-path">@System.IO.Path.GetFileName(Model.SignaturePath)</span>
-                    }
-                    else
-                    {
+                        <div class="s2-sig-row">
+                            <span class="s2-sig-label">Signature</span>
 
-                        <span class="s2-badge s2-badge-warn">⚠ Not Uploaded</span>
+                            @if (hasSignature)
+                            {
+                                <span class="s2-badge s2-badge-ok">✓ Uploaded</span>
+                                <span class="s2-sig-path">
+                                    @System.IO.Path.GetFileName(Model.SignaturePath)
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="s2-badge s2-badge-warn">
+                                    ⚠ Not Uploaded
+                                </span>
+                            }
+                        </div>
                     }
-                </div>
+
+
             </div>
 
             <!-- Email preview -->
@@ -341,7 +422,9 @@ else
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                             <polygon points="5 3 19 12 5 21 5 3" />
                         </svg>
-                        Start Step 3 Processing
+                            @(isClaTpa
+          ? "Approve CLA Preview"
+          : "Start Step 3 Processing")
                     </button>
                     <a class="s2-btn s2-btn-back" asp-controller="Workflow" asp-action="Step1"
                        asp-route-settingsId="@Model.SettingsId">
@@ -375,8 +458,16 @@ else
                     </svg>
                 </div>
                 <div>
-                    <div class="s2-modal-title">Confirm — Start Step 3 Processing</div>
-                    <div class="s2-modal-sub">This will unlock batch creation for this notice</div>
+                    <div class="s2-modal-title">
+                        @(isClaTpa
+                            ? "Confirm — Approve CLA Preview"
+                            : "Confirm — Start Step 3 Processing")
+                    </div>
+                    <div class="s2-modal-sub">
+                        @(isClaTpa
+                            ? "This will approve the CLA letter and email preview"
+                            : "This will unlock batch creation for this notice")
+                    </div>
                 </div>
             </div>
             <button class="s2-modal-x" onclick="closeStep3Modal()">✕</button>
@@ -386,10 +477,30 @@ else
             <div class="s2-modal-warning">
                 <span class="s2-modal-warning-icon">⚠</span>
                 <div class="s2-modal-warning-text">
-                    You are about to start Step 3 processing for
-                    <strong>@NoticeName(Model.Notice)</strong>
-                    on roll <strong>@Model.RollShortCode — @Model.RollName</strong>.
-                    Step 3 will allow the Data Team to create batches, print PDFs and send notices to ratepayers.
+                    @if (isClaTpa)
+                    {
+                        <span>
+                            You are approving the letter and email preview for
+                            <strong>CLA-THIRD PARTY APPLICATION NOTICE</strong>.
+
+                            After approval, the workflow will continue to printing,
+                            appeal-pack verification and sending notices to property owners.
+                        </span>
+                    }
+                    else
+                    {
+                        <span>
+                            You are about to start Step 3 processing for
+                            <strong>@NoticeName(Model.Notice)</strong>
+                            on roll
+                            <strong>
+                                @Model.RollShortCode — @Model.RollName
+                            </strong>.
+
+                            Step 3 will allow the Data Team to create batches,
+                            print PDFs and send notices to ratepayers.
+                        </span>
+                    }
                 </div>
             </div>
 
@@ -424,6 +535,29 @@ else
                         <span class="s2-ms-val">@(hasSignature ? "✓ Uploaded" : "⚠ Not Uploaded")</span>
                     </div>
                 }
+                @if (isClaTpa)
+                {
+                    <div class="s2-ms-row">
+                        <span class="s2-ms-key">
+                            Representation Period
+                        </span>
+
+                        <span class="s2-ms-val">
+                            30 calendar days
+                        </span>
+                    </div>
+
+                    <div class="s2-ms-row">
+                        <span class="s2-ms-key">
+                            Representation Closes
+                        </span>
+
+                        <span class="s2-ms-val">
+                            @(Model.ObjectionEndDate?.ToString("dd MMMM yyyy")
+                                ?? Model.LetterDate.AddDays(30).ToString("dd MMMM yyyy"))
+                        </span>
+                    </div>
+                }
                 <div class="s2-ms-row">
                     <span class="s2-ms-key">Version</span>
                     <span class="s2-ms-val">v @Model.Version</span>
@@ -431,8 +565,22 @@ else
             </div>
 
             <div class="s2-modal-note">
-                ℹ This does not send any notices to ratepayers. The Data Team will manage
-                batch creation, PDF printing, and email dispatch in Step 3.
+                @if (isClaTpa)
+                {
+                    <span>
+                        ℹ This approval does not send emails.
+                        The next stage will print the CLA letters, verify appeal packs,
+                        and prepare the owner notifications.
+                    </span>
+                }
+                else
+                {
+                    <span>
+                        ℹ This does not send any notices to ratepayers.
+                        The Data Team will manage batch creation, PDF printing,
+                        and email dispatch in Step 3.
+                    </span>
+                }
             </div>
         </div>
 
@@ -448,7 +596,9 @@ else
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                         <polygon points="5 3 19 12 5 21 5 3" />
                     </svg>
-                    Yes — Start Step 3
+                    @(isClaTpa
+     ? "Yes — Approve CLA Preview"
+     : "Yes — Start Step 3")
                 </button>
             </form>
         </div>

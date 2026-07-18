@@ -94,6 +94,9 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public int? ThirdPartyResponseDays { get; set; }
         public DateTime? ThirdPartyEstimatedSendDate { get; set; }
         public DateTime? ThirdPartyEstimatedResponseDueDate { get; set; }
+
+      public bool IsClaThirdPartyApplication { get;set; }
+               
     }
 
     public sealed class KickoffBatchRowVm

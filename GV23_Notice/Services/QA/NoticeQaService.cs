@@ -1,6 +1,4 @@
-﻿// Services/QA/NoticeQaService.cs
-
-using GV23_Notice.Data;
+﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
@@ -23,7 +21,8 @@ namespace GV23_Notice.Services.QA
 
         public NoticeQaService(
             AppDbContext db,
-            IRollDbConnectionFactory rollConn,INoticeSourceStatusService sourceStatus)
+            IRollDbConnectionFactory rollConn,
+            INoticeSourceStatusService sourceStatus)
         {
             _db = db;
             _rollConn = rollConn;
@@ -55,6 +54,7 @@ namespace GV23_Notice.Services.QA
                 NoticeKind.IN => true,
                 NoticeKind.S78 => true,
                 NoticeKind.TPA => true,
+                NoticeKind.CLA_TPA => true,
                 _ => false
             };
         }
@@ -80,7 +80,18 @@ namespace GV23_Notice.Services.QA
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                return await BuildTpaQaVmAsync(workflowKey, settings, ct);
+                return await BuildTpaQaVmAsync(
+                    workflowKey,
+                    settings,
+                    ct);
+            }
+
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                return await BuildClaQaVmAsync(
+                    workflowKey,
+                    settings,
+                    ct);
             }
 
             var roll = await _db.RollRegistry
@@ -133,7 +144,7 @@ namespace GV23_Notice.Services.QA
                 .Select(x => new NoticeQaItemVm
                 {
                     QaItemId = x.Id,
-                    NoticeRunLogId = x.NoticeRunLogId??0,
+                    NoticeRunLogId = x.NoticeRunLogId ?? 0,
                     ObjectionNo = x.ObjectionNo,
                     PremiseId = x.PremiseId,
                     PropertyType = x.PropertyType,
@@ -183,7 +194,20 @@ namespace GV23_Notice.Services.QA
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                return await CreateTpaQaRunAsync(workflowKey, settings, user, ct);
+                return await CreateTpaQaRunAsync(
+                    workflowKey,
+                    settings,
+                    user,
+                    ct);
+            }
+
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                return await CreateClaQaRunAsync(
+                    workflowKey,
+                    settings,
+                    user,
+                    ct);
             }
 
             var roll = await _db.RollRegistry
@@ -363,7 +387,23 @@ namespace GV23_Notice.Services.QA
 
             if (settings.Notice == NoticeKind.TPA)
             {
-                await ApproveTpaQaAsync(qaRun, user, comment, ct);
+                await ApproveTpaQaAsync(
+                    qaRun,
+                    user,
+                    comment,
+                    ct);
+
+                return;
+            }
+
+            if (settings.Notice == NoticeKind.CLA_TPA)
+            {
+                await ApproveClaQaAsync(
+                    qaRun,
+                    user,
+                    comment,
+                    ct);
+
                 return;
             }
 
@@ -721,6 +761,7 @@ INNER JOIN @ObjectionNos n
             {
                 NoticeKind.S52 => "VAB",
                 NoticeKind.TPA => "VAB",
+                NoticeKind.CLA_TPA => "Property Type",
                 _ => "Property Type"
             };
         }
@@ -747,6 +788,300 @@ INNER JOIN @ObjectionNos n
                 _ => cleaned
             };
         }
+
+        private async Task<NoticeQaVm> BuildClaQaVmAsync(
+            Guid workflowKey,
+            NoticeSettings settings,
+            CancellationToken ct)
+        {
+            var totalPrinted = await _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .CountAsync(x =>
+                    x.NoticeSettingsId == settings.Id &&
+                    x.IsActive &&
+                    (x.Status == "Printed" ||
+                     x.Status == "Email-Failed" ||
+                     x.Status == "Sent") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "",
+                    ct);
+
+            var qaRun = await _db.NoticeQaRuns
+                .AsNoTracking()
+                .Include(x => x.Items)
+                .Where(x => x.WorkflowKey == workflowKey)
+                .OrderByDescending(x => x.Id)
+                .FirstOrDefaultAsync(ct);
+
+            var vm = new NoticeQaVm
+            {
+                WorkflowKey = workflowKey,
+                SettingsId = settings.Id,
+                RollId = settings.RollId,
+                RollShortCode =
+                    settings.ValuationPeriodCode ??
+                    settings.Roll.ToString(),
+                RollName =
+                    settings.RollName ??
+                    "CLA Third-Party Applications",
+                Notice = settings.Notice,
+                VersionText = $"V{settings.Version}",
+                TotalPrinted = totalPrinted,
+                QaStatus = qaRun?.Status ?? "NotStarted",
+                QaRunId = qaRun?.Id,
+                IsApproved = qaRun?.Status == "Approved"
+            };
+
+            if (qaRun == null)
+                return vm;
+
+            var items = qaRun.Items
+                .OrderBy(x => x.PropertyType)
+                .ThenBy(x => x.ObjectionNo)
+                .Select(x => new NoticeQaItemVm
+                {
+                    QaItemId = x.Id,
+                    NoticeRunLogId = x.NoticeRunLogId ?? 0,
+                    ObjectionNo = x.ObjectionNo,
+                    PremiseId = x.PremiseId,
+                    PropertyType = x.PropertyType,
+                    PropertyDesc = x.PropertyDesc,
+                    PdfPath = x.PdfPath,
+                    NewCategoryMvd = x.NewCategoryMvd,
+                    New2CategoryMvd = x.New2CategoryMvd,
+                    New3CategoryMvd = x.New3CategoryMvd,
+                    ExpectedCategory = x.ExpectedCategory,
+                    IsCategoryValid = x.IsCategoryValid,
+                    QaStatus = x.QaStatus,
+                    QaComment = x.QaComment
+                })
+                .ToList();
+
+            vm.TotalQaItems = items.Count;
+            vm.FailedItems = items.Count(x =>
+                !x.IsCategoryValid ||
+                x.QaStatus == "Failed");
+
+            vm.CanApprove =
+                items.Count > 0 &&
+                items.All(x => x.IsCategoryValid) &&
+                qaRun.Status != "Approved";
+
+            vm.Groups = items
+                .GroupBy(x =>
+                    string.IsNullOrWhiteSpace(x.PropertyType)
+                        ? "General"
+                        : x.PropertyType)
+                .Select(group => new NoticeQaGroupVm
+                {
+                    PropertyType = group.Key,
+                    GroupLabel = "Property Type",
+                    Items = group.ToList()
+                })
+                .ToList();
+
+            return vm;
+        }
+
+        private async Task<int> CreateClaQaRunAsync(
+            Guid workflowKey,
+            NoticeSettings settings,
+            string user,
+            CancellationToken ct)
+        {
+            var oldOpenRuns = await _db.NoticeQaRuns
+                .Where(x =>
+                    x.WorkflowKey == workflowKey &&
+                    x.Status == "Open")
+                .ToListAsync(ct);
+
+            foreach (var oldRun in oldOpenRuns)
+            {
+                oldRun.Status = "Replaced";
+            }
+
+            var printedRows = await _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .Where(x =>
+                    x.NoticeSettingsId == settings.Id &&
+                    x.IsActive &&
+                    (x.Status == "Printed" ||
+                     x.Status == "Email-Failed" ||
+                     x.Status == "Sent") &&
+                    x.PdfPath != null &&
+                    x.PdfPath != "")
+                .OrderBy(x => x.ClaNumber)
+                .Select(x => new ClaQaLite
+                {
+                    Id = x.Id,
+                    ClaNumber = x.ClaNumber ?? "",
+                    ObjectionNumber = x.ObjectionNumber ?? "",
+                    PremiseId = x.PremiseId,
+                    PropertyDescription = x.PropertyDescription,
+                    PropertyType = x.RollCategory1,
+                    PdfPath = x.PdfPath,
+                    OwnerEmail = x.OwnerEmail,
+                    AppealPackZipPath = x.AppealPackPath,
+                    AppealPackExists = x.AppealPackExists
+                })
+                .ToListAsync(ct);
+
+            if (printedRows.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "No printed CLA notices were found for QA. Print the CLA notices first.");
+            }
+
+            var selected = PickDynamicQaSample(
+                    printedRows,
+                    x => NormalizePropertyType(x.PropertyType))
+                .ToList();
+
+            var qaRun = new NoticeQaRun
+            {
+                WorkflowKey = workflowKey,
+                NoticeSettingsId = settings.Id,
+                RollId = settings.RollId,
+                Notice = settings.Notice,
+                Status = "Open",
+                CreatedBy = user,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+
+            foreach (var row in selected)
+            {
+                var propertyType =
+                    NormalizePropertyType(row.PropertyType);
+
+                var hasPdf =
+                    !string.IsNullOrWhiteSpace(row.PdfPath) &&
+                    File.Exists(row.PdfPath);
+
+                var hasClaNumber =
+                    !string.IsNullOrWhiteSpace(row.ClaNumber);
+
+                var hasPremise =
+                    !string.IsNullOrWhiteSpace(row.PremiseId);
+
+                var hasProperty =
+                    !string.IsNullOrWhiteSpace(
+                        row.PropertyDescription);
+
+                var hasAppealPack =
+                    row.AppealPackExists &&
+                    !string.IsNullOrWhiteSpace(
+                        row.AppealPackZipPath) &&
+                    File.Exists(row.AppealPackZipPath);
+
+                var passed =
+                    hasPdf &&
+                    hasClaNumber &&
+                    hasPremise &&
+                    hasProperty &&
+                    hasAppealPack;
+
+                var commentParts = new List<string>();
+
+                if (!hasPdf)
+                    commentParts.Add(
+                        "CLA notice PDF is missing or the path does not exist.");
+
+                if (!hasClaNumber)
+                    commentParts.Add(
+                        "CLA number is missing.");
+
+                if (!hasPremise)
+                    commentParts.Add(
+                        "Premise ID is missing.");
+
+                if (!hasProperty)
+                    commentParts.Add(
+                        "Property description is missing.");
+
+                if (!hasAppealPack)
+                    commentParts.Add(
+                        "Appeal-pack ZIP is missing or the path does not exist.");
+
+                qaRun.Items.Add(new NoticeQaItem
+                {
+                    /*
+                     * CLA does not use NoticeRunLogs.
+                     * The QA PDF is opened using the stored PdfPath.
+                     */
+                    NoticeRunLogId = null,
+
+                    ObjectionNo =
+                        string.IsNullOrWhiteSpace(row.ClaNumber)
+                            ? row.ObjectionNumber
+                            : row.ClaNumber,
+
+                    PremiseId = row.PremiseId,
+                    PropertyType = propertyType,
+                    PropertyDesc =
+                        row.PropertyDescription,
+                    PdfPath = row.PdfPath,
+
+                    NewCategoryMvd = "",
+                    New2CategoryMvd = "",
+                    New3CategoryMvd = "",
+
+                    ExpectedCategory =
+                        "CLA PDF, CLA number, Premise ID, Property Description and Appeal-Pack ZIP must exist.",
+
+                    IsCategoryValid = passed,
+                    QaStatus =
+                        passed ? "Passed" : "Failed",
+
+                    QaComment =
+                        passed
+                            ? null
+                            : string.Join(
+                                " ",
+                                commentParts)
+                });
+            }
+
+            _db.NoticeQaRuns.Add(qaRun);
+            await _db.SaveChangesAsync(ct);
+
+            return qaRun.Id;
+        }
+
+        private async Task ApproveClaQaAsync(
+            NoticeQaRun qaRun,
+            string user,
+            string? comment,
+            CancellationToken ct)
+        {
+            if (qaRun.Status == "Approved")
+                return;
+
+            if (qaRun.Items.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve CLA QA because there are no QA items.");
+            }
+
+            var failedItems = qaRun.Items
+                .Where(x =>
+                    !x.IsCategoryValid ||
+                    x.QaStatus == "Failed")
+                .ToList();
+
+            if (failedItems.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "CLA QA cannot be approved. Fix the failed CLA QA items first.");
+            }
+
+            qaRun.Status = "Approved";
+            qaRun.ApprovedBy = user;
+            qaRun.ApprovedAtUtc = DateTime.UtcNow;
+            qaRun.Comment = comment;
+
+            await _db.SaveChangesAsync(ct);
+        }
+
         private async Task<NoticeQaVm> BuildTpaQaVmAsync(
     Guid workflowKey,
     NoticeSettings settings,
@@ -773,7 +1108,7 @@ INNER JOIN @ObjectionNos n
                 WorkflowKey = workflowKey,
                 SettingsId = settings.Id,
                 RollId = settings.RollId,
-                RollShortCode =  settings.ValuationPeriodCode ?? "GV23",
+                RollShortCode = settings.ValuationPeriodCode ?? "GV23",
                 RollName = settings.RollName ?? "General Valuation Roll 2023",
                 Notice = settings.Notice,
                 VersionText = $"V{settings.Version}",
@@ -792,7 +1127,7 @@ INNER JOIN @ObjectionNos n
                 .Select(x => new NoticeQaItemVm
                 {
                     QaItemId = x.Id,
-                    NoticeRunLogId = x.NoticeRunLogId??0,
+                    NoticeRunLogId = x.NoticeRunLogId ?? 0,
                     ObjectionNo = x.ObjectionNo,
                     PremiseId = x.PremiseId,
                     PropertyType = x.PropertyType,
@@ -972,6 +1307,21 @@ INNER JOIN @ObjectionNos n
             qaRun.Comment = comment;
 
             await _db.SaveChangesAsync(ct);
+        }
+
+
+        private sealed class ClaQaLite
+        {
+            public int Id { get; set; }
+            public string ClaNumber { get; set; } = "";
+            public string ObjectionNumber { get; set; } = "";
+            public string? PremiseId { get; set; }
+            public string? PropertyDescription { get; set; }
+            public string? PropertyType { get; set; }
+            public string? PdfPath { get; set; }
+            public string? OwnerEmail { get; set; }
+            public string? AppealPackZipPath { get; set; }
+            public bool AppealPackExists { get; set; }
         }
 
         private sealed class TpaQaLite

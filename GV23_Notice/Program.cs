@@ -4,6 +4,7 @@ using GV23_Notice.Domain.Storage;
 using GV23_Notice.Models.Security;
 using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
+using GV23_Notice.Services.ClaThirdPartyApplications;
 using GV23_Notice.Services.Corrections;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.Notices;
@@ -179,6 +180,15 @@ builder.Services.AddScoped<IThirdPartyAppealEmailService, ThirdPartyAppealEmailS
 builder.Services.AddScoped<IThirdPartyAppealStatsService,ThirdPartyAppealStatsService>();
 builder.Services.AddScoped<IThirdPartyAppealRollResolver,ThirdPartyAppealRollResolver>();
 builder.Services.AddScoped<IThirdPartyAppealWorkflowSyncService,ThirdPartyAppealWorkflowSyncService>();
+// ----------------------------------------------------
+// CLA THIRD PARTY APPEAL 
+// ----------------------------------------------------
+
+builder.Services.AddScoped<IClaThirdPartyDateConfigurationService,ClaThirdPartyDateConfigurationService>();
+builder.Services.AddScoped<IClaThirdPartyFormalNoticePdfService,ClaThirdPartyFormalNoticePdfService>();
+builder.Services.AddScoped<IClaThirdPartyApplicationPrintService,ClaThirdPartyApplicationPrintService>();
+builder.Services.AddScoped<IClaThirdPartyAppealPackZipService,ClaThirdPartyAppealPackZipService>();
+builder.Services.AddScoped<IClaThirdPartyApplicationEmailService,ClaThirdPartyApplicationEmailService>();
 // ----------------------------------------------------
 // Security
 // ----------------------------------------------------

@@ -78,6 +78,13 @@ namespace GV23_Notice.Services.Stats
                 ?? throw new InvalidOperationException(
                     "Notice settings not found.");
 
+            if (settings.Notice != NoticeKind.TPA &&
+                settings.Notice != NoticeKind.CLA_TPA)
+            {
+                throw new InvalidOperationException(
+                    $"Third-party Admin statistics are not supported for notice type '{settings.Notice}'.");
+            }
+
             var roll = await _db.RollRegistry
                 .AsNoTracking()
                 .FirstOrDefaultAsync(
@@ -86,37 +93,9 @@ namespace GV23_Notice.Services.Stats
                 ?? throw new InvalidOperationException(
                     "Roll not found.");
 
-            var rows = await _db
-                .ThirdPartyAppealApplicationNotices
-                .AsNoTracking()
-                .Where(x =>
-                    (
-                        x.NoticeSettingsId == settings.Id ||
-                        (
-                            x.RollId == settings.RollId &&
-                            x.ValuationPeriod ==
-                                settings.ValuationPeriodCode
-                        )
-                    ) &&
-                    ReportableStatuses.Contains(x.Status))
-                .Select(x => new
-                {
-                    x.Id,
-                    x.AdminName,
-                    x.AdminEmail,
-                    x.Premise_ID,
-                    x.Objection_No,
-                    x.Appeal_No,
-                    x.Property_Description,
-                    x.Status,
-                    x.SentAt,
-                    x.SentBy,
-                    x.VabBoardId,
-                    HearingDate = x.ScheduleDate
-                })
-                .OrderBy(x => x.AdminName)
-                .ThenBy(x => x.Appeal_No)
-                .ToListAsync(ct);
+            var rows = settings.Notice == NoticeKind.CLA_TPA
+                ? await LoadClaStatsRowsAsync(settings, ct)
+                : await LoadTpaStatsRowsAsync(settings, ct);
 
             var boardIds = rows
                 .Where(x => x.VabBoardId.HasValue)
@@ -131,14 +110,9 @@ namespace GV23_Notice.Services.Stats
                     .Where(x => boardIds.Contains(x.Id))
                     .ToDictionaryAsync(x => x.Id, ct);
 
-            /*
-             * Load the exact Chairperson, Member 1 and Member 2 for each
-             * VAB and hearing date from dbo.Members. This prevents all
-             * historical board members from appearing in one email.
-             */
-            var hearingMembers = await LoadHearingMembersAsync(ct);
-
-            var valuationEnquiriesEmail = ValuationEnquiriesEmail;
+            var hearingMembers = boardIds.Count == 0
+                ? new List<HearingMemberRow>()
+                : await LoadHearingMembersAsync(ct);
 
             var adminGroups = rows
                 .GroupBy(x =>
@@ -149,62 +123,49 @@ namespace GV23_Notice.Services.Stats
                 {
                     var first = group.First();
 
-                    var ccEmails = TpaCcEmails;
-
                     return new ThirdPartyAppealAdminStatsVm
                     {
                         AdminKey = group.Key,
 
                         AdminName =
-                            string.IsNullOrWhiteSpace(
-                                first.AdminName)
-                                ? "Unassigned Admin"
+                            string.IsNullOrWhiteSpace(first.AdminName)
+                                ? BuildAdminDisplayName(first.AdminEmail)
                                 : first.AdminName.Trim(),
 
                         AdminEmail =
                             first.AdminEmail?.Trim() ?? "",
 
                         DefaultCcEmails =
-                            ccEmails,
+                            TpaCcEmails,
 
                         TotalRecords =
                             group.Count(),
 
                         TotalPrinted =
                             group.Count(x =>
-                                IsStatus(
-                                    x.Status,
-                                    "Printed")),
+                                IsStatus(x.Status, "Printed")),
 
                         TotalSent =
                             group.Count(x =>
-                                IsStatus(
-                                    x.Status,
-                                    "Sent")),
+                                IsStatus(x.Status, "Sent")),
 
                         TotalFailed =
                             group.Count(x =>
-                                IsStatus(
-                                    x.Status,
-                                    "Email-Failed")),
+                                IsStatus(x.Status, "Email-Failed")),
 
                         TotalNoEmail =
                             group.Count(x =>
-                                IsStatus(
-                                    x.Status,
-                                    "No-Owner-Email")),
+                                IsStatus(x.Status, "No-Owner-Email")),
 
                         LastSentAt = group
                             .Where(x => x.SentAt.HasValue)
-                            .OrderByDescending(
-                                x => x.SentAt)
+                            .OrderByDescending(x => x.SentAt)
                             .Select(x => x.SentAt)
                             .FirstOrDefault(),
 
                         LastSentBy = group
                             .Where(x => x.SentAt.HasValue)
-                            .OrderByDescending(
-                                x => x.SentAt)
+                            .OrderByDescending(x => x.SentAt)
                             .Select(x => x.SentBy)
                             .FirstOrDefault(),
 
@@ -213,20 +174,23 @@ namespace GV23_Notice.Services.Stats
                                 new ThirdPartyAppealStatsDetailVm
                                 {
                                     PremiseId =
-                                        x.Premise_ID ?? "",
+                                        x.PremiseId ?? "",
 
                                     ObjectionNo =
-                                        x.Objection_No ?? "",
+                                        x.ObjectionNo ?? "",
 
+                                    /*
+                                     * The shared TPA view model is reused.
+                                     * For CLA this field contains ClaNumber.
+                                     */
                                     AppealNo =
-                                        x.Appeal_No ?? "",
+                                        x.ReferenceNo ?? "",
 
                                     PropertyDescription =
-                                        x.Property_Description ?? "",
+                                        x.PropertyDescription ?? "",
 
                                     Status =
-                                        MapDisplayStatus(
-                                            x.Status),
+                                        MapDisplayStatus(x.Status),
 
                                     DateSent =
                                         x.SentAt,
@@ -243,10 +207,14 @@ namespace GV23_Notice.Services.Stats
                             .ToList(),
 
                         BoardGroups = group
+                            .Where(x =>
+                                x.VabBoardId.HasValue ||
+                                x.HearingDate.HasValue)
                             .GroupBy(x => new
                             {
                                 x.VabBoardId,
-                                HearingDate = x.HearingDate?.Date
+                                HearingDate =
+                                    x.HearingDate?.Date
                             })
                             .Select(boardGroup =>
                             {
@@ -298,11 +266,8 @@ namespace GV23_Notice.Services.Stats
             return new ThirdPartyAppealStatsVm
             {
                 WorkflowKey = workflowKey,
-
                 SettingsId = settings.Id,
-
                 RollId = settings.RollId,
-
                 Version = settings.Version,
 
                 RollShortCode =
@@ -312,7 +277,9 @@ namespace GV23_Notice.Services.Stats
                     roll.Name ?? "",
 
                 ValuationPeriod =
-                    settings.ValuationPeriodCode ?? "",
+                    settings.ValuationPeriodCode ??
+                    settings.RollName ??
+                    "",
 
                 VersionText =
                     $"V{settings.Version}",
@@ -325,27 +292,19 @@ namespace GV23_Notice.Services.Stats
 
                 TotalPrinted =
                     rows.Count(x =>
-                        IsStatus(
-                            x.Status,
-                            "Printed")),
+                        IsStatus(x.Status, "Printed")),
 
                 TotalSent =
                     rows.Count(x =>
-                        IsStatus(
-                            x.Status,
-                            "Sent")),
+                        IsStatus(x.Status, "Sent")),
 
                 TotalFailed =
                     rows.Count(x =>
-                        IsStatus(
-                            x.Status,
-                            "Email-Failed")),
+                        IsStatus(x.Status, "Email-Failed")),
 
                 TotalNoEmail =
                     rows.Count(x =>
-                        IsStatus(
-                            x.Status,
-                            "No-Owner-Email")),
+                        IsStatus(x.Status, "No-Owner-Email")),
 
                 TotalMissingAdminEmail =
                     adminGroups.Count(x =>
@@ -364,11 +323,119 @@ namespace GV23_Notice.Services.Stats
                     .FirstOrDefault(),
 
                 ValuationEnquiriesEmail =
-                    valuationEnquiriesEmail,
+                    ValuationEnquiriesEmail,
 
                 Admins =
                     adminGroups
             };
+        }
+
+        private async Task<List<ThirdPartyStatsRow>> LoadTpaStatsRowsAsync(
+            NoticeSettings settings,
+            CancellationToken ct)
+        {
+            return await _db.ThirdPartyAppealApplicationNotices
+                .AsNoTracking()
+                .Where(x =>
+                    (
+                        x.NoticeSettingsId == settings.Id ||
+                        (
+                            x.RollId == settings.RollId &&
+                            x.ValuationPeriod ==
+                                settings.ValuationPeriodCode
+                        )
+                    ) &&
+                    ReportableStatuses.Contains(x.Status))
+                .OrderBy(x => x.AdminName)
+                .ThenBy(x => x.Appeal_No)
+                .Select(x => new ThirdPartyStatsRow
+                {
+                    AdminName = x.AdminName,
+                    AdminEmail = x.AdminEmail,
+                    PremiseId = x.Premise_ID,
+                    ObjectionNo = x.Objection_No,
+                    ReferenceNo = x.Appeal_No,
+                    PropertyDescription = x.Property_Description,
+                    Status = x.Status,
+                    SentAt = x.SentAt,
+                    SentBy = x.SentBy,
+                    VabBoardId = x.VabBoardId,
+                    HearingDate = x.ScheduleDate
+                })
+                .ToListAsync(ct);
+        }
+
+        private async Task<List<ThirdPartyStatsRow>> LoadClaStatsRowsAsync(
+            NoticeSettings settings,
+            CancellationToken ct)
+        {
+            return await _db.ClaThirdPartyApplicationNotices
+                .AsNoTracking()
+                .Where(x =>
+                    x.IsActive &&
+                    (
+                        x.NoticeSettingsId == settings.Id ||
+                        (
+                            x.RollId == settings.RollId &&
+                            x.ValuationPeriod ==
+                                settings.ValuationPeriodCode
+                        )
+                    ) &&
+                    ReportableStatuses.Contains(x.Status))
+                .OrderBy(x => x.AdminEmail)
+                .ThenBy(x => x.ClaNumber)
+                .Select(x => new ThirdPartyStatsRow
+                {
+                    /*
+                     * CLA currently stores the responsible Admin email.
+                     * When no separate AdminName is stored, the display
+                     * name is derived from the email address.
+                     */
+                    AdminName = null,
+                    AdminEmail = x.AdminEmail,
+                    PremiseId = x.PremiseId,
+                    ObjectionNo = x.ObjectionNumber,
+                    ReferenceNo = x.ClaNumber,
+                    PropertyDescription = x.PropertyDescription,
+                    Status = x.Status,
+                    SentAt = x.SentAtUtc,
+                    SentBy = x.SentBy,
+
+                    /*
+                     * CLA records do not currently carry VAB scheduling
+                     * fields, so the same Admin report is produced without
+                     * a board-member section.
+                     */
+                    VabBoardId = null,
+                    HearingDate = null
+                })
+                .ToListAsync(ct);
+        }
+
+        private static string BuildAdminDisplayName(
+            string? adminEmail)
+        {
+            if (string.IsNullOrWhiteSpace(adminEmail))
+                return "Unassigned Admin";
+
+            var atIndex = adminEmail.IndexOf('@');
+
+            var value = atIndex > 0
+                ? adminEmail[..atIndex]
+                : adminEmail;
+
+            value = value
+                .Replace(".", " ")
+                .Replace("_", " ")
+                .Replace("-", " ")
+                .Trim();
+
+            return string.IsNullOrWhiteSpace(value)
+                ? "Unassigned Admin"
+                : System.Globalization.CultureInfo
+                    .InvariantCulture
+                    .TextInfo
+                    .ToTitleCase(value.ToLowerInvariant());
         }
 
         public async Task<ThirdPartyAppealAdminExcelVm> BuildAdminExcelAsync(
@@ -407,7 +474,7 @@ namespace GV23_Notice.Services.Stats
             if (!admin.HasRecordsToReport)
             {
                 throw new InvalidOperationException(
-                    "The selected Admin has no TPA records to report.");
+                    "The selected Admin has no third-party records to report.");
             }
 
             using var workbook = new XLWorkbook();
@@ -423,8 +490,12 @@ namespace GV23_Notice.Services.Stats
                     ? "Unassigned_Admin"
                     : admin.AdminName);
 
+            var reportPrefix = IsClaStats(stats)
+                ? "CLA_Notice_Stats"
+                : "TPA_Notice_Stats";
+
             var fileName =
-                $"TPA_Notice_Stats_{safeAdminName}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+                $"{reportPrefix}_{safeAdminName}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
 
             return new ThirdPartyAppealAdminExcelVm
             {
@@ -888,6 +959,21 @@ namespace GV23_Notice.Services.Stats
                 .ToList();
         }
 
+        private sealed class ThirdPartyStatsRow
+        {
+            public string? AdminName { get; set; }
+            public string? AdminEmail { get; set; }
+            public string? PremiseId { get; set; }
+            public string? ObjectionNo { get; set; }
+            public string? ReferenceNo { get; set; }
+            public string? PropertyDescription { get; set; }
+            public string? Status { get; set; }
+            public DateTime? SentAt { get; set; }
+            public string? SentBy { get; set; }
+            public int? VabBoardId { get; set; }
+            public DateTime? HearingDate { get; set; }
+        }
+
         private sealed class HearingMemberRow
         {
             public string BoardCode { get; set; } = "";
@@ -911,14 +997,19 @@ namespace GV23_Notice.Services.Stats
             ThirdPartyAppealStatsVm stats,
             ThirdPartyAppealAdminStatsVm admin)
         {
-            var configuredRoot =
-                _config["TpaStats:EvidenceRoot"]?.Trim();
+            var isCla = IsClaStats(stats);
+
+            var configuredRoot = isCla
+                ? _config["ClaStats:EvidenceRoot"]?.Trim()
+                : _config["TpaStats:EvidenceRoot"]?.Trim();
 
             var root = string.IsNullOrWhiteSpace(configuredRoot)
                 ? Path.Combine(
                     AppContext.BaseDirectory,
                     "App_Data",
-                    "TPA Stats Evidence")
+                    isCla
+                        ? "CLA Stats Evidence"
+                        : "TPA Stats Evidence")
                 : configuredRoot;
 
             return Path.Combine(
@@ -1085,6 +1176,18 @@ namespace GV23_Notice.Services.Stats
     {memberRows}
 </table>
 """;
+        }
+
+        private static bool IsClaStats(
+            ThirdPartyAppealStatsVm stats)
+        {
+            return stats.Admins
+                .SelectMany(x => x.Details)
+                .Any(x =>
+                    !string.IsNullOrWhiteSpace(x.AppealNo) &&
+                    x.AppealNo.StartsWith(
+                        "CLA",
+                        StringComparison.OrdinalIgnoreCase));
         }
 
         private static string EncodeHtml(string? value)
@@ -1274,7 +1377,9 @@ namespace GV23_Notice.Services.Stats
             var sheet = workbook.Worksheets.Add("Summary Report");
 
             sheet.Cell("A1").Value =
-                "THIRD-PARTY APPEAL NOTICE DISTRIBUTION REPORT";
+                IsClaStats(stats)
+                    ? "CLA THIRD-PARTY APPLICATION NOTICE DISTRIBUTION REPORT"
+                    : "THIRD-PARTY APPEAL NOTICE DISTRIBUTION REPORT";
             sheet.Range("A1:D1").Merge();
             sheet.Range("A1:D1").Style
                 .Font.SetBold()

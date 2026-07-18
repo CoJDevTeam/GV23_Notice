@@ -1,8 +1,31 @@
-﻿@model GV23_Notice.Models.Workflow.ViewModels.NoticeQaVm
+﻿@using GV23_Notice.Domain.Workflow
+@model GV23_Notice.Models.Workflow.ViewModels.NoticeQaVm
 
 @{
-    ViewData["Title"] = "Step 3 — QA Printed Notices";
     var key = Model.WorkflowKey;
+
+    bool isTpa = Model.Notice == NoticeKind.TPA;
+    bool isClaTpa = Model.Notice == NoticeKind.CLA_TPA;
+    bool isDirectThirdParty = isTpa || isClaTpa;
+
+    string noticeLabel = Model.Notice switch
+    {
+        NoticeKind.TPA => "Third-Party Appeal Application",
+        NoticeKind.CLA_TPA => "CLA-THIRD PARTY APPLICATION NOTICE",
+        _ => Model.Notice.ToString()
+    };
+
+    string referenceLabel = isClaTpa
+        ? "CLA Number"
+        : isTpa
+            ? "Appeal Number"
+            : "Objection No";
+
+    ViewData["Title"] = isClaTpa
+        ? "Step 3 — CLA QA"
+        : isTpa
+            ? "Step 3 — TPA QA"
+            : "Step 3 — QA Printed Notices";
 }
 
 <link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
@@ -22,12 +45,12 @@
         border-bottom: 4px solid #e6b000;
     }
 
-    .qa-head h1 {
-        margin: 0;
-        font-size: 1.1rem;
-        text-transform: uppercase;
-        letter-spacing: .08em;
-    }
+        .qa-head h1 {
+            margin: 0;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+        }
 
     .qa-meta {
         margin-top: 8px;
@@ -56,9 +79,9 @@
         align-items: center;
     }
 
-    .qa-card-head strong {
-        font-size: .95rem;
-    }
+        .qa-card-head strong {
+            font-size: .95rem;
+        }
 
     .qa-table {
         width: 100%;
@@ -66,22 +89,22 @@
         font-size: .78rem;
     }
 
-    .qa-table th {
-        background: #fafafa;
-        text-align: left;
-        padding: 10px;
-        border-bottom: 1px solid #ddd;
-        color: #555;
-        text-transform: uppercase;
-        letter-spacing: .04em;
-        font-size: .68rem;
-    }
+        .qa-table th {
+            background: #fafafa;
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            font-size: .68rem;
+        }
 
-    .qa-table td {
-        padding: 10px;
-        border-bottom: 1px solid #eee;
-        vertical-align: top;
-    }
+        .qa-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            vertical-align: top;
+        }
 
     .qa-pill {
         display: inline-block;
@@ -178,15 +201,36 @@
         padding: 10px;
         font-size: .82rem;
     }
+
+    .qa-direct-note {
+        background: #fff8dc;
+        border: 1px solid #e8c85a;
+        color: #6d5200;
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        font-size: .8rem;
+        font-weight: 600;
+    }
+
+    .qa-ref {
+        font-family: 'Courier New', monospace;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .qa-muted {
+        color: #999;
+    }
 </style>
 
 <div class="qa-wrap">
 
     <div class="qa-head">
-        <h1>QA Printed Notices</h1>
+        <h1>@(isClaTpa ? "CLA Printed Notice QA" : isTpa ? "Third-Party Appeal QA" : "QA Printed Notices")</h1>
         <div class="qa-meta">
             <span><b>Roll:</b> @Model.RollShortCode</span>
-            <span><b>Notice:</b> @Model.Notice</span>
+            <span><b>Notice:</b> @noticeLabel</span>
             <span><b>Version:</b> @Model.VersionText</span>
             <span><b>Printed:</b> @Model.TotalPrinted</span>
             <span><b>QA Status:</b> @Model.QaStatus</span>
@@ -201,6 +245,19 @@
     @if (TempData["Error"] != null)
     {
         <div class="qa-alert qa-alert-error">@TempData["Error"]</div>
+    }
+
+    @if (isClaTpa)
+    {
+        <div class="qa-direct-note">
+            CLA QA checks the printed notice PDF, CLA number, Premise ID, property description and appeal-pack ZIP file.
+        </div>
+    }
+    else if (isTpa)
+    {
+        <div class="qa-direct-note">
+            TPA QA checks the printed notice PDF and required appeal record information. This workflow does not use batches.
+        </div>
     }
 
     @if (Model.IsApproved)
@@ -218,7 +275,7 @@
     else if (Model.FailedItems > 0)
     {
         <div class="qa-alert qa-alert-error">
-            QA has @Model.FailedItems failed item(s). Fix captured values before approval.
+            @(isDirectThirdParty ? "QA has " + Model.FailedItems + " failed item(s). Fix the missing PDF or required files before approval." : "QA has " + Model.FailedItems + " failed item(s). Fix captured values before approval.")
         </div>
     }
 
@@ -241,12 +298,21 @@
             Back to Print
         </a>
 
-        <a class="qa-btn qa-btn-green"
-               asp-action="SendEmail"
-               asp-controller="Step3"
-               asp-route-key="@key">
-            Go to Send Notice
-        </a>
+        @if (Model.IsApproved)
+        {
+            <a class="qa-btn qa-btn-green"
+                   asp-action="SendEmail"
+                   asp-controller="Step3"
+                   asp-route-key="@key">
+                Go to Send Notice
+            </a>
+        }
+        else
+        {
+            <span class="qa-btn qa-btn-disabled">
+                Send Notice Locked Until QA Approval
+            </span>
+        }
     </div>
 
     @if (Model.Groups.Any())
@@ -262,13 +328,18 @@
                 <table class="qa-table">
                     <thead>
                         <tr>
-                            <th>Objection No</th>
+                            <th>@referenceLabel</th>
                             <th>Premise ID</th>
                             <th>Property</th>
-                            <th>Expected</th>
-                            <th>New Category MVD</th>
-                            <th>New2</th>
-                            <th>New3</th>
+                            <th>Expected QA Check</th>
+
+                            @if (!isDirectThirdParty)
+                            {
+                                <th>New Category MVD</th>
+                                <th>New2</th>
+                                <th>New3</th>
+                            }
+
                             <th>Status</th>
                             <th>PDF</th>
                         </tr>
@@ -277,22 +348,27 @@
                         @foreach (var item in group.Items)
                         {
                             <tr>
-                                <td>@item.ObjectionNo</td>
-                                <td>@item.PremiseId</td>
-                                <td>@item.PropertyDesc</td>
+                                <td class="qa-ref">@item.ObjectionNo</td>
+                                <td>@(string.IsNullOrWhiteSpace(item.PremiseId) ? "—" : item.PremiseId)</td>
+                                <td>@(string.IsNullOrWhiteSpace(item.PropertyDesc) ? "—" : item.PropertyDesc)</td>
                                 <td>
                                     <strong>@item.ExpectedCategory</strong>
 
-                                    @if (item.IsMulti)
+                                    @if (!isDirectThirdParty && item.IsMulti)
                                     {
                                         <div style="margin-top:4px;color:#b42318;font-weight:700;">
                                             Multi must show Multiple Purposes and split categories.
                                         </div>
                                     }
                                 </td>
-                                <td>@item.NewCategoryMvd</td>
-                                <td>@item.New2CategoryMvd</td>
-                                <td>@item.New3CategoryMvd</td>
+
+                                @if (!isDirectThirdParty)
+                                {
+                                    <td>@item.NewCategoryMvd</td>
+                                    <td>@item.New2CategoryMvd</td>
+                                    <td>@item.New3CategoryMvd</td>
+                                }
+
                                 <td>
                                     @if (item.IsCategoryValid)
                                     {
@@ -313,7 +389,7 @@
                                 <td>
                                     @if (!string.IsNullOrWhiteSpace(item.PdfPath))
                                     {
-                                        if (Model.Notice == GV23_Notice.Domain.Workflow.NoticeKind.TPA)
+                                        if (isDirectThirdParty)
                                         {
                                             <a class="qa-btn qa-btn-main"
                                                    target="_blank"
@@ -348,7 +424,7 @@
 
         <div class="qa-card">
             <div class="qa-card-head">
-                <strong>Approve QA</strong>
+                <strong>@(isClaTpa ? "Approve CLA QA" : isTpa ? "Approve TPA QA" : "Approve QA")</strong>
             </div>
 
             <div style="padding:16px;">
@@ -366,7 +442,7 @@
                         @if (Model.CanApprove)
                         {
                             <button type="submit" class="qa-btn qa-btn-green">
-                                Approve QA
+                                @(isClaTpa ? "Approve CLA QA" : isTpa ? "Approve TPA QA" : "Approve QA")
                             </button>
                         }
                         else if (Model.IsApproved)
@@ -378,7 +454,9 @@
                         else
                         {
                             <button type="button" class="qa-btn qa-btn-disabled" disabled>
-                                Cannot Approve Until Failed Items Are Fixed
+                                @(isDirectThirdParty
+                                    ? "Cannot Approve Until Missing Files and Required Data Are Fixed"
+                                    : "Cannot Approve Until Failed Items Are Fixed")
                             </button>
                         }
                     </div>

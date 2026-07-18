@@ -3,14 +3,13 @@ using GV23_Notice.Domain.Email;
 using GV23_Notice.Domain.Rolls;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
-using GV23_Notice.Helper;
 using GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.DTOs.GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services;
 using GV23_Notice.Services.Audit;
+using GV23_Notice.Services.ClaThirdPartyApplications;
 using GV23_Notice.Services.Email;
-using GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Preview;
 using GV23_Notice.Services.Preview.GV23_Notice.Services.Notices;
 using GV23_Notice.Services.Rolls;
@@ -48,6 +47,7 @@ namespace GV23_Notice.Controllers
         private readonly GV23_Notice.Services.Step3.IS52RangePrintService _s52Range;
         private readonly IThirdPartyAppealDateConfigurationService _thirdPartyDates;
         private readonly IThirdPartyAppealWorkflowSyncService _tpaWorkflowSync;
+        private readonly IClaThirdPartyDateConfigurationService _claThirdPartyDateConfigurationService;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -65,7 +65,8 @@ namespace GV23_Notice.Controllers
      INoticeStep2SnapshotService snap,
         IS52RangePrintService s52Range,
      IThirdPartyAppealDateConfigurationService thirdPartyDates,
-     IThirdPartyAppealWorkflowSyncService tpaWorkflowSync)
+     IThirdPartyAppealWorkflowSyncService tpaWorkflowSync,
+     IClaThirdPartyDateConfigurationService claThirdPartyDateConfigurationService)
         {
             _db = db;
             _settings = settings;
@@ -85,6 +86,7 @@ namespace GV23_Notice.Controllers
             _thirdPartyDates = thirdPartyDates;
             _tempFiles = tempFiles;
             _tpaWorkflowSync = tpaWorkflowSync;
+            _claThirdPartyDateConfigurationService = claThirdPartyDateConfigurationService;
         }
 
         // GET: /Workflow/Step1
@@ -662,7 +664,7 @@ namespace GV23_Notice.Controllers
         // ✅ inside WorkflowController (class-level helper)
         private static DataDomain ResolveDomain(NoticeKind notice)
         {
-            return notice == NoticeKind.S52 || notice == NoticeKind.TPA
+            return notice == NoticeKind.S52 || notice == NoticeKind.TPA || notice == NoticeKind.CLA_TPA
                 ? DataDomain.Appeal
                 : DataDomain.Objection;
         }
@@ -948,10 +950,10 @@ namespace GV23_Notice.Controllers
                 variant = s.S52SendMode == S52SendMode.ReviewOnly ? "S52Review" : "S52Appeal";
                 v = PreviewVariantParser.Parse(variant);
             }
-            if (s.Notice == NoticeKind.TPA)
+            if (s.Notice == NoticeKind.TPA || s.Notice == NoticeKind.CLA_TPA)
             {
                 variant = "Default";
-                mode = string.IsNullOrWhiteSpace(mode) ? "single" : mode;
+                mode = "single";
 
                 v = PreviewVariant.Default;
                 m = PreviewMode.Single;
@@ -995,8 +997,10 @@ namespace GV23_Notice.Controllers
             }
 
             var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
-                ? $"Preview_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
-                : result.PdfFileName;
+      ? s.Notice == NoticeKind.CLA_TPA
+          ? $"CLA_Third_Party_Application_Notice_{settingsId}.pdf"
+          : $"Preview_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
+      : result.PdfFileName;
 
             var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
 
@@ -1020,8 +1024,15 @@ namespace GV23_Notice.Controllers
                 PdfUrl = pdfUrl,
                 PdfPreviewUrl = pdfUrl,
 
-                SelectedVariant = variant ?? "Default",
-                SelectedMode = mode ?? "single",
+                SelectedVariant =
+    s.Notice == NoticeKind.CLA_TPA
+        ? "Default"
+        : variant ?? "Default",
+
+                SelectedMode =
+    s.Notice == NoticeKind.CLA_TPA
+        ? "single"
+        : mode ?? "single",
                 AppealNo = appealNo ?? "",
 
                 LetterDate = s.LetterDate,
@@ -1206,7 +1217,7 @@ namespace GV23_Notice.Controllers
             var parsedVariant = ParseVariantOrDefault(variant);
             var parsedMode = ParseModeOrDefault(mode);
 
-            if (s.Notice == NoticeKind.TPA)
+            if (s.Notice == NoticeKind.TPA || s.Notice == NoticeKind.CLA_TPA)
             {
                 parsedVariant = PreviewVariant.Default;
                 parsedMode = PreviewMode.Single;
@@ -1379,7 +1390,7 @@ namespace GV23_Notice.Controllers
                         ResponseDays = calc.ResponseDays,
                         EstimatedResponseDueDate = calc.ResponseDueDate,
                         dto.Variant,
-                       
+
                         dto.AppealNo,
                         PreviewFileName = pv.PdfFileName,
                         Rule = "Final 51 days starts from actual email sent date."
@@ -1624,7 +1635,10 @@ namespace GV23_Notice.Controllers
 
             var isS52 = s.Notice == NoticeKind.S52;
             var isTpa = s.Notice == NoticeKind.TPA;
+            var isClaTpa = s.Notice == NoticeKind.CLA_TPA;
 
+            var isDirectThirdPartyNotice =
+    isTpa || isClaTpa;
             /*
              * Resolve preview variant and mode.
              * Normal notices use what came from the query string.
@@ -1646,7 +1660,7 @@ namespace GV23_Notice.Controllers
                 v = PreviewVariantParser.Parse(variant);
             }
 
-            if (isTpa)
+            if (isDirectThirdPartyNotice)
             {
                 variant = "Default";
                 mode = "single";
@@ -1695,8 +1709,10 @@ namespace GV23_Notice.Controllers
             var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
 
             var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
-                ? $"Step3Kickoff_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
-                : result.PdfFileName;
+    ? isClaTpa
+        ? $"CLA_TPA_Step3_Preview_{settingsId}.pdf"
+        : $"Step3Kickoff_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
+    : result.PdfFileName;
 
             var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
 
@@ -1705,15 +1721,17 @@ namespace GV23_Notice.Controllers
              * TPA does not create normal batches, but we still show Step 3 Kickoff.
              */
             var batchPrefix = ComputeBatchPrefix(s, shortCode);
-
             var batchesCreated = 0;
+
             var nextBatchCode = isTpa
                 ? $"TPA_{shortCode.Replace(" ", "")}"
-                : $"{batchPrefix}0001";
+                : isClaTpa
+                    ? $"CLA_TPA_{shortCode.Replace(" ", "")}"
+                    : $"{batchPrefix}0001";
 
             var kickoffBatchRows = new List<KickoffBatchRowVm>();
 
-            if (!isTpa)
+            if (!isDirectThirdPartyNotice)
             {
                 batchesCreated = await _db.NoticeBatches
                     .AsNoTracking()
@@ -1826,13 +1844,15 @@ namespace GV23_Notice.Controllers
 
                 // TPA
                 IsThirdPartyAppealApplication = isTpa,
+                IsClaThirdPartyApplication = isClaTpa,
                 ThirdPartyResponseDays = tpaDate?.ResponseDays,
                 ThirdPartyEstimatedSendDate = tpaDate?.StartDate,
                 ThirdPartyEstimatedResponseDueDate = tpaDate?.ResponseDueDate,
-
                 // Dashboard
                 CreatedBatches = kickoffBatchRows,
-                ShowBatchTab = !isTpa && TempData["Success"] != null
+                ShowBatchTab =
+    !isDirectThirdPartyNotice &&
+    TempData["Success"] != null
             };
 
             return View(vm);
@@ -1843,11 +1863,27 @@ namespace GV23_Notice.Controllers
 
             return s.Notice switch
             {
-                NoticeKind.S52 => s.IsSection52Review == true ? $"S52_{code}_" : $"AD_{code}_",
-                NoticeKind.DJ => $"DJ_{code}_",
-                NoticeKind.IN => s.IsInvalidOmission == true ? $"IOM_{code}_" : $"IOBJ_{code}_",
-                NoticeKind.TPA => $"TPA_{code}_",
-                _ => $"{s.Notice}_{code}_"
+                NoticeKind.S52 =>
+                    s.IsSection52Review == true
+                        ? $"S52_{code}_"
+                        : $"AD_{code}_",
+
+                NoticeKind.DJ =>
+                    $"DJ_{code}_",
+
+                NoticeKind.IN =>
+                    s.IsInvalidOmission == true
+                        ? $"IOM_{code}_"
+                        : $"IOBJ_{code}_",
+
+                NoticeKind.TPA =>
+                    $"TPA_{code}_",
+
+                NoticeKind.CLA_TPA =>
+                    $"CLA_TPA_{code}_",
+
+                _ =>
+                    $"{s.Notice}_{code}_"
             };
         }
         [HttpGet("Step3PreviewPdf")]
