@@ -147,6 +147,23 @@ namespace GV23_Notice.Controllers
                     ct: ct);
 
                 defaultVm.LetterDate = calc.StartDate;
+                defaultVm.BatchDate = calc.StartDate;
+            }
+            else if (defaultVm.Notice == NoticeKind.CLA_TPA)
+            {
+                var claDates =
+                    _claThirdPartyDateConfigurationService
+                        .Calculate(DateTime.Today);
+
+                defaultVm.Mode = BatchMode.Bulk;
+                defaultVm.LetterDate = claDates.LetterDate;
+                defaultVm.BatchDate = claDates.LetterDate;
+                defaultVm.ObjectionStartDate =
+                    claDates.RepresentationStartDate;
+                defaultVm.ObjectionEndDate =
+                    claDates.RepresentationCloseDate;
+                defaultVm.ExtensionDate =
+                    claDates.RepresentationCloseDate;
             }
             return View(defaultVm);
 
@@ -197,154 +214,356 @@ namespace GV23_Notice.Controllers
         [HttpPost("Step1")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step1Save(
-      WorkflowStep1Vm vm,
-      IFormFile? signatureFile,
-      IFormFile? overrideEvidenceFile,
-      CancellationToken ct)
+            WorkflowStep1Vm vm,
+            IFormFile? signatureFile,
+            IFormFile? overrideEvidenceFile,
+            CancellationToken ct)
         {
             await PopulateRollsAsync(ct);
-            var user = User?.Identity?.Name ?? "UNKNOWN";
 
-            var isTpa = vm.Notice == NoticeKind.TPA;
+            ViewBag.ValuationPeriods =
+                Helper.ValuationPeriodCatalog.Periods
+                    .Select(period => new SelectListItem
+                    {
+                        Value = period.Code,
+                        Text =
+                            $"{period.Code} " +
+                            $"({period.Start:dd MMM yyyy} – " +
+                            $"{period.End:dd MMM yyyy})"
+                    })
+                    .ToList();
 
-            if (isTpa)
+            var user =
+                User?.Identity?.Name
+                ?? "UNKNOWN";
+
+            var isTpa =
+                vm.Notice == NoticeKind.TPA;
+
+            var isClaTpa =
+                vm.Notice == NoticeKind.CLA_TPA;
+
+            var isDirectThirdParty =
+                isTpa || isClaTpa;
+
+            /*
+             * TPA and CLA-TPA do not require the user to select a roll.
+             * Step 1 posts RollId = 0 and the controller resolves the
+             * correct active roll from the valuation period.
+             */
+            if (isDirectThirdParty)
             {
-                // TPA must not force the user to select a roll.
-                // Remove any model validation error caused by RollId = 0.
                 ModelState.Remove(nameof(vm.RollId));
             }
             else if (vm.RollId <= 0)
             {
-                ModelState.AddModelError(nameof(vm.RollId), "Roll is required.");
+                ModelState.AddModelError(
+                    nameof(vm.RollId),
+                    "Roll is required.");
             }
-            // ✅ Valuation Period + Financial Year validation
-            if (string.IsNullOrWhiteSpace(vm.ValuationPeriodCode))
-                ModelState.AddModelError(nameof(vm.ValuationPeriodCode), "Valuation Period is required.");
 
-            if (!vm.FinancialYearStart.HasValue || !vm.FinancialYearEnd.HasValue)
-                ModelState.AddModelError(nameof(vm.FinancialYearStart), "Financial Year is required (1 July – 30 June).");
+            if (string.IsNullOrWhiteSpace(
+                    vm.ValuationPeriodCode))
+            {
+                ModelState.AddModelError(
+                    nameof(vm.ValuationPeriodCode),
+                    "Valuation Period is required.");
+            }
+
+            if (!vm.FinancialYearStart.HasValue ||
+                !vm.FinancialYearEnd.HasValue)
+            {
+                ModelState.AddModelError(
+                    nameof(vm.FinancialYearStart),
+                    "Financial Year is required " +
+                    "(1 July – 30 June).");
+            }
+            else if (vm.FinancialYearEnd.Value.Date <
+                     vm.FinancialYearStart.Value.Date)
+            {
+                ModelState.AddModelError(
+                    nameof(vm.FinancialYearEnd),
+                    "Financial Year End cannot be before " +
+                    "Financial Year Start.");
+            }
+
+            /*
+             * Resolve the internal RollId for both direct workflows.
+             */
+            if (isDirectThirdParty &&
+                !string.IsNullOrWhiteSpace(
+                    vm.ValuationPeriodCode))
+            {
+                try
+                {
+                    vm.RollId =
+                        await ResolveRollIdForTpaAsync(
+                            vm.ValuationPeriodCode,
+                            ct);
+
+                    ModelState.Remove(nameof(vm.RollId));
+                }
+                catch (Exception ex)
+                {
+                    ModelState.AddModelError(
+                        nameof(vm.ValuationPeriodCode),
+                        ex.Message);
+                }
+            }
+
+            /*
+             * CLA-TPA is a direct bulk workflow.
+             *
+             * The formal notice gives the owner 30 calendar days
+             * from the letter date to submit representations.
+             */
+            if (isClaTpa)
+            {
+                vm.Mode = BatchMode.Bulk;
+
+                var claDates =
+                    _claThirdPartyDateConfigurationService
+                        .Calculate(vm.LetterDate);
+
+                vm.LetterDate =
+                    claDates.LetterDate;
+
+                vm.BatchDate =
+                    claDates.LetterDate;
+
+                vm.ObjectionStartDate =
+                    claDates.RepresentationStartDate;
+
+                vm.ObjectionEndDate =
+                    claDates.RepresentationCloseDate;
+
+                /*
+                 * Keep ExtensionDate aligned with the final CLA
+                 * representation deadline because the existing
+                 * NoticeSettings model has no separate
+                 * NotificationDeadline field.
+                 */
+                vm.ExtensionDate =
+                    claDates.RepresentationCloseDate;
+
+                ModelState.Remove(nameof(vm.Mode));
+                ModelState.Remove(nameof(vm.LetterDate));
+                ModelState.Remove(nameof(vm.BatchDate));
+                ModelState.Remove(nameof(vm.ObjectionStartDate));
+                ModelState.Remove(nameof(vm.ObjectionEndDate));
+                ModelState.Remove(nameof(vm.ExtensionDate));
+            }
 
             // S49 override rule
             if (vm.Notice == NoticeKind.S49)
             {
                 var today = DateTime.Today;
-                vm.LetterDateOverridden = vm.LetterDate.Date != today;
 
-                if (vm.LetterDateOverridden && string.IsNullOrWhiteSpace(vm.LetterDateOverrideReason))
-                    ModelState.AddModelError(nameof(vm.LetterDateOverrideReason),
-                        "Reason is required when Letter Date is overridden.");
+                vm.LetterDateOverridden =
+                    vm.LetterDate.Date != today;
+
+                if (vm.LetterDateOverridden &&
+                    string.IsNullOrWhiteSpace(
+                        vm.LetterDateOverrideReason))
+                {
+                    ModelState.AddModelError(
+                        nameof(vm.LetterDateOverrideReason),
+                        "Reason is required when Letter Date " +
+                        "is overridden.");
+                }
             }
 
             // S51 close date
             if (vm.Notice == NoticeKind.S51)
-                vm.EvidenceCloseDate = vm.LetterDate.Date.AddDays(30);
+            {
+                vm.EvidenceCloseDate =
+                    vm.LetterDate.Date.AddDays(30);
+            }
 
-            // S53 appeal close date (unless override)
+            // S53 appeal close date
             if (vm.Notice == NoticeKind.S53)
             {
-                vm.BatchDate ??= DateTime.Today;
+                vm.BatchDate ??=
+                    DateTime.Today;
 
                 if (!vm.AppealCloseOverridden)
                 {
-                    var letter = DateOnly.FromDateTime(vm.LetterDate.Date);
-                    var close = await _s53Calc.CalculateAsync(vm.ValuationPeriodCode, letter, 45, ct);
-                    vm.AppealCloseDate = close.ToDateTime(TimeOnly.MinValue);
+                    var letter =
+                        DateOnly.FromDateTime(
+                            vm.LetterDate.Date);
+
+                    var close =
+                        await _s53Calc.CalculateAsync(
+                            vm.ValuationPeriodCode,
+                            letter,
+                            45,
+                            ct);
+
+                    vm.AppealCloseDate =
+                        close.ToDateTime(
+                            TimeOnly.MinValue);
                 }
                 else
                 {
-                    if (string.IsNullOrWhiteSpace(vm.AppealCloseOverrideReason))
-                        ModelState.AddModelError(nameof(vm.AppealCloseOverrideReason),
-                            "Reason is required when overriding Appeal Close Date.");
+                    if (string.IsNullOrWhiteSpace(
+                            vm.AppealCloseOverrideReason))
+                    {
+                        ModelState.AddModelError(
+                            nameof(vm.AppealCloseOverrideReason),
+                            "Reason is required when overriding " +
+                            "Appeal Close Date.");
+                    }
 
-                    if ((overrideEvidenceFile is null || overrideEvidenceFile.Length <= 0) &&
-                        string.IsNullOrWhiteSpace(vm.ExistingOverrideEvidencePath))
-                        ModelState.AddModelError("overrideEvidenceFile",
-                            "Evidence file is required when overriding Appeal Close Date.");
+                    var hasNewEvidence =
+                        overrideEvidenceFile is not null &&
+                        overrideEvidenceFile.Length > 0;
+
+                    var hasExistingEvidence =
+                        !string.IsNullOrWhiteSpace(
+                            vm.ExistingOverrideEvidencePath);
+
+                    if (!hasNewEvidence &&
+                        !hasExistingEvidence)
+                    {
+                        ModelState.AddModelError(
+                            "overrideEvidenceFile",
+                            "Evidence file is required when overriding " +
+                            "Appeal Close Date.");
+                    }
 
                     if (!vm.AppealCloseDate.HasValue)
-                        ModelState.AddModelError(nameof(vm.AppealCloseDate),
+                    {
+                        ModelState.AddModelError(
+                            nameof(vm.AppealCloseDate),
                             "Appeal Close Date is required when overridden.");
+                    }
                 }
             }
-            if (vm.Notice == NoticeKind.TPA)
+
+            /*
+             * TPA uses the 51-day calculation service.
+             * The final period is recalculated using the actual send date.
+             */
+            if (isTpa)
             {
-                /*
-                 * TPA / Application to Valuation Appeal does not require the user
-                 * to select a roll on Step 1.
-                 *
-                 * NoticeSettings still needs RollId internally, so we resolve it
-                 * from the valuation period / default GV23 roll behind the scenes.
-                 */
-                if (!string.IsNullOrWhiteSpace(vm.ValuationPeriodCode))
-                {
-                    vm.RollId = await ResolveRollIdForTpaAsync(vm.ValuationPeriodCode, ct);
-                    ModelState.Remove(nameof(vm.RollId));
-                }
+                var calculation =
+                    await _thirdPartyDates
+                        .CalculateResponseDateAsync(
+                            startDate: DateTime.Today,
+                            responseDays: 51,
+                            ct: ct);
 
-                /*
-                 * Step 1 only shows an estimated response period.
-                 * The final 51 days must still be recalculated on email send date.
-                 * This uses SP: usp_ThirdPartyAppeal_CalculateResponseDueDate.
-                 */
-                var calc = await _thirdPartyDates.CalculateResponseDateAsync(
-                    startDate: DateTime.Today,
-                    responseDays: 51,
-                    ct: ct);
+                vm.LetterDate =
+                    calculation.StartDate;
 
-                vm.LetterDate = calc.StartDate;
-                vm.BatchDate = calc.StartDate;
+                vm.BatchDate =
+                    calculation.StartDate;
+
+                ModelState.Remove(nameof(vm.LetterDate));
+                ModelState.Remove(nameof(vm.BatchDate));
             }
-
 
             if (!ModelState.IsValid)
+            {
                 return View("Step1", vm);
+            }
 
-            // Create or load draft
             NoticeSettings entity;
+
             if (vm.SettingsId.HasValue)
             {
-                entity = await _settings.GetByIdForUpdateAsync(vm.SettingsId.Value, ct) ?? (NoticeSettings)null!;
-                if (entity is null) return NotFound();
+                entity =
+                    await _settings.GetByIdForUpdateAsync(
+                        vm.SettingsId.Value,
+                        ct)
+                    ?? throw new InvalidOperationException(
+                        "The selected notice settings could not be found.");
             }
             else
             {
-                entity = await _settings.CreateDraftAsync(vm.RollId, vm.Notice, vm.Mode, user, ct);
-                vm.SettingsId = entity.Id;
+                entity =
+                    await _settings.CreateDraftAsync(
+                        vm.RollId,
+                        vm.Notice,
+                        vm.Mode,
+                        user,
+                        ct);
+
+                vm.SettingsId =
+                    entity.Id;
             }
 
-            // Save signature
-            if (signatureFile is not null && signatureFile.Length > 0)
+            if (signatureFile is not null &&
+                signatureFile.Length > 0)
             {
-                var path = await _assets.SaveSignatureAsync(vm.RollId, vm.Notice, entity.Version, signatureFile, ct);
-                entity.SignaturePath = path;
-                vm.ExistingSignaturePath = path;
+                var path =
+                    await _assets.SaveSignatureAsync(
+                        vm.RollId,
+                        vm.Notice,
+                        entity.Version,
+                        signatureFile,
+                        ct);
+
+                entity.SignaturePath =
+                    path;
+
+                vm.ExistingSignaturePath =
+                    path;
             }
 
-            // Save override evidence
-            if (vm.Notice == NoticeKind.S53 && overrideEvidenceFile is not null && overrideEvidenceFile.Length > 0)
+            if (vm.Notice == NoticeKind.S53 &&
+                overrideEvidenceFile is not null &&
+                overrideEvidenceFile.Length > 0)
             {
-                var path = await _assets.SaveOverrideEvidenceAsync(vm.RollId, vm.Notice, entity.Version, overrideEvidenceFile, ct);
-                entity.AppealCloseOverrideEvidencePath = path;
-                vm.ExistingOverrideEvidencePath = path;
+                var path =
+                    await _assets.SaveOverrideEvidenceAsync(
+                        vm.RollId,
+                        vm.Notice,
+                        entity.Version,
+                        overrideEvidenceFile,
+                        ct);
+
+                entity.AppealCloseOverrideEvidencePath =
+                    path;
+
+                vm.ExistingOverrideEvidencePath =
+                    path;
             }
 
-            // Map vm → entity (your existing mapping)
-            var rollCode = await ResolveRollCodeAsync(vm.RollId, ct);
-            ApplyVmToEntity(vm, entity, rollCode);
+            var rollCode =
+                await ResolveRollCodeAsync(
+                    vm.RollId,
+                    ct);
 
-            // ✅ apply new period fields
-            ApplyValuationAndFinancialYear(vm, entity);
+            ApplyVmToEntity(
+                vm,
+                entity,
+                rollCode);
 
-            await _settings.SaveDraftAsync(entity, ct);
+            ApplyValuationAndFinancialYear(
+                vm,
+                entity);
+
+            await _settings.SaveDraftAsync(
+                entity,
+                ct);
 
             if (!entity.IsConfirmed)
-                await _settings.ConfirmAsync(entity.Id, user, "Auto-confirmed after Save Draft.", ct);
+            {
+                await _settings.ConfirmAsync(
+                    entity.Id,
+                    user,
+                    "Auto-confirmed after Save Draft.",
+                    ct);
+            }
 
-            // ✅ AUDIT
             await _audit.WriteAsync(
                 settingsId: entity.Id,
                 step: "Step1",
-                action: "SAVE_AND_CONFIRM",
+                action:
+                    isClaTpa
+                        ? "SAVE_AND_CONFIRM_CLA_TPA"
+                        : "SAVE_AND_CONFIRM",
                 by: user,
                 snapshot: new
                 {
@@ -354,40 +573,90 @@ namespace GV23_Notice.Controllers
                     entity.Mode,
                     entity.Version,
                     entity.LetterDate,
+                    entity.ObjectionStartDate,
+                    entity.ObjectionEndDate,
+                    entity.ExtensionDate,
                     entity.ValuationPeriodCode,
                     entity.ValuationPeriodStart,
                     entity.ValuationPeriodEnd,
                     entity.FinancialYearStart,
                     entity.FinancialYearEnd,
                     entity.FinancialYearsText,
-                    entity.SignaturePath
+                    entity.SignaturePath,
+
+                    ClaRule =
+                        isClaTpa
+                            ? "Letter date plus 30 calendar days."
+                            : null
                 },
-                comment: null,
+                comment:
+                    isClaTpa
+                        ? "CLA-TPA date configuration saved and confirmed."
+                        : null,
                 ct: ct);
 
             if (entity.Notice == NoticeKind.TPA)
             {
-                var roll = await _db.RollRegistry
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(x => x.RollId == entity.RollId, ct);
+                var roll =
+                    await _db.RollRegistry
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(
+                            x => x.RollId == entity.RollId,
+                            ct);
 
-                var tpaVm = await _thirdPartyDates.BuildAsync(
-                    rollId: entity.RollId,
-                    rollShortCode: roll?.ShortCode,
-                    valuationPeriod: entity.ValuationPeriodCode ?? entity.FinancialYearsText ?? "GENERAL VALUATION ROLL 2023",
-                    performedBy: user,
-                    ct: ct);
+                var tpaVm =
+                    await _thirdPartyDates.BuildAsync(
+                        rollId: entity.RollId,
+                        rollShortCode: roll?.ShortCode,
+                        valuationPeriod:
+                            entity.ValuationPeriodCode
+                            ?? entity.FinancialYearsText
+                            ?? "GENERAL VALUATION ROLL 2023",
+                        performedBy: user,
+                        ct: ct);
 
-                tpaVm.NoticeSettingsId = entity.Id;
+                tpaVm.NoticeSettingsId =
+                    entity.Id;
 
-                await _thirdPartyDates.SaveStep1AuditAsync(
-                    tpaVm,
-                    user,
-                    ct);
+                await _thirdPartyDates
+                    .SaveStep1AuditAsync(
+                        tpaVm,
+                        user,
+                        ct);
             }
-            TempData["Success"] = $"Saved and confirmed (v{entity.Version}). Please review summary to approve.";
-            return RedirectToAction(nameof(Step1Summary), new { settingsId = entity.Id });
+
+            /*
+             * Link the imported CLA rows to this NoticeSettings version
+             * as soon as Date Configuration is saved.
+             */
+            var synchronizedRows = 0;
+
+            if (entity.Notice == NoticeKind.CLA_TPA)
+            {
+                synchronizedRows =
+                    await _tpaWorkflowSync
+                        .SynchronizeAsync(
+                            entity.Id,
+                            user,
+                            ct);
+            }
+
+            TempData["Success"] =
+                entity.Notice == NoticeKind.CLA_TPA
+                    ? $"CLA-TPA Date Configuration saved and confirmed " +
+                      $"(v{entity.Version}). {synchronizedRows} CLA record(s) " +
+                      $"linked to this workflow. Please review the summary."
+                    : $"Saved and confirmed (v{entity.Version}). " +
+                      $"Please review summary to approve.";
+
+            return RedirectToAction(
+                nameof(Step1Summary),
+                new
+                {
+                    settingsId = entity.Id
+                });
         }
+
         private async Task<int> ResolveRollIdForTpaAsync(
     string? valuationPeriodCode,
     CancellationToken ct)
@@ -440,6 +709,7 @@ namespace GV23_Notice.Controllers
             if (roll is null) return NotFound();
 
             ThirdPartyAppealResponseDateVm? tpaDate = null;
+            ClaThirdPartyDateConfigurationResult? claDate = null;
 
             if (s.Notice == NoticeKind.TPA)
             {
@@ -447,6 +717,12 @@ namespace GV23_Notice.Controllers
                     startDate: DateTime.Today,
                     responseDays: 51,
                     ct: ct);
+            }
+            else if (s.Notice == NoticeKind.CLA_TPA)
+            {
+                claDate =
+                    _claThirdPartyDateConfigurationService
+                        .Calculate(s.LetterDate);
             }
             var vm = new WorkflowStep1SummaryVm
             {
@@ -489,9 +765,20 @@ namespace GV23_Notice.Controllers
                 ReviewCloseDate = s.ReviewCloseDate,
 
                 // TPA
-                ThirdPartyResponseDays = tpaDate?.ResponseDays,
-                ThirdPartyEstimatedSendDate = tpaDate?.StartDate,
-                ThirdPartyEstimatedResponseDueDate = tpaDate?.ResponseDueDate
+                ThirdPartyResponseDays =
+                    s.Notice == NoticeKind.CLA_TPA
+                        ? 30
+                        : tpaDate?.ResponseDays,
+
+                ThirdPartyEstimatedSendDate =
+                    s.Notice == NoticeKind.CLA_TPA
+                        ? claDate?.RepresentationStartDate
+                        : tpaDate?.StartDate,
+
+                ThirdPartyEstimatedResponseDueDate =
+                    s.Notice == NoticeKind.CLA_TPA
+                        ? claDate?.RepresentationCloseDate
+                        : tpaDate?.ResponseDueDate
             };
 
             return View(vm);
@@ -625,7 +912,48 @@ namespace GV23_Notice.Controllers
                     comment: "Third-Party Appeal Application configuration approved.",
                     ct: ct);
             }
-            if (s.Notice == NoticeKind.TPA)
+            else if (s.Notice == NoticeKind.CLA_TPA)
+            {
+                if (string.IsNullOrWhiteSpace(s.ValuationPeriodCode))
+                {
+                    TempData["Error"] =
+                        "Valuation period is required for CLA-TPA.";
+                    return RedirectToAction(
+                        nameof(Step1),
+                        new { settingsId = s.Id });
+                }
+
+                var claDates =
+                    _claThirdPartyDateConfigurationService
+                        .Calculate(s.LetterDate);
+
+                await _audit.WriteAsync(
+                    settingsId: s.Id,
+                    step: "Step1Summary",
+                    action: "APPROVE_CLA_TPA_DATE_CONFIGURATION",
+                    by: user,
+                    snapshot: new
+                    {
+                        s.Id,
+                        s.RollId,
+                        s.Notice,
+                        s.Mode,
+                        s.Version,
+                        s.ValuationPeriodCode,
+                        claDates.LetterDate,
+                        claDates.RepresentationStartDate,
+                        claDates.RepresentationCloseDate,
+                        ResponseDays = 30,
+                        Rule =
+                            "CLA representations close 30 calendar days " +
+                            "after the configured letter date."
+                    },
+                    comment:
+                        "CLA-TPA date configuration approved.",
+                    ct: ct);
+            }
+            if (s.Notice == NoticeKind.TPA ||
+                s.Notice == NoticeKind.CLA_TPA)
             {
                 var updatedRows =
                     await _tpaWorkflowSync.SynchronizeAsync(
@@ -633,20 +961,33 @@ namespace GV23_Notice.Controllers
                         user,
                         ct);
 
+                var isCla =
+                    s.Notice == NoticeKind.CLA_TPA;
+
                 await _audit.WriteAsync(
                     settingsId: s.Id,
                     step: "Step1Summary",
-                    action: "SYNC_TPA_ROLL_FROM_APPEAL_NUMBER",
+                    action:
+                        isCla
+                            ? "SYNC_CLA_TPA_RECORDS"
+                            : "SYNC_TPA_ROLL_FROM_APPEAL_NUMBER",
                     by: user,
                     snapshot: new
                     {
                         s.Id,
+                        s.Notice,
                         UpdatedRows = updatedRows,
                         Rule =
-                            "RollId, RollShortCode and ValuationPeriod resolved from Appeal_No using RollRegistry."
+                            isCla
+                                ? "CLA records linked using the saved " +
+                                  "NoticeSettings, roll and workflow keys."
+                                : "RollId, RollShortCode and ValuationPeriod " +
+                                  "resolved from Appeal_No using RollRegistry."
                     },
                     comment:
-                        $"{updatedRows} TPA records were linked to the workflow and roll.",
+                        $"{updatedRows} " +
+                        $"{(isCla ? "CLA-TPA" : "TPA")} record(s) " +
+                        "were linked to the workflow.",
                     ct: ct);
             }
             await _settings.ApproveAsync(s.Id, user, "Admin approved via Step1Summary.", ct);
@@ -811,6 +1152,10 @@ namespace GV23_Notice.Controllers
                 AppealCloseOverridden = !string.IsNullOrWhiteSpace(s.AppealCloseOverrideReason),
                 AppealCloseOverrideReason = s.AppealCloseOverrideReason,
                 ExistingOverrideEvidencePath = s.AppealCloseOverrideEvidencePath,
+
+                ValuationPeriodCode = s.ValuationPeriodCode,
+                FinancialYearStart = s.FinancialYearStart,
+                FinancialYearEnd = s.FinancialYearEnd,
 
                 // S78
                 ExtractionDate = s.ExtractionDate,
@@ -1408,6 +1753,37 @@ namespace GV23_Notice.Controllers
                     comment: "Third-Party Appeal Application preview approved.",
                     ct: ct);
             }
+            else if (s.Notice == NoticeKind.CLA_TPA)
+            {
+                var claDates =
+                    _claThirdPartyDateConfigurationService
+                        .Calculate(s.LetterDate);
+
+                await _audit.WriteAsync(
+                    settingsId: s.Id,
+                    step: "Step2",
+                    action: "APPROVE_CLA_TPA_PREVIEW",
+                    by: approvedBy,
+                    snapshot: new
+                    {
+                        s.Id,
+                        s.RollId,
+                        s.Notice,
+                        s.Mode,
+                        s.Version,
+                        s.ValuationPeriodCode,
+                        claDates.LetterDate,
+                        claDates.RepresentationStartDate,
+                        claDates.RepresentationCloseDate,
+                        ResponseDays = 30,
+                        dto.Variant,
+                        dto.AppealNo,
+                        PreviewFileName = pv.PdfFileName
+                    },
+                    comment:
+                        "CLA Third-Party Application preview approved.",
+                    ct: ct);
+            }
 
             await _snap.SaveApprovalAsync(
                 settingsId: dto.SettingsId,
@@ -1653,7 +2029,7 @@ namespace GV23_Notice.Controllers
              * Resolve preview variant and mode.
              * Normal notices use what came from the query string.
              * S52 has special review/appeal variants.
-             * TPA always uses Default + Single because it has one formal owner notice preview.
+             * TPA and CLA-TPA use Default + Single because each has one formal owner notice preview.
              */
             var v = PreviewVariantParser.Parse(variant);
             var m = PreviewModeParser.Parse(mode);
@@ -1728,7 +2104,7 @@ namespace GV23_Notice.Controllers
 
             /*
              * Normal notices use NoticeBatches.
-             * TPA does not create normal batches, but we still show Step 3 Kickoff.
+             * TPA and CLA-TPA do not create normal batches, but Step 3 Kickoff is still shown.
              */
             var batchPrefix = ComputeBatchPrefix(s, shortCode);
             var batchesCreated = 0;

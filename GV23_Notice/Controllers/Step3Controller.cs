@@ -470,12 +470,46 @@ namespace GV23_Notice.Controllers
                     return RedirectToAction(nameof(Print), new { key });
                 }
 
-                if (result.Failed > 0 && result.Printed == 0)
+                if (result.Failed > 0)
                 {
-                    TempData["Error"] =
-                        $"CLA Third-Party Application printing failed. Failed: {result.Failed}.";
+                    var failedRows =
+                        await _db.ClaThirdPartyApplicationNotices
+                            .AsNoTracking()
+                            .Where(x =>
+                                x.NoticeSettingsId == settings.Id &&
+                                x.IsActive &&
+                                x.Status == "Print-Failed")
+                            .OrderBy(x => x.ClaNumber)
+                            .Select(x => new
+                            {
+                                x.ClaNumber,
+                                x.EmailError
+                            })
+                            .Take(10)
+                            .ToListAsync(ct);
 
-                    return RedirectToAction(nameof(Print), new { key });
+                    var databaseErrors =
+                        failedRows.Count == 0
+                            ? null
+                            : string.Join(
+                                Environment.NewLine,
+                                failedRows.Select(x =>
+                                    $"{x.ClaNumber}: " +
+                                    $"{(string.IsNullOrWhiteSpace(x.EmailError) ? "Unknown print error." : x.EmailError)}"));
+
+                    TempData["Error"] =
+                        !string.IsNullOrWhiteSpace(result.ErrorMessage)
+                            ? result.ErrorMessage
+                            : !string.IsNullOrWhiteSpace(databaseErrors)
+                                ? databaseErrors
+                                : $"CLA Third-Party Application printing failed. Failed: {result.Failed}.";
+
+                    if (result.Printed == 0)
+                    {
+                        return RedirectToAction(
+                            nameof(Print),
+                            new { key });
+                    }
                 }
 
                 /*

@@ -486,33 +486,38 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
         private static string BuildBody(
             ClaThirdPartyApplicationNotice notice)
         {
-            var ownerName = FirstNonEmpty(
-                notice.OwnerName,
-                "Client");
+            var propertyDescription =
+                FirstNonEmpty(
+                    notice.PropertyDescription,
+                    "Property");
 
-            var adminContact = FirstNonEmpty(
-                notice.AdminEmail,
-                "valuationenquiries@joburg.org.za");
+            var adminContact =
+                FirstNonEmpty(
+                    notice.AdminEmail,
+                    "PhuthiMas@joburg.org.za");
+
+            var claReference =
+                FirstNonEmpty(
+                    notice.ClaNumber,
+                    "CLA");
 
             return
-$@"Dear {ownerName},
+$@"Dear Client,
 
-CLA Reference: {notice.ClaNumber}
-Property Description: {notice.PropertyDescription}
-Premise ID: {notice.PremiseId}
+Property Description: {propertyDescription}
 
-Please be advised that the City of Johannesburg has received a third-party application relating to the above-mentioned property.
+Please be advised that the City has received a condonation for late appeal application in respect of the above-mentioned property from a party who is not the registered owner. As this application may affect your property rights and interests, your attention and participation are required.
 
-Attached are:
-1. The CLA third-party application formal notice.
-2. The supporting appeal-pack ZIP file.
+Attached, please find the Notice (Reference: CLA No. {claReference}), together with the CLA application form and any supporting documentation received, for your review and the necessary action.
 
-Please review the attached documents and submit any representations by the closing date stated in the formal notice.
+Should you require any further information or assistance, please contact us at {adminContact} or valuationenquiries@joburg.org.za.
 
-For further enquiries or assistance, contact {adminContact} and valuationenquiries@joburg.org.za.
+Your urgent attention to this matter will be appreciated.
 
-Yours faithfully,
+Kind regards,
+
 Valuation Appeal Board Secretariat
+
 City of Johannesburg";
         }
 

@@ -135,6 +135,8 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 Total = notices.Count
             };
 
+            var failureMessages = new List<string>();
+
             if (notices.Count == 0)
             {
                 result.ErrorMessage =
@@ -216,15 +218,40 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 }
                 catch (Exception ex)
                 {
+                    var rootException =
+                        ex.GetBaseException();
+
+                    var detailedError =
+                        $"{notice.ClaNumber ?? "Unknown CLA"}: " +
+                        $"{rootException.GetType().Name}: " +
+                        $"{rootException.Message}";
+
                     notice.NoticeSettingsId = settings.Id;
                     notice.Status = "Print-Failed";
-                    notice.EmailError = ex.Message;
+                    notice.EmailError = detailedError;
                     notice.UpdatedAtUtc = DateTime.UtcNow;
                     notice.UpdatedBy = printedBy;
+
+                    failureMessages.Add(detailedError);
                     result.Failed++;
                 }
 
                 await _db.SaveChangesAsync(ct);
+            }
+
+            if (failureMessages.Count > 0)
+            {
+                result.ErrorMessage =
+                    string.Join(
+                        Environment.NewLine,
+                        failureMessages.Take(10));
+
+                if (failureMessages.Count > 10)
+                {
+                    result.ErrorMessage +=
+                        Environment.NewLine +
+                        $"...and {failureMessages.Count - 10} more failure(s).";
+                }
             }
 
             return result;
