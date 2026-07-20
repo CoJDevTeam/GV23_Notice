@@ -201,7 +201,7 @@
                                     @*   <option value="S78" selected="@(Model.Notice == NoticeKind.S78)">Section 78 (S78)</option> *@
                                 </select>
                               
-                                <input type="hidden" asp-for="Notice" id="noticeHidden" />
+                                @* noticeSelect already posts Notice; duplicate hidden input removed. *@
                                 <div class="s1-val-msg" id="err-Notice">
                                     <span asp-validation-for="Notice"></span>
                                 </div>
@@ -209,11 +209,22 @@
 
                             <div class="s1-field">
                                 <label class="s1-label">Batch Mode</label>
-                                <select asp-for="Mode" id="modeSelect" class="s1-select"
-                                        onchange="runAll()">
-                                    <option value="@BatchMode.Single">Single</option>
-                                    <option value="@BatchMode.Bulk">Bulk</option>
+                                <select id="modeSelect" class="s1-select"
+                                        onchange="syncModeValue(); runAll()">
+                                    <option value="@BatchMode.Single"
+                                            selected="@(Model.Mode == BatchMode.Single)">
+                                        Single
+                                    </option>
+                                    <option value="@BatchMode.Bulk"
+                                            selected="@(Model.Mode == BatchMode.Bulk)">
+                                        Bulk
+                                    </option>
                                 </select>
+
+                                <input type="hidden"
+                                       name="Mode"
+                                       id="modeHidden"
+                                       value="@Model.Mode" />
                             </div>
                         </div>
                     </div>
@@ -707,18 +718,18 @@
         /* ── TempData toasts ────────────────────────────── */
         @if (TempData["Success"] != null)
         {
-                    <text>
-                                document.addEventListener('DOMContentLoaded', () =>
-                                    WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
-                    </text>
+                        <text>
+                                        document.addEventListener('DOMContentLoaded', () =>
+                                            WfToast.success("@Html.Raw(TempData["Success"]?.ToString()?.Replace("\"", "\\\""))"));
+                        </text>
         }
 
         @if (TempData["Error"] != null)
         {
-                    <text>
-                                document.addEventListener('DOMContentLoaded', () =>
-                                    WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
-                    </text>
+                        <text>
+                                        document.addEventListener('DOMContentLoaded', () =>
+                                            WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
+                        </text>
         }
 
         /* ── Helpers ────────────────────────────────────── */
@@ -903,6 +914,15 @@
             }
         }
 
+        function syncModeValue() {
+            const modeSelect = document.getElementById('modeSelect');
+            const modeHidden = document.getElementById('modeHidden');
+
+            if (modeSelect && modeHidden) {
+                modeHidden.value = modeSelect.value;
+            }
+        }
+
         function showBlocks() {
             const notice = document.getElementById('noticeSelect')?.value || 'S49';
                     const rollField = document.getElementById('field-RollId');
@@ -948,10 +968,9 @@
                 modeSelect.disabled = false;
             }
 
-            const mode = modeSelect?.value || '@BatchMode.Bulk';
+            syncModeValue();
 
-            const noticeHidden = document.getElementById('noticeHidden');
-            if (noticeHidden) noticeHidden.value = notice;
+            const mode = modeSelect?.value || '@BatchMode.Bulk';
 
             const badge = document.getElementById('noticeBadge');
 
@@ -1144,12 +1163,15 @@
 
             if (!fySelect) return;
 
-            fySelect.innerHTML = '<option value="">— Select —</option>';
-            fySelect.disabled = true;
-
             const fyStart = document.getElementById('fyStart');
             const fyEnd = document.getElementById('fyEnd');
             const fyText = document.getElementById('fyText');
+
+            const savedStart = fyStart?.value || '';
+            const savedEnd = fyEnd?.value || '';
+
+            fySelect.innerHTML = '<option value="">— Select —</option>';
+            fySelect.disabled = true;
 
             if (fyStart) fyStart.value = '';
             if (fyEnd) fyEnd.value = '';
@@ -1170,14 +1192,16 @@
                 }
 
                 const list = await res.json();
-                const savedStart = document.getElementById('fyStart')?.value;
 
                 for (const item of list) {
                     const opt = document.createElement('option');
                     opt.value = `${item.start}|${item.end}|${item.text}`;
                     opt.textContent = item.text;
 
-                    if (savedStart && item.start && item.start.startsWith(savedStart.substring(0, 4))) {
+                    if (savedStart &&
+                        savedEnd &&
+                        item.start === savedStart &&
+                        item.end === savedEnd) {
                         opt.selected = true;
                     }
 
@@ -1187,8 +1211,12 @@
                 fySelect.disabled = false;
 
                 if (list.length) {
+                    if (!fySelect.value) {
+                        fySelect.selectedIndex = 1;
+                    }
+
+                    onFinancialYearChange();
                     WfToast.success(`${list.length} year(s) loaded.`, 'Loaded');
-                    fySelect.dispatchEvent(new Event('change'));
                 }
             } catch {
                 WfToast.error('Network error.', 'Error');
@@ -1264,6 +1292,9 @@
             });
 
             document.getElementById('wf-form')?.addEventListener('submit', e => {
+                syncModeValue();
+                calculateClaEstimatedDates();
+
                 const errs = validateAll();
 
                 if (errs.length > 0) {
@@ -1295,11 +1326,24 @@
                 }
 
                 const rollSelect = document.getElementById('rollSelect');
-                const modeSelect = document.getElementById('modeSelect');
+                const notice = document.getElementById('noticeSelect')?.value;
 
-                // Re-enable disabled controls before submit so their values are posted.
-                if (rollSelect) rollSelect.disabled = false;
-                if (modeSelect) modeSelect.disabled = false;
+                if (rollSelect?.disabled &&
+                    (notice === 'TPA' || notice === 'CLA_TPA')) {
+
+                    let rollHidden =
+                        document.getElementById('directRollIdHidden');
+
+                    if (!rollHidden) {
+                        rollHidden = document.createElement('input');
+                        rollHidden.type = 'hidden';
+                        rollHidden.id = 'directRollIdHidden';
+                        rollHidden.name = 'RollId';
+                        document.getElementById('wf-form')?.appendChild(rollHidden);
+                    }
+
+                    rollHidden.value = '0';
+                }
 
                 document.getElementById('wf-submit-btn')?.classList.add('loading');
 
@@ -1322,6 +1366,7 @@
                 onS52ModeChange(null);
             }
 
+            syncModeValue();
             await runAll();
         });
     </script>

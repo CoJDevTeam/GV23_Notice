@@ -502,8 +502,16 @@ namespace GV23_Notice.Controllers
         [HttpGet("SettingsLibrary")]
         public async Task<IActionResult> SettingsLibrary(int? rollId, NoticeKind? notice, BatchMode? mode, CancellationToken ct)
         {
-            var q = _db.NoticeSettings.AsNoTracking()
-                .Where(x => x.IsConfirmed && x.IsApproved);
+            /*
+             * Normal notices remain restricted to confirmed and approved settings.
+             * CLA settings are also listed while draft or awaiting approval so an
+             * existing CLA NoticeSettings record can be resumed.
+             */
+            var q = _db.NoticeSettings
+                .AsNoTracking()
+                .Where(x =>
+                    (x.IsConfirmed && x.IsApproved) ||
+                    x.Notice == NoticeKind.CLA_TPA);
 
             if (rollId.HasValue) q = q.Where(x => x.RollId == rollId.Value);
             if (notice.HasValue) q = q.Where(x => x.Notice == notice.Value);
@@ -522,6 +530,8 @@ namespace GV23_Notice.Controllers
                     LetterDate = x.LetterDate,
                     IsConfirmed = x.IsConfirmed,
                     IsApproved = x.IsApproved,
+                    WorkflowKey = x.WorkflowKey,
+                    ApprovalKey = x.ApprovalKey,
                     SignaturePath = x.SignaturePath
                 })
                 .ToListAsync(ct);

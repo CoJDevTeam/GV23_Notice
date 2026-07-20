@@ -921,7 +921,11 @@ INNER JOIN @ObjectionNos n
                     PropertyType = x.RollCategory1,
                     PdfPath = x.PdfPath,
                     OwnerEmail = x.OwnerEmail,
-                    AppealPackZipPath = x.AppealPackPath,
+                    /*
+                     * QA must validate the generated ZIP, not the original
+                     * source appeal-pack folder/file.
+                     */
+                    AppealPackZipPath = x.AppealPackZipPath,
                     AppealPackExists = x.AppealPackExists
                 })
                 .ToListAsync(ct);

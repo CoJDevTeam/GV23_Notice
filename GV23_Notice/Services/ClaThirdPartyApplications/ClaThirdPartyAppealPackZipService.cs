@@ -1,4 +1,7 @@
-﻿using GV23_Notice.Domain.Workflow.Entities;
+﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Workflow.Entities;
+using Microsoft.EntityFrameworkCore;
+using System.Data;
 using System.IO.Compression;
 
 namespace GV23_Notice.Services.ClaThirdPartyApplications
@@ -6,11 +9,14 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
     public sealed class ClaThirdPartyAppealPackZipService
         : IClaThirdPartyAppealPackZipService
     {
+        private readonly AppDbContext _db;
         private readonly IConfiguration _config;
 
         public ClaThirdPartyAppealPackZipService(
+            AppDbContext db,
             IConfiguration config)
         {
+            _db = db;
             _config = config;
         }
 
@@ -35,20 +41,27 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                     "Output folder is required to build the appeal pack.");
             }
 
+            var appealNo = await ResolveAppealNumberAsync(
+                notice.ObjectionNumber,
+                ct);
+
             var appealPackFolder = ResolveAppealPackFolder(
                 settings,
-                notice);
+                notice,
+                appealNo);
 
             if (!Directory.Exists(appealPackFolder))
             {
                 throw new DirectoryNotFoundException(
-                    $"CLA appeal-pack folder was not found: {appealPackFolder}");
+                    $"Appeal-pack folder was not found for Objection_No " +
+                    $"'{notice.ObjectionNumber}' and Appeal_No '{appealNo}': " +
+                    appealPackFolder);
             }
 
             Directory.CreateDirectory(outputFolder);
 
             var zipFileName =
-                $"Appeal Pack_{SafeFile(notice.ClaNumber)}.zip";
+                $"Appeal Pack_{SafeFile(appealNo)}.zip";
 
             var zipPath = Path.Combine(
                 outputFolder,
@@ -78,35 +91,11 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
 
         private string ResolveAppealPackFolder(
             NoticeSettings settings,
-            ClaThirdPartyApplicationNotice notice)
+            ClaThirdPartyApplicationNotice notice,
+            string appealNo)
         {
-            /*
-             * Preferred source:
-             * A manually supplied appeal-pack folder for this CLA record.
-             */
-            if (!string.IsNullOrWhiteSpace(notice.AppealPackPath))
-            {
-                var configuredPath =
-                    notice.AppealPackPath.Trim();
-
-                if (Directory.Exists(configuredPath))
-                {
-                    return configuredPath;
-                }
-
-                if (File.Exists(configuredPath))
-                {
-                    return Path.GetDirectoryName(configuredPath)
-                        ?? throw new InvalidOperationException(
-                            $"The folder containing the appeal pack could not be resolved: {configuredPath}");
-                }
-            }
-
-            /*
-             * Fallback:
-             * Resolve from the configured appeal root and CLA number.
-             */
-            var rootKey = ResolveRootKey(
+            var rootKey = ResolveRootKeyFromAppealNumber(
+                appealNo,
                 notice.RollShortCode,
                 settings.Roll.ToString());
 
@@ -120,22 +109,17 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                     $"Appeal root folder is not configured for key '{rootKey}'.");
             }
 
-            var claFolder = Path.Combine(
+            var appealFolder = Path.Combine(
                 appealRoot,
-                SafeFile(notice.ClaNumber!));
+                SafeFile(appealNo));
 
-            /*
-             * Optional dedicated source folder:
-             *
-             * {CLA folder}\APPEAL PACK
-             */
             var appealPackFolderName =
                 _config[
                     "Storage:CLAThirdPartyAppealApplication:AppealPackFolderName"]
                 ?? "APPEAL PACK";
 
             var dedicatedAppealPackFolder = Path.Combine(
-                claFolder,
+                appealFolder,
                 appealPackFolderName.Trim());
 
             if (Directory.Exists(dedicatedAppealPackFolder))
@@ -143,12 +127,93 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 return dedicatedAppealPackFolder;
             }
 
+            return appealFolder;
+        }
+
+        private async Task<string> ResolveAppealNumberAsync(
+            string? objectionNo,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(objectionNo))
+            {
+                throw new InvalidOperationException(
+                    "Objection_No is required to resolve the Appeal_No.");
+            }
+
             /*
-             * Final fallback:
-             * Use the CLA folder itself, while excluding generated
-             * CLA PDFs, email copies and ZIP files.
+             * Obj_Property_Info_Appeal is not in GV23_Notice.
+             * It is stored in:
+             *
+             * [Objection].[dbo].[Obj_Property_Info_Appeal]
+             *
+             * The CLA table ObjectionNumber maps directly to Obj_Ref.
              */
-            return claFolder;
+            var connection = _db.Database.GetDbConnection();
+
+            var shouldClose =
+                connection.State != ConnectionState.Open;
+
+            if (shouldClose)
+            {
+                await connection.OpenAsync(ct);
+            }
+
+            try
+            {
+                await using var command =
+                    connection.CreateCommand();
+
+                command.CommandText = """
+                    SELECT TOP (1)
+                        LTRIM(RTRIM(
+                            CONVERT(NVARCHAR(200), Appeal_No)
+                        ))
+                    FROM [Objection].[dbo].[Obj_Property_Info_Appeal]
+                    WHERE LTRIM(RTRIM(
+                              CONVERT(NVARCHAR(200), Obj_Ref)
+                          )) = @ObjectionNo
+                      AND Appeal_No IS NOT NULL
+                      AND LTRIM(RTRIM(
+                              CONVERT(NVARCHAR(200), Appeal_No)
+                          )) <> N''
+                    ORDER BY Appeal_ID DESC;
+                    """;
+
+                var parameter =
+                    command.CreateParameter();
+
+                parameter.ParameterName =
+                    "@ObjectionNo";
+
+                parameter.Value =
+                    objectionNo.Trim();
+
+                command.Parameters.Add(
+                    parameter);
+
+                var value =
+                    await command.ExecuteScalarAsync(ct);
+
+                var appealNo =
+                    value?.ToString()?.Trim();
+
+                if (string.IsNullOrWhiteSpace(appealNo))
+                {
+                    throw new InvalidOperationException(
+                        $"No Appeal_No was found in " +
+                        $"[Objection].[dbo].[Obj_Property_Info_Appeal] " +
+                        $"where Obj_Ref = '{objectionNo}'.");
+                }
+
+                return appealNo;
+            }
+            finally
+            {
+                if (shouldClose)
+                {
+                    await connection.CloseAsync();
+                }
+            }
         }
 
         private void CreateZip(
@@ -323,11 +388,42 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                        StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string ResolveRootKey(
+        private static string ResolveRootKeyFromAppealNumber(
+            string appealNo,
             string? recordShortCode,
             string? settingsRoll)
         {
-            var value = FirstNonEmpty(
+            var value = appealNo?.Trim() ?? "";
+
+            if (value.Contains(
+                    "APP-GV23-Sup3-",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 3";
+            }
+
+            if (value.Contains(
+                    "APP-GV23-Sup2-",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 2";
+            }
+
+            if (value.Contains(
+                    "APP-GV23-Sup1-",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "SUPP 1";
+            }
+
+            if (value.Contains(
+                    "APP-GV23-",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return "GV23";
+            }
+
+            var fallback = FirstNonEmpty(
                     recordShortCode,
                     settingsRoll,
                     "GV23")
@@ -335,7 +431,7 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 .Trim()
                 .ToUpperInvariant();
 
-            return value switch
+            return fallback switch
             {
                 "SUPP1" => "SUPP 1",
                 "SUPP2" => "SUPP 2",

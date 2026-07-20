@@ -199,12 +199,10 @@ namespace GV23_Notice.Controllers
                 .FirstOrDefaultAsync(x => x.ApprovalKey == key || x.WorkflowKey == key, ct)
                 ?? throw new InvalidOperationException("Workflow settings not found.");
 
-            if (settings.Notice == NoticeKind.TPA ||
-                settings.Notice == NoticeKind.CLA_TPA)
+            if (settings.Notice == NoticeKind.TPA)
             {
                 /*
-                 * TPA does not use NoticeBatches.
-                 * The existing Print view receives TPA data through ViewBag.
+                 * TPA prints directly from ThirdPartyAppealApplicationNotices.
                  */
                 ViewBag.TpaPrint = await _tpaPrint.BuildPrintVmAsync(key, ct);
 

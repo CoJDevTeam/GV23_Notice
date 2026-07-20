@@ -10,11 +10,14 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
         : IClaThirdPartyFormalNoticePdfService
     {
         private readonly IWebHostEnvironment _env;
+        private readonly IConfiguration _config;
 
         public ClaThirdPartyFormalNoticePdfService(
-            IWebHostEnvironment env)
+            IWebHostEnvironment env,
+            IConfiguration config)
         {
             _env = env;
+            _config = config;
         }
 
         public byte[] BuildPdf(
@@ -225,12 +228,12 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                         .Style(footerRef7);
                 });
         }
-        private static void BuildAddressSection(
-    ColumnDescriptor column,
-    ClaThirdPartyApplicationNotice notice,
-    DateTime letterDate,
-    TextStyle labelStyle,
-    TextStyle valueStyle)
+        private void BuildAddressSection(
+       ColumnDescriptor column,
+       ClaThirdPartyApplicationNotice notice,
+       DateTime letterDate,
+       TextStyle labelStyle,
+       TextStyle valueStyle)
         {
             column.Item().Row(row =>
             {
@@ -691,10 +694,34 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 notice.OwnerAddress5);
         }
 
-        private static IReadOnlyList<string>
+        private IReadOnlyList<string>
             BuildThirdPartyAddressLines(
                 ClaThirdPartyApplicationNotice notice)
         {
+            if (IsSihleMore(notice.ThirdPartyName))
+            {
+                var section =
+                    _config.GetSection(
+                        "Storage:CLAThirdPartyAppealApplication:ThirdPartyAddresses:SihleMore");
+
+                var configuredAddress =
+                    BuildAddressLines(
+                        FirstNonEmpty(
+                            section["Name"],
+                            notice.ThirdPartyName,
+                            "Sihle More"),
+                        section["Address1"],
+                        section["Address2"],
+                        section["Address3"],
+                        section["Address4"],
+                        section["Address5"]);
+
+                if (configuredAddress.Count > 1)
+                {
+                    return configuredAddress;
+                }
+            }
+
             return BuildAddressLines(
                 notice.ThirdPartyName,
                 notice.ThirdPartyAddress1,
@@ -702,6 +729,25 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 notice.ThirdPartyAddress3,
                 notice.ThirdPartyAddress4,
                 notice.ThirdPartyAddress5);
+        }
+
+        private static bool IsSihleMore(
+            string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            var normalised = new string(
+                name
+                    .Where(char.IsLetterOrDigit)
+                    .Select(char.ToUpperInvariant)
+                    .ToArray());
+
+            return normalised.Contains(
+                "SIHLEMORE",
+                StringComparison.Ordinal);
         }
 
         private static IReadOnlyList<string> BuildAddressLines(

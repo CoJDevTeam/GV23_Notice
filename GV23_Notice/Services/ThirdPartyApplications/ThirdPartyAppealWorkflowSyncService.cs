@@ -129,15 +129,22 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 ?? throw new InvalidOperationException(
                     $"No active RollRegistry record was found for RollId '{settingsRollId}'.");
 
+            /*
+             * A new Step 1 version creates a new NoticeSettings row. Existing CLA
+             * records can therefore still be linked to the previous version.
+             * Relink active CLA rows for the same roll to the current workflow,
+             * exactly as the direct TPA flow reuses its imported extract.
+             */
             var rows = await _db
                 .ClaThirdPartyApplicationNotices
                 .Where(x => x.IsActive)
+                .Where(x => !string.IsNullOrWhiteSpace(x.ClaNumber))
                 .Where(x =>
                     x.NoticeSettingsId == null ||
                     x.NoticeSettingsId == 0 ||
-                    x.NoticeSettingsId == noticeSettingsId)
-                .Where(x =>
-                    !string.IsNullOrWhiteSpace(x.ClaNumber))
+                    x.NoticeSettingsId == noticeSettingsId ||
+                    x.RollId == null ||
+                    x.RollId == settingsRollId)
                 .ToListAsync(ct);
 
             var updated = 0;

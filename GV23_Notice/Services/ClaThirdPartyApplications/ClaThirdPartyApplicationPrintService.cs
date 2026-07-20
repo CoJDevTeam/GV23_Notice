@@ -18,7 +18,7 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
             AppDbContext db,
             IConfiguration config,
             IClaThirdPartyFormalNoticePdfService pdf
-            ,IClaThirdPartyAppealPackZipService appealPackZip)
+            , IClaThirdPartyAppealPackZipService appealPackZip)
         {
             _db = db;
             _config = config;
@@ -197,7 +197,9 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                             $"The CLA appeal-pack ZIP was not created for '{notice.ClaNumber}'.");
                     }
 
-                    notice.AppealPackPath = appealPackZipPath;
+                    // Keep AppealPackPath as the original source location.
+                    // Store the generated archive in AppealPackZipPath.
+                    notice.AppealPackZipPath = appealPackZipPath;
                     notice.AppealPackFileName =
                         Path.GetFileName(appealPackZipPath);
 
@@ -270,11 +272,21 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 x => x.NoticeSettingsId == settings.Id,
                 ct);
 
-            return hasLinkedRows
-                ? query.Where(x => x.NoticeSettingsId == settings.Id)
-                : query.Where(x =>
-                    x.NoticeSettingsId == null ||
-                    x.NoticeSettingsId == 0);
+            if (hasLinkedRows)
+            {
+                return query.Where(x =>
+                    x.NoticeSettingsId == settings.Id);
+            }
+
+            /*
+             * New workflow versions receive a new NoticeSettingsId. The imported
+             * CLA rows may still point to the previous version, so fall back to
+             * active records for the same roll. PrintAsync will relink them to
+             * the current settings before changing their status.
+             */
+            return query.Where(x =>
+                x.RollId == null ||
+                x.RollId == settings.RollId);
         }
 
         private async Task<NoticeSettings> GetSettingsAsync(

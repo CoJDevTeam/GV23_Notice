@@ -13,6 +13,8 @@
         NoticeKind.DJ => "Dear Johnny Notice",
         NoticeKind.IN => "Invalid Notice",
         NoticeKind.S78 => "Section 78 — Review Period",
+        NoticeKind.TPA => "Third-Party Appeal Application",
+        NoticeKind.CLA_TPA => "CLA — Third-Party Application Notice",
         _ => n.ToString()
     };
 
@@ -25,6 +27,8 @@
         NoticeKind.DJ => "sl-chip-dj",
         NoticeKind.IN => "sl-chip-in",
         NoticeKind.S78 => "sl-chip-s78",
+        NoticeKind.TPA => "sl-chip-s52",
+        NoticeKind.CLA_TPA => "sl-chip-s52",
         _ => ""
     };
 
@@ -58,7 +62,7 @@
             <div class="sl-hero-div"></div>
             <div>
                 <div class="sl-hero-title">Settings Library</div>
-                <div class="sl-hero-sub">Select a configuration to preview or continue to Step 3</div>
+                <div class="sl-hero-sub">Open an existing configuration, continue approval, or resume Step 3</div>
             </div>
         </div>
         <div class="sl-hero-right">
@@ -82,7 +86,7 @@
             <div class="sl-stat sl-stat-gold">
                 <div class="sl-stat-lbl">Total Configurations</div>
                 <div class="sl-stat-num">@Model.Count</div>
-                <div class="sl-stat-sub">Approved settings</div>
+                <div class="sl-stat-sub">Approved settings and saved CLA workflows</div>
             </div>
             <div class="sl-stat sl-stat-green">
                 <div class="sl-stat-lbl">With Signature</div>
@@ -105,9 +109,9 @@
         <div class="sl-sec-head">
             <div class="sl-sec-left">
                 <div class="sl-sec-bar"></div>
-                <span class="sl-sec-title">Approved Configurations</span>
+                <span class="sl-sec-title">Saved Configurations</span>
             </div>
-            <span style="font-size:11.5px;color:var(--sl-mu)">Click Preview to review the notice and start Step 3</span>
+            <span style="font-size:11.5px;color:var(--sl-mu)">CLA workflows can be reopened and continued without creating another setting</span>
         </div>
 
         <div class="sl-card">
@@ -135,8 +139,9 @@
                                 <th>Mode</th>
                                 <th>Ver</th>
                                 <th>Letter Date</th>
+                                <th>Workflow Status</th>
                                 <th>Signature</th>
-                                <th style="width:200px">Actions</th>
+                                <th style="width:260px">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -168,6 +173,22 @@
                                         @r.LetterDate.ToString("dd MMM yyyy")
                                     </td>
                                     <td>
+                                        @if (r.IsApproved)
+                                        {
+                                            <span class="sl-status sl-pip-step3">✓ Approved</span>
+                                        }
+                                        else if (r.IsConfirmed)
+                                        {
+                                            <span class="sl-status sl-pip-step2">Awaiting Approval</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="sl-status" style="background:var(--sl-surf);color:var(--sl-mu);border-color:var(--sl-bord)">
+                                                Draft
+                                            </span>
+                                        }
+                                    </td>
+                                    <td>
                                         @if (string.IsNullOrWhiteSpace(r.SignaturePath))
                                         {
                                             <span class="sl-status sl-pip-sig">⚠ Missing</span>
@@ -180,27 +201,69 @@
                                     </td>
                                     <td>
                                         <div class="sl-actions">
-                                            <!-- Preview → Step 2 with this settingsId — the main CTA -->
-                                            <a class="sl-action sl-action-preview"
-                                               href="@Url.Action("Step2", "Workflow", new { settingsId = r.SettingsId, variant = "Default", mode = "single" })">
-                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                                    <circle cx="12" cy="12" r="3" />
-                                                </svg>
-                                                Preview
-                                            </a>
-                                            <!-- Edit -->
+                                            @if (r.Notice == NoticeKind.CLA_TPA &&
+                                                 r.IsApproved &&
+                                                 r.ApprovalKey.HasValue &&
+                                                 r.ApprovalKey.Value != Guid.Empty)
+                                            {
+                                                <a class="sl-action sl-action-preview"
+                                                       href="@Url.Action(
+                                                                                                                                                              "Step3Kickoff",
+                                                                                                                                                              "Workflow",
+                                                                                                                                                              new
+                                                                                                                                                              {
+                                                                                                                                                                  settingsId = r.SettingsId,
+                                                                                                                                                                  key = r.ApprovalKey.Value,
+                                                                                                                                                                  variant = "Default",
+                                                                                                                                                                  mode = "single"
+                                                                                                                                                              })">
+                                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                                        <polyline points="9 18 15 12 9 6" />
+                                                    </svg>
+                                                    Continue CLA
+                                                </a>
+                                            }
+                                            else if (r.IsConfirmed)
+                                            {
+                                                <a class="sl-action sl-action-preview"
+                                                       href="@Url.Action(
+                                                                                                                                                              "Step2",
+                                                                                                                                                              "Workflow",
+                                                                                                                                                              new
+                                                                                                                                                              {
+                                                                                                                                                                  settingsId = r.SettingsId,
+                                                                                                                                                                  variant = "Default",
+                                                                                                                                                                  mode = "single"
+                                                                                                                                                              })">
+                                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                                        <circle cx="12" cy="12" r="3" />
+                                                    </svg>
+                                                    @(r.IsApproved ? "Preview" : "Continue Approval")
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <a class="sl-action sl-action-preview"
+                                                       href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
+                                                    Continue Setup
+                                                </a>
+                                            }
+
                                             <a class="sl-action sl-action-edit"
-                                               href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
-                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                                                   href="@Url.Action("Step1", "Workflow", new { settingsId = r.SettingsId })">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                                 </svg>
                                                 Edit
                                             </a>
-                                            <!-- Summary -->
+
                                             <a class="sl-action sl-action-summary"
-                                               href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
+                                                   href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
                                                 Summary
                                             </a>
                                         </div>
@@ -402,7 +465,7 @@
 
             $('#settingsTable').DataTable({
                 pageLength:15, lengthMenu:[10,15,25,50,100], order:[[5,'desc']],
-                columnDefs:[{orderable:false,targets:7}],
+                columnDefs:[{orderable:false,targets:8}],
                 language:{search:"",searchPlaceholder:"Search configurations…",
                           lengthMenu:"Show _MENU_ rows",info:"Showing _START_–_END_ of _TOTAL_",
                           infoEmpty:"No settings found",paginate:{previous:"‹",next:"›"}},

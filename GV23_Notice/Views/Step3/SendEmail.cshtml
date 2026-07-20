@@ -1,6 +1,8 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.Step3SendEmailVm
 @using System.Globalization
+@using System.Linq
 @using GV23_Notice.Domain.Workflow
+@using GV23_Notice.Models.Workflow.ViewModels
 @inject GV23_Notice.Services.QA.INoticeQaService QaService
 
 @{
@@ -1212,8 +1214,8 @@
                 @if (isDirectThirdParty && directEmail != null)
                 {
                     <span class="se-badge-info">
-                        @directEmail.Groups.Count
-                        group@(tpa.Groups.Count == 1 ? "" : "s")
+                        @(directEmail.Groups?.Count ?? 0)
+                        group@((directEmail.Groups?.Count ?? 0) == 1 ? "" : "s")
                         ·
                         @((directEmail.TotalReadyToSend + directEmail.TotalSent).ToString("N0"))
                         records
@@ -1243,7 +1245,7 @@
 
                     @if (isDirectThirdParty && directEmail != null)
                     {
-                        if (!directEmail.Groups.Any())
+                        if (directEmail.Groups == null || !directEmail.Groups.Any())
                         {
                             <div class="se-empty">
                                 <div class="se-empty-icon">📭</div>
@@ -1274,7 +1276,7 @@
                                 </thead>
 
                                 <tbody>
-                                    @foreach (var group in directEmail.Groups)
+                                    @foreach (var group in directEmail.Groups ?? Enumerable.Empty<ThirdPartyAppealSendEmailGroupVm>())
                                     {
                                         <tr>
                                             <td>
@@ -1961,7 +1963,7 @@
             document.getElementById('epCloseBtn').classList.remove('active');
 
             clearInterval(_pollTimer);
-            _pollTimer = setInterval(pollTpaEmailProgress, 700);
+            _pollTimer = setInterval(pollDirectEmailProgress, 700);
         }
 
         function pollDirectEmailProgress() {

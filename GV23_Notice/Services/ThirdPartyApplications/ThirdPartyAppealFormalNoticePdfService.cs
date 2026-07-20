@@ -9,10 +9,12 @@ namespace GV23_Notice.Services.ThirdPartyApplications
     public sealed class ThirdPartyAppealFormalNoticePdfService : IThirdPartyAppealFormalNoticePdfService
     {
         private readonly IWebHostEnvironment _env;
+        private readonly IConfiguration _config;
 
-        public ThirdPartyAppealFormalNoticePdfService(IWebHostEnvironment env)
+        public ThirdPartyAppealFormalNoticePdfService(IWebHostEnvironment env, IConfiguration config)
         {
             _env = env;
+            _config = config;
         }
 
         public byte[] BuildPdf(
@@ -109,7 +111,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                                 .AlignRight()
                                 .Text(t =>
                                 {
-                                   //t.Span("DATE: ").Style(body10b);
+                                    //t.Span("DATE: ").Style(body10b);
                                     t.Span(letterDate.ToString(
                                             "dd MMMM yyyy",
                                             CultureInfo.GetCultureInfo("en-ZA")))
@@ -523,18 +525,40 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 n.OwnerAddress5);
         }
 
-        private static IReadOnlyList<string> BuildThirdPartyAddressLines(
-            ThirdPartyAppealApplicationNotice n)
+        private IReadOnlyList<string> BuildThirdPartyAddressLines(
+     ThirdPartyAppealApplicationNotice notice)
         {
-            return BuildAddressLines(
-                n.ThirdPartyName,
-                n.ThirdPartyAddress1,
-                n.ThirdPartyAddress2,
-                n.ThirdPartyAddress3,
-                n.ThirdPartyAddress4,
-                n.ThirdPartyAddress5);
-        }
+            if (IsSihleMore(notice.ThirdPartyName))
+            {
+                var section =
+                    _config.GetSection(
+                        "Storage:ThirdPartyAppealApplication:ThirdPartyAddresses:SihleMore");
 
+                var configuredAddress = BuildAddressLines(
+                    FirstNonEmpty(
+                        section["Name"],
+                        notice.ThirdPartyName,
+                        "Sihle More"),
+                    section["Address1"],
+                    section["Address2"],
+                    section["Address3"],
+                    section["Address4"],
+                    section["Address5"]);
+
+                if (configuredAddress.Count > 1)
+                {
+                    return configuredAddress;
+                }
+            }
+
+            return BuildAddressLines(
+                notice.ThirdPartyName,
+                notice.ThirdPartyAddress1,
+                notice.ThirdPartyAddress2,
+                notice.ThirdPartyAddress3,
+                notice.ThirdPartyAddress4,
+                notice.ThirdPartyAddress5);
+        }
         private static IReadOnlyList<string> BuildAddressLines(
             params string?[] values)
         {

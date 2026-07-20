@@ -37,6 +37,7 @@ namespace GV23_Notice.Services.Notices
         private readonly IInvalidNoticePdfService _inv;
         private readonly IThirdPartyAppealFormalNoticePdfService _tpaPdf;
         private readonly IClaThirdPartyFormalNoticePdfService _claTpaPdf;
+        private readonly IConfiguration _config;
 
         public NoticePreviewService(
             AppDbContext db,
@@ -50,7 +51,8 @@ namespace GV23_Notice.Services.Notices
             IInvalidNoticePdfService inv,
             IThirdPartyAppealFormalNoticePdfService tpaPdf,
             IClaThirdPartyFormalNoticePdfService claTpaPdf,
-            INoticeEmailTemplateService email)
+            INoticeEmailTemplateService email,
+            IConfiguration config)
         {
             _db = db;
             _env = env;
@@ -65,6 +67,7 @@ namespace GV23_Notice.Services.Notices
             _email = email;
             _tpaPdf = tpaPdf;
             _claTpaPdf = claTpaPdf;
+            _config = config;
         }
 
         public async Task<NoticePreviewResult> BuildPreviewAsync(
@@ -473,6 +476,8 @@ namespace GV23_Notice.Services.Notices
                             settings.ObjectionEndDate ??
                             settings.LetterDate.AddDays(30);
 
+                        ApplyConfiguredClaThirdPartyAddress(db);
+
                         pdfBytes = _claTpaPdf.BuildPdf(
                             settings,
                             db);
@@ -727,6 +732,69 @@ namespace GV23_Notice.Services.Notices
                 ForceFourRows = forceFourRows,
                 PropertyRows = rows
             };
+        }
+
+        private void ApplyConfiguredClaThirdPartyAddress(
+            ClaThirdPartyApplicationNotice notice)
+        {
+            if (!IsSihleMore(notice.ThirdPartyName))
+            {
+                return;
+            }
+
+            var section =
+                _config.GetSection(
+                    "Storage:CLAThirdPartyAppealApplication:ThirdPartyAddresses:SihleMore");
+
+            notice.ThirdPartyName =
+                FirstNonEmpty(
+                    section["Name"],
+                    notice.ThirdPartyName,
+                    "Sihle More");
+
+            notice.ThirdPartyAddress1 =
+                FirstNonEmpty(
+                    section["Address1"],
+                    notice.ThirdPartyAddress1);
+
+            notice.ThirdPartyAddress2 =
+                FirstNonEmpty(
+                    section["Address2"],
+                    notice.ThirdPartyAddress2);
+
+            notice.ThirdPartyAddress3 =
+                FirstNonEmpty(
+                    section["Address3"],
+                    notice.ThirdPartyAddress3);
+
+            notice.ThirdPartyAddress4 =
+                FirstNonEmpty(
+                    section["Address4"],
+                    notice.ThirdPartyAddress4);
+
+            notice.ThirdPartyAddress5 =
+                FirstNonEmpty(
+                    section["Address5"],
+                    notice.ThirdPartyAddress5);
+        }
+
+        private static bool IsSihleMore(
+            string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var normalised = new string(
+                value
+                    .Where(char.IsLetterOrDigit)
+                    .Select(char.ToUpperInvariant)
+                    .ToArray());
+
+            return normalised.Contains(
+                "SIHLEMORE",
+                StringComparison.Ordinal);
         }
 
         private async Task<ClaThirdPartyApplicationNotice?>

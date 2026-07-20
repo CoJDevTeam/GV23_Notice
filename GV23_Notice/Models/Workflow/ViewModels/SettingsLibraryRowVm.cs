@@ -18,5 +18,8 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public bool IsApproved { get; set; }
 
         public string? SignaturePath { get; set; }
+        public Guid? WorkflowKey { get; set; }
+        public Guid? ApprovalKey { get; set; }
+
     }
 }

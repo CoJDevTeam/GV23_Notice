@@ -61,7 +61,7 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                     x.AdminEmail,
                     x.PdfPath,
                     x.AppealPackPath,
-                  
+
                     x.Status,
                     x.EmailError
                 })
@@ -142,7 +142,7 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                     PdfPath = x.PdfPath ?? "",
                     AppealPackZipPath =
                         x.AppealPackPath ?? "",
-                  
+
 
                     Status = x.Status ?? "Pending",
                     ErrorMessage = x.EmailError ?? ""
@@ -274,7 +274,7 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                     notice.EmailBody = body;
                     notice.EmailTo = notice.OwnerEmail;
                     notice.EmailCc = cc;
-                    //notice.EmlPath = emlPath;
+                    notice.EmlPath = emlPath;
 
                     notice.SentAtUtc = sentAt;
                     notice.SentBy = sentBy;
@@ -288,7 +288,8 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 catch (Exception ex)
                 {
                     notice.Status = "Email-Failed";
-                    notice.EmailError = ex.Message;
+                    notice.EmailError =
+                        $"{notice.ClaNumber ?? "Unknown CLA"}: {ex.Message}";
                     notice.UpdatedAtUtc = DateTime.UtcNow;
                     notice.UpdatedBy = sentBy;
 
@@ -404,7 +405,7 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
 
             message.Attachments.Add(
                 new Attachment(
-                    notice.AppealPackPath!));
+                    notice.AppealPackZipPath!));
 
             using var smtp = new SmtpClient(
                 smtpHost,
@@ -444,12 +445,13 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
             }
 
             if (string.IsNullOrWhiteSpace(
-                    notice.AppealPackPath) ||
+                    notice.AppealPackZipPath) ||
                 !File.Exists(
-                    notice.AppealPackPath))
+                    notice.AppealPackZipPath))
             {
                 throw new InvalidOperationException(
-                    $"Appeal-pack ZIP is missing for '{notice.ClaNumber}'.");
+                    $"Appeal-pack ZIP is missing for '{notice.ClaNumber}'. " +
+                    $"Expected path: '{notice.AppealPackZipPath ?? "(null)"}'.");
             }
         }
 
