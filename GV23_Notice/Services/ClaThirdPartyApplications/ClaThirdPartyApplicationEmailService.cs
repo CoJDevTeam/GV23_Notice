@@ -2,6 +2,7 @@
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
+using GV23_Notice.Services.Email;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Mail;
@@ -406,6 +407,11 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
             message.Attachments.Add(
                 new Attachment(
                     notice.AppealPackZipPath!));
+
+            OutboundEmailTracking.Apply(
+                message,
+                _config,
+                notice.ClaNumber);
 
             using var smtp = new SmtpClient(
                 smtpHost,

@@ -387,11 +387,10 @@ namespace GV23_Notice.Services.Stats
                 .Select(x => new ThirdPartyStatsRow
                 {
                     /*
-                     * CLA currently stores the responsible Admin email.
-                     * When no separate AdminName is stored, the display
-                     * name is derived from the email address.
+                     * CLA Admin allocation comes directly from
+                     * ClaThirdPartyApplicationNotices.
                      */
-                    AdminName = null,
+                    AdminName = x.AdminName,
                     AdminEmail = x.AdminEmail,
                     PremiseId = x.PremiseId,
                     ObjectionNo = x.ObjectionNumber,
@@ -480,7 +479,15 @@ namespace GV23_Notice.Services.Stats
             using var workbook = new XLWorkbook();
 
             BuildSummarySheet(workbook, stats, admin);
-            BuildDetailSheet(workbook, admin);
+
+            if (IsClaStats(stats))
+            {
+                BuildClaDetailSheet(workbook, admin);
+            }
+            else
+            {
+                BuildDetailSheet(workbook, admin);
+            }
 
             using var stream = new MemoryStream();
             workbook.SaveAs(stream);
@@ -614,7 +621,8 @@ namespace GV23_Notice.Services.Stats
                     ct);
 
                 _logger.LogInformation(
-                    "TPA Admin stats report sent to {AdminEmail}. Excel: {ExcelPath}. EML: {EmlPath}",
+                    "{ReportType} Admin stats report sent to {AdminEmail}. Excel: {ExcelPath}. EML: {EmlPath}",
+                    IsClaStats(stats) ? "CLA" : "TPA",
                     admin.AdminEmail,
                     result.ExcelPath,
                     result.EmlPath);
@@ -1024,6 +1032,13 @@ namespace GV23_Notice.Services.Stats
             ThirdPartyAppealStatsVm stats,
             ThirdPartyAppealAdminStatsVm admin)
         {
+            if (IsClaStats(stats))
+            {
+                return
+                    $"CLA applications allocated to {admin.AdminName} - " +
+                    $"{stats.RollShortCode}";
+            }
+
             var firstBoard = admin.BoardGroups
                 .OrderBy(x => x.HearingDate)
                 .ThenBy(x => x.BoardCode)
@@ -1057,6 +1072,72 @@ namespace GV23_Notice.Services.Stats
                 string.IsNullOrWhiteSpace(admin.AdminName)
                     ? "Admin"
                     : admin.AdminName);
+
+            if (IsClaStats(stats))
+            {
+                var allocatedCount = admin.TotalRecords;
+
+                return $"""
+<!doctype html>
+<html>
+<body style="margin:0;padding:0;font-family:Calibri,Arial,sans-serif;color:#222222;line-height:1.5;font-size:16px;">
+    <div style="padding:8px 4px;">
+        <p>Dear {adminName},</p>
+
+        <p>
+            The Condonation for Late Appeal Committee has instructed Administration
+            to issue the attached notice to all property owners where the City of
+            Johannesburg has submitted an application for condonation for a late appeal.
+        </p>
+
+        <p>
+            The attached spreadsheet contains only the
+            <strong>{allocatedCount}</strong> CLA application(s) allocated to you.
+            Each application has been allocated a unique CLA reference number,
+            including duplicate properties. A notice must therefore be issued for
+            every CLA reference number shown in your spreadsheet.
+        </p>
+
+        <p>
+            You are responsible for managing these matters going forward.
+        </p>
+
+        <p>Please ensure that you:</p>
+
+        <ul>
+            <li>Forward the email to the relevant property owner.</li>
+            <li>Save a copy of the sent email and the delivery confirmation on the shared drive.</li>
+            <li>File all correspondence in the appropriate folder on the shared drive.</li>
+        </ul>
+
+        <p>
+            During this first phase, you will receive and manage all submissions
+            and present them to the Condonation for Late Appeal Committee for consideration.
+        </p>
+
+        <p>
+            Once the Committee has made its decisions, you will be responsible
+            for scheduling the matters for hearing before the Valuation Appeal Board.
+        </p>
+
+        <p>
+            It is therefore crucial that, from the outset, all emails, delivery
+            confirmations, and related correspondence are saved on the shared drive
+            and that the prescribed process is followed consistently to ensure a
+            complete and accurate audit trail.
+        </p>
+
+        <p>Kind regards,</p>
+
+        <p>
+            Valuation Administration<br />
+            City of Johannesburg
+        </p>
+    </div>
+</body>
+</html>
+""";
+            }
 
             var boardSections = admin.BoardGroups.Count == 0
                 ? """
@@ -1411,7 +1492,10 @@ namespace GV23_Notice.Services.Stats
             sheet.Range("A11:B11").Merge();
             StyleSectionHeader(sheet.Range("A11:B11"));
 
-            sheet.Cell("A12").Value = "Total TPA Notices";
+            sheet.Cell("A12").Value =
+                IsClaStats(stats)
+                    ? "Total CLA Applications"
+                    : "Total TPA Notices";
             sheet.Cell("B12").Value = admin.TotalRecords;
             sheet.Cell("A13").Value = "Notice-Sent";
             sheet.Cell("B13").Value = admin.TotalSent;
@@ -1456,7 +1540,9 @@ namespace GV23_Notice.Services.Stats
                 .Border.SetInsideBorderColor(XLColor.FromHtml("#D9D9D9"));
 
             sheet.Cell("A24").Value =
-                "The Detail sheet contains A_Premise_ID, Objection Number, Appeal Number, Property Description, Status, Date Sent and Sent By.";
+                IsClaStats(stats)
+                    ? "The Detail sheet contains only this Admin's allocated CLA numbers and property descriptions."
+                    : "The Detail sheet contains A_Premise_ID, Objection Number, Appeal Number, Property Description, Status, Date Sent and Sent By.";
             sheet.Range("A24:D24").Merge();
             sheet.Range("A24:D24").Style
                 .Font.SetItalic()
@@ -1471,6 +1557,71 @@ namespace GV23_Notice.Services.Stats
             sheet.PageSetup.PageOrientation =
                 XLPageOrientation.Portrait;
             sheet.PageSetup.FitToPages(1, 1);
+        }
+
+        private static void BuildClaDetailSheet(
+            XLWorkbook workbook,
+            ThirdPartyAppealAdminStatsVm admin)
+        {
+            var sheet = workbook.Worksheets.Add("Detail");
+
+            var headers = new[]
+            {
+                "Admin",
+                "CLA",
+                "Property_Desc"
+            };
+
+            for (var column = 0;
+                 column < headers.Length;
+                 column++)
+            {
+                sheet.Cell(1, column + 1).Value =
+                    headers[column];
+            }
+
+            StyleTableHeader(
+                sheet.Range(1, 1, 1, headers.Length));
+
+            // Row 2 remains empty.
+            var rowNumber = 3;
+
+            foreach (var row in admin.Details
+                .OrderBy(x => x.AppealNo)
+                .ThenBy(x => x.PropertyDescription))
+            {
+                sheet.Cell(rowNumber, 1).Value =
+                    admin.AdminName;
+
+                sheet.Cell(rowNumber, 2).Value =
+                    row.AppealNo;
+
+                sheet.Cell(rowNumber, 3).Value =
+                    row.PropertyDescription;
+
+                rowNumber++;
+            }
+
+            sheet.Range(1, 1, 1, headers.Length)
+                .SetAutoFilter();
+
+            sheet.SheetView.FreezeRows(1);
+
+            sheet.RangeUsed()
+                ?.Style.Alignment.SetVertical(
+                    XLAlignmentVerticalValues.Top);
+
+            sheet.RangeUsed()
+                ?.Style.Alignment.SetWrapText();
+
+            sheet.Column(1).Width = 30;
+            sheet.Column(2).Width = 22;
+            sheet.Column(3).Width = 60;
+
+            sheet.PageSetup.PageOrientation =
+                XLPageOrientation.Landscape;
+
+            sheet.PageSetup.FitToPages(1, 0);
         }
 
         private static void BuildDetailSheet(

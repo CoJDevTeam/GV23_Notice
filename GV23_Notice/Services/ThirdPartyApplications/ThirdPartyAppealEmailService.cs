@@ -2,6 +2,7 @@
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
+using GV23_Notice.Services.Email;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Mail;
@@ -330,6 +331,11 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             message.Attachments.Add(new Attachment(notice.PdfPath!));
             message.Attachments.Add(new Attachment(notice.AppealPackZipPath!));
 
+            OutboundEmailTracking.Apply(
+                message,
+                _config,
+                notice.Appeal_No);
+
             using var smtp = new SmtpClient(smtpHost, smtpPort)
             {
                 EnableSsl = enableSsl,
@@ -368,7 +374,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 : settings.ValuationPeriodCode ?? "GENERAL VALUATION ROLL 2023";
 
             return $"NOTICE OF THIRD PARTY APPEAL APPLICATION FOR THE {period} – {notice.Property_Description?.ToUpper()}";
-            
+
 
         }
 

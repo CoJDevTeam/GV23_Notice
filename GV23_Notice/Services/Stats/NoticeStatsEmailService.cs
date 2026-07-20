@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Domain.Email;
+using GV23_Notice.Services.Email;
 using Microsoft.Extensions.Options;
 using System.Net.Mail;
 
@@ -8,13 +9,16 @@ namespace GV23_Notice.Services.Stats
     {
         private readonly EmailOptions _emailOpt;
         private readonly ILogger<NoticeStatsEmailService> _log;
+        private readonly IConfiguration _config;
 
         public NoticeStatsEmailService(
             IOptions<EmailOptions> emailOpt,
-            ILogger<NoticeStatsEmailService> log)
+            ILogger<NoticeStatsEmailService> log,
+            IConfiguration config)
         {
             _emailOpt = emailOpt.Value;
             _log = log;
+            _config = config;
         }
 
         public async Task SendStatsEmailAsync(
@@ -65,6 +69,11 @@ namespace GV23_Notice.Services.Stats
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
             msg.Attachments.Add(attachment);
+
+            OutboundEmailTracking.Apply(
+                msg,
+                _config,
+                subject);
 
             using var smtp = new SmtpClient(_emailOpt.Smtp.Host, _emailOpt.Smtp.Port)
             {

@@ -1,6 +1,7 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
+using GV23_Notice.Services.Email;
 using Microsoft.EntityFrameworkCore;
 using System.Net;
 using System.Net.Mail;
@@ -232,6 +233,11 @@ namespace GV23_Notice.Services.Corrections
             message.IsBodyHtml = false;
 
             message.Attachments.Add(new Attachment(item.PdfPath!));
+
+            OutboundEmailTracking.Apply(
+                message,
+                _config,
+                item.ReferenceNo);
 
             using var client = new SmtpClient(smtpHost, smtpPort)
             {
