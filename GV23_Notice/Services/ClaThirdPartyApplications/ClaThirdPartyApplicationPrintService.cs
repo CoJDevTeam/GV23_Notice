@@ -135,8 +135,6 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 Total = notices.Count
             };
 
-            var failureMessages = new List<string>();
-
             if (notices.Count == 0)
             {
                 result.ErrorMessage =
@@ -182,8 +180,10 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                     }
 
                     /*
-                     * Build the appeal-pack ZIP before marking the record as Printed.
-                     * AppealPackPath remains the original source folder/file.
+                     * Build the CLA Pack ZIP before marking the record as Printed.
+                     * The existing AppealPack* columns are reused for compatibility:
+                     * AppealPackPath = original CLA Pack source folder.
+                     * AppealPackZipPath = generated CLA Pack ZIP.
                      */
                     var appealPackZipPath =
                         await _appealPackZip.BuildAppealPackZipAsync(
@@ -196,11 +196,11 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                         !File.Exists(appealPackZipPath))
                     {
                         throw new IOException(
-                            $"The CLA appeal-pack ZIP was not created for '{notice.ClaNumber}'.");
+                            $"The CLA Pack ZIP was not created for '{notice.ClaNumber}'.");
                     }
 
-                    // Keep AppealPackPath as the original source location.
-                    // Store the generated archive in AppealPackZipPath.
+                    // The ZIP service also stores the original CLA Pack folder
+                    // in AppealPackPath for audit and troubleshooting.
                     notice.AppealPackZipPath = appealPackZipPath;
                     notice.AppealPackFileName =
                         Path.GetFileName(appealPackZipPath);
@@ -218,40 +218,15 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 }
                 catch (Exception ex)
                 {
-                    var rootException =
-                        ex.GetBaseException();
-
-                    var detailedError =
-                        $"{notice.ClaNumber ?? "Unknown CLA"}: " +
-                        $"{rootException.GetType().Name}: " +
-                        $"{rootException.Message}";
-
                     notice.NoticeSettingsId = settings.Id;
                     notice.Status = "Print-Failed";
-                    notice.EmailError = detailedError;
+                    notice.EmailError = ex.Message;
                     notice.UpdatedAtUtc = DateTime.UtcNow;
                     notice.UpdatedBy = printedBy;
-
-                    failureMessages.Add(detailedError);
                     result.Failed++;
                 }
 
                 await _db.SaveChangesAsync(ct);
-            }
-
-            if (failureMessages.Count > 0)
-            {
-                result.ErrorMessage =
-                    string.Join(
-                        Environment.NewLine,
-                        failureMessages.Take(10));
-
-                if (failureMessages.Count > 10)
-                {
-                    result.ErrorMessage +=
-                        Environment.NewLine +
-                        $"...and {failureMessages.Count - 10} more failure(s).";
-                }
             }
 
             return result;
@@ -360,25 +335,29 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
             ClaThirdPartyApplicationNotice notice)
         {
             if (string.IsNullOrWhiteSpace(notice.ClaNumber))
-                throw new InvalidOperationException("CLA number is missing.");
-
-            var rootKey = ResolveRootKey(
-                notice.RollShortCode,
-                settings.Roll.ToString());
-
-            var appealRoot =
-                _config[$"Storage:AppealRootsByShortCode:{rootKey}"];
-
-            if (string.IsNullOrWhiteSpace(appealRoot))
+            {
                 throw new InvalidOperationException(
-                    $"Appeal root path is missing for key '{rootKey}'.");
+                    "CLA number is missing.");
+            }
+
+            var claOutputRoot =
+                _config[
+                    "Storage:CLAThirdPartyAppealApplication:RootPath"];
+
+            if (string.IsNullOrWhiteSpace(claOutputRoot))
+            {
+                throw new InvalidOperationException(
+                    "Storage:CLAThirdPartyAppealApplication:RootPath " +
+                    "is missing from appsettings.json.");
+            }
 
             var folderName =
-                _config["Storage:CLAThirdPartyAppealApplication:PdfFolderName"]
+                _config[
+                    "Storage:CLAThirdPartyAppealApplication:PdfFolderName"]
                 ?? "CLA-THIRD-PARTY APPLICATION";
 
             return Path.Combine(
-                appealRoot,
+                claOutputRoot.Trim(),
                 SafeFolder(notice.ClaNumber),
                 folderName.Trim());
         }

@@ -1,22 +1,24 @@
-﻿using GV23_Notice.Data;
-using GV23_Notice.Domain.Workflow.Entities;
-using Microsoft.EntityFrameworkCore;
-using System.Data;
+﻿using GV23_Notice.Domain.Workflow.Entities;
 using System.IO.Compression;
+using System.Text.RegularExpressions;
 
 namespace GV23_Notice.Services.ClaThirdPartyApplications
 {
+    /*
+     * The interface/class names are kept for compatibility with the
+     * existing dependency injection and print service.
+     *
+     * This service now builds a CLA Pack ZIP. It no longer looks up an
+     * Appeal_No and no longer reads C:\AppealData.
+     */
     public sealed class ClaThirdPartyAppealPackZipService
         : IClaThirdPartyAppealPackZipService
     {
-        private readonly AppDbContext _db;
         private readonly IConfiguration _config;
 
         public ClaThirdPartyAppealPackZipService(
-            AppDbContext db,
             IConfiguration config)
         {
-            _db = db;
             _config = config;
         }
 
@@ -32,40 +34,35 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
             if (string.IsNullOrWhiteSpace(notice.ClaNumber))
             {
                 throw new InvalidOperationException(
-                    "CLA number is required to build the appeal pack.");
+                    "CLA number is required to build the CLA Pack ZIP.");
+            }
+
+            if (string.IsNullOrWhiteSpace(
+                    notice.PropertyDescription))
+            {
+                throw new InvalidOperationException(
+                    $"Property description is required to find the CLA Pack " +
+                    $"for '{notice.ClaNumber}'.");
             }
 
             if (string.IsNullOrWhiteSpace(outputFolder))
             {
                 throw new InvalidOperationException(
-                    "Output folder is required to build the appeal pack.");
+                    "Output folder is required to build the CLA Pack ZIP.");
             }
 
-            var appealNo = await ResolveAppealNumberAsync(
-                notice.ObjectionNumber,
-                ct);
-
-            var appealPackFolder = ResolveAppealPackFolder(
-                settings,
-                notice,
-                appealNo);
-
-            if (!Directory.Exists(appealPackFolder))
-            {
-                throw new DirectoryNotFoundException(
-                    $"Appeal-pack folder was not found for Objection_No " +
-                    $"'{notice.ObjectionNumber}' and Appeal_No '{appealNo}': " +
-                    appealPackFolder);
-            }
+            var claPackFolder =
+                ResolveClaPackFolder(notice);
 
             Directory.CreateDirectory(outputFolder);
 
             var zipFileName =
-                $"Appeal Pack_{SafeFile(appealNo)}.zip";
+                $"CLA Pack_{SafeFile(notice.ClaNumber)}.zip";
 
-            var zipPath = Path.Combine(
-                outputFolder,
-                zipFileName);
+            var zipPath =
+                Path.Combine(
+                    outputFolder,
+                    zipFileName);
 
             if (File.Exists(zipPath))
             {
@@ -74,201 +71,212 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
 
             await Task.Run(
                 () => CreateZip(
-                    appealPackFolder,
+                    claPackFolder,
                     zipPath,
-                    outputFolder,
                     ct),
                 ct);
 
             if (!File.Exists(zipPath))
             {
                 throw new IOException(
-                    $"The CLA appeal-pack ZIP file was not created: {zipPath}");
+                    $"The CLA Pack ZIP was not created: {zipPath}");
             }
+
+            /*
+             * Keep using the existing database columns for compatibility.
+             * AppealPackPath now stores the original CLA Pack source folder.
+             * AppealPackZipPath stores the generated CLA Pack ZIP.
+             */
+            notice.AppealPackPath =
+                claPackFolder;
+
+            notice.AppealPackZipPath =
+                zipPath;
+
+            notice.AppealPackFileName =
+                Path.GetFileName(zipPath);
+
+            notice.AppealPackExists =
+                true;
 
             return zipPath;
         }
 
-        private string ResolveAppealPackFolder(
-            NoticeSettings settings,
-            ClaThirdPartyApplicationNotice notice,
-            string appealNo)
+        private string ResolveClaPackFolder(
+            ClaThirdPartyApplicationNotice notice)
         {
-            var rootKey = ResolveRootKeyFromAppealNumber(
-                appealNo,
-                notice.RollShortCode,
-                settings.Roll.ToString());
-
-            var appealRoot =
+            var root =
                 _config[
-                    $"Storage:AppealRootsByShortCode:{rootKey}"];
+                    "Storage:CLAThirdPartyAppealApplication:ClaPackRootPath"];
 
-            if (string.IsNullOrWhiteSpace(appealRoot))
+            if (string.IsNullOrWhiteSpace(root))
             {
                 throw new InvalidOperationException(
-                    $"Appeal root folder is not configured for key '{rootKey}'.");
+                    "Storage:CLAThirdPartyAppealApplication:" +
+                    "ClaPackRootPath is missing from appsettings.json.");
             }
 
-            var appealFolder = Path.Combine(
-                appealRoot,
-                SafeFile(appealNo));
+            root = root.Trim();
 
-            var appealPackFolderName =
-                _config[
-                    "Storage:CLAThirdPartyAppealApplication:AppealPackFolderName"]
-                ?? "APPEAL PACK";
-
-            var dedicatedAppealPackFolder = Path.Combine(
-                appealFolder,
-                appealPackFolderName.Trim());
-
-            if (Directory.Exists(dedicatedAppealPackFolder))
+            if (!Directory.Exists(root))
             {
-                return dedicatedAppealPackFolder;
+                throw new DirectoryNotFoundException(
+                    $"The configured CLA Pack root folder was not found: {root}");
             }
 
-            return appealFolder;
-        }
+            var claToken =
+                NormaliseForMatch(
+                    notice.ClaNumber);
 
-        private async Task<string> ResolveAppealNumberAsync(
-            string? objectionNo,
-            CancellationToken ct)
-        {
-            if (string.IsNullOrWhiteSpace(objectionNo))
+            var propertyWithoutCla =
+                RemoveLeadingClaReference(
+                    notice.ClaNumber!,
+                    notice.PropertyDescription!);
+
+            var propertyToken =
+                NormaliseForMatch(
+                    propertyWithoutCla);
+
+            var fullExpectedToken =
+                claToken + propertyToken;
+
+            var folders = Directory
+                .EnumerateDirectories(
+                    root,
+                    "*",
+                    SearchOption.TopDirectoryOnly)
+                .Select(path => new
+                {
+                    Path = path,
+                    Name = Path.GetFileName(path),
+                    Token =
+                        NormaliseForMatch(
+                            Path.GetFileName(path))
+                })
+                .ToList();
+
+            /*
+             * Preferred match:
+             * Folder name normalises exactly to:
+             * CLA number + Property Description.
+             *
+             * Example:
+             * CLA-104- ERF 81 DOORNFONTEIN-GV23_
+             */
+            var exactMatches = folders
+                .Where(folder =>
+                    folder.Token == fullExpectedToken)
+                .ToList();
+
+            if (exactMatches.Count == 1)
             {
-                throw new InvalidOperationException(
-                    "Objection_No is required to resolve the Appeal_No.");
+                return exactMatches[0].Path;
+            }
+
+            if (exactMatches.Count > 1)
+            {
+                throw BuildDuplicateFolderException(
+                    notice,
+                    exactMatches.Select(x => x.Path));
             }
 
             /*
-             * Obj_Property_Info_Appeal is not in GV23_Notice.
-             * It is stored in:
-             *
-             * [Objection].[dbo].[Obj_Property_Info_Appeal]
-             *
-             * The CLA table ObjectionNumber maps directly to Obj_Ref.
+             * Fallback:
+             * The folder must begin with the CLA number and contain the
+             * normalised Property Description. This tolerates underscores,
+             * spaces, hyphens, slashes and punctuation differences.
              */
-            var connection = _db.Database.GetDbConnection();
+            var compatibleMatches = folders
+                .Where(folder =>
+                    folder.Token.StartsWith(
+                        claToken,
+                        StringComparison.OrdinalIgnoreCase)
+                    &&
+                    (
+                        string.IsNullOrWhiteSpace(propertyToken)
+                        ||
+                        folder.Token.Contains(
+                            propertyToken,
+                            StringComparison.OrdinalIgnoreCase)
+                    ))
+                .ToList();
 
-            var shouldClose =
-                connection.State != ConnectionState.Open;
-
-            if (shouldClose)
+            if (compatibleMatches.Count == 1)
             {
-                await connection.OpenAsync(ct);
+                return compatibleMatches[0].Path;
             }
 
-            try
+            if (compatibleMatches.Count > 1)
             {
-                await using var command =
-                    connection.CreateCommand();
-
-                command.CommandText = """
-                    SELECT TOP (1)
-                        LTRIM(RTRIM(
-                            CONVERT(NVARCHAR(200), Appeal_No)
-                        ))
-                    FROM [Objection].[dbo].[Obj_Property_Info_Appeal]
-                    WHERE LTRIM(RTRIM(
-                              CONVERT(NVARCHAR(200), Obj_Ref)
-                          )) = @ObjectionNo
-                      AND Appeal_No IS NOT NULL
-                      AND LTRIM(RTRIM(
-                              CONVERT(NVARCHAR(200), Appeal_No)
-                          )) <> N''
-                    ORDER BY Appeal_ID DESC;
-                    """;
-
-                var parameter =
-                    command.CreateParameter();
-
-                parameter.ParameterName =
-                    "@ObjectionNo";
-
-                parameter.Value =
-                    objectionNo.Trim();
-
-                command.Parameters.Add(
-                    parameter);
-
-                var value =
-                    await command.ExecuteScalarAsync(ct);
-
-                var appealNo =
-                    value?.ToString()?.Trim();
-
-                if (string.IsNullOrWhiteSpace(appealNo))
-                {
-                    throw new InvalidOperationException(
-                        $"No Appeal_No was found in " +
-                        $"[Objection].[dbo].[Obj_Property_Info_Appeal] " +
-                        $"where Obj_Ref = '{objectionNo}'.");
-                }
-
-                return appealNo;
+                throw BuildDuplicateFolderException(
+                    notice,
+                    compatibleMatches.Select(x => x.Path));
             }
-            finally
-            {
-                if (shouldClose)
-                {
-                    await connection.CloseAsync();
-                }
-            }
+
+            var expectedDisplay =
+                $"{notice.ClaNumber}-" +
+                $"{propertyWithoutCla}";
+
+            throw new DirectoryNotFoundException(
+                $"No CLA Pack folder was found for " +
+                $"CLA '{notice.ClaNumber}' and Property Description " +
+                $"'{notice.PropertyDescription}'. " +
+                $"Expected a folder similar to '{expectedDisplay}' under " +
+                $"'{root}'.");
         }
 
-        private void CreateZip(
+        private static Exception BuildDuplicateFolderException(
+            ClaThirdPartyApplicationNotice notice,
+            IEnumerable<string> matchingFolders)
+        {
+            var paths =
+                string.Join(
+                    Environment.NewLine,
+                    matchingFolders.Select(path => $" - {path}"));
+
+            return new InvalidOperationException(
+                $"More than one CLA Pack folder matched " +
+                $"CLA '{notice.ClaNumber}' and Property Description " +
+                $"'{notice.PropertyDescription}':" +
+                Environment.NewLine +
+                paths);
+        }
+
+        private static void CreateZip(
             string sourceFolder,
             string zipPath,
-            string outputFolder,
             CancellationToken ct)
         {
-            var claPdfFolderName =
-                _config[
-                    "Storage:CLAThirdPartyAppealApplication:PdfFolderName"]
-                ?? "CLA-THIRD-PARTY APPLICATION";
-
-            var emailCopyFolderName =
-                _config[
-                    "Storage:CLAThirdPartyAppealApplication:EmailCopyFolderName"]
-                ?? "CLA EMAIL COPIES";
-
-            var normalisedOutputFolder =
-                Path.GetFullPath(outputFolder)
-                    .TrimEnd(
-                        Path.DirectorySeparatorChar,
-                        Path.AltDirectorySeparatorChar);
-
             var files = Directory
                 .EnumerateFiles(
                     sourceFolder,
-                    "*.*",
+                    "*",
                     SearchOption.AllDirectories)
                 .Where(file =>
-                    ShouldIncludeFile(
-                        file,
-                        zipPath,
-                        normalisedOutputFolder,
-                        claPdfFolderName,
-                        emailCopyFolderName))
+                    !file.EndsWith(
+                        ".zip",
+                        StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             if (files.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"No appeal-pack files were found in: {sourceFolder}");
+                    $"The CLA Pack folder contains no files: {sourceFolder}");
             }
 
-            using var archive = ZipFile.Open(
-                zipPath,
-                ZipArchiveMode.Create);
+            using var archive =
+                ZipFile.Open(
+                    zipPath,
+                    ZipArchiveMode.Create);
 
             foreach (var file in files)
             {
                 ct.ThrowIfCancellationRequested();
 
-                var relativePath = Path.GetRelativePath(
-                    sourceFolder,
-                    file);
+                var relativePath =
+                    Path.GetRelativePath(
+                        sourceFolder,
+                        file);
 
                 archive.CreateEntryFromFile(
                     file,
@@ -277,178 +285,46 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
             }
         }
 
-        private static bool ShouldIncludeFile(
-            string filePath,
-            string zipPath,
-            string outputFolder,
-            string claPdfFolderName,
-            string emailCopyFolderName)
+        private static string RemoveLeadingClaReference(
+            string claNumber,
+            string propertyDescription)
         {
-            var fullFilePath = Path.GetFullPath(filePath);
+            var value =
+                propertyDescription
+                    .Trim()
+                    .TrimEnd(
+                        '/',
+                        '\\',
+                        '_',
+                        '-',
+                        ' ');
 
-            if (string.Equals(
-                    fullFilePath,
-                    Path.GetFullPath(zipPath),
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
+            var escapedCla =
+                Regex.Escape(
+                    claNumber.Trim());
 
-            if (filePath.EndsWith(
-                    ".zip",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
+            value = Regex.Replace(
+                value,
+                $"^\\s*{escapedCla}\\s*[-_:/\\\\]*\\s*",
+                string.Empty,
+                RegexOptions.IgnoreCase);
 
-            var fileDirectory =
-                Path.GetDirectoryName(fullFilePath) ?? "";
-
-            /*
-             * Do not include generated files from the output folder.
-             */
-            if (IsSameOrChildFolder(
-                    fileDirectory,
-                    outputFolder))
-            {
-                return false;
-            }
-
-            if (ContainsFolder(
-                    fullFilePath,
-                    claPdfFolderName))
-            {
-                return false;
-            }
-
-            if (ContainsFolder(
-                    fullFilePath,
-                    emailCopyFolderName))
-            {
-                return false;
-            }
-
-            return true;
+            return value.Trim();
         }
 
-        private static bool ContainsFolder(
-            string path,
-            string folderName)
+        private static string NormaliseForMatch(
+            string? value)
         {
-            if (string.IsNullOrWhiteSpace(folderName))
+            if (string.IsNullOrWhiteSpace(value))
             {
-                return false;
+                return string.Empty;
             }
 
-            var separator =
-                Path.DirectorySeparatorChar;
-
-            var alternateSeparator =
-                Path.AltDirectorySeparatorChar;
-
-            var normalisedPath = path
-                .Replace(
-                    alternateSeparator,
-                    separator);
-
-            var normalisedFolder = folderName
-                .Trim()
-                .Trim(
-                    separator,
-                    alternateSeparator);
-
-            return normalisedPath.Contains(
-                $"{separator}{normalisedFolder}{separator}",
-                StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsSameOrChildFolder(
-            string candidate,
-            string parent)
-        {
-            var normalisedCandidate = Path
-                .GetFullPath(candidate)
-                .TrimEnd(
-                    Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar);
-
-            var normalisedParent = Path
-                .GetFullPath(parent)
-                .TrimEnd(
-                    Path.DirectorySeparatorChar,
-                    Path.AltDirectorySeparatorChar);
-
-            return normalisedCandidate.Equals(
-                       normalisedParent,
-                       StringComparison.OrdinalIgnoreCase)
-                   ||
-                   normalisedCandidate.StartsWith(
-                       normalisedParent +
-                       Path.DirectorySeparatorChar,
-                       StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string ResolveRootKeyFromAppealNumber(
-            string appealNo,
-            string? recordShortCode,
-            string? settingsRoll)
-        {
-            var value = appealNo?.Trim() ?? "";
-
-            if (value.Contains(
-                    "APP-GV23-Sup3-",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return "SUPP 3";
-            }
-
-            if (value.Contains(
-                    "APP-GV23-Sup2-",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return "SUPP 2";
-            }
-
-            if (value.Contains(
-                    "APP-GV23-Sup1-",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return "SUPP 1";
-            }
-
-            if (value.Contains(
-                    "APP-GV23-",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return "GV23";
-            }
-
-            var fallback = FirstNonEmpty(
-                    recordShortCode,
-                    settingsRoll,
-                    "GV23")
-                .Replace(" ", "")
-                .Trim()
-                .ToUpperInvariant();
-
-            return fallback switch
-            {
-                "SUPP1" => "SUPP 1",
-                "SUPP2" => "SUPP 2",
-                "SUPP3" => "SUPP 3",
-                _ => "GV23"
-            };
-        }
-
-        private static string FirstNonEmpty(
-            params string?[] values)
-        {
-            return values
-                .FirstOrDefault(
-                    value =>
-                        !string.IsNullOrWhiteSpace(value))
-                ?.Trim()
-                ?? "";
+            return new string(
+                value
+                    .ToUpperInvariant()
+                    .Where(char.IsLetterOrDigit)
+                    .ToArray());
         }
 
         private static string SafeFile(
@@ -459,18 +335,16 @@ namespace GV23_Notice.Services.ClaThirdPartyApplications
                 return "Unknown";
             }
 
-            var invalidCharacters =
+            var invalid =
                 Path.GetInvalidFileNameChars();
 
-            var cleaned = new string(
-                value
-                    .Select(character =>
-                        invalidCharacters.Contains(character)
+            return new string(
+                    value.Select(character =>
+                        invalid.Contains(character)
                             ? '_'
                             : character)
-                    .ToArray());
-
-            return cleaned.Trim();
+                    .ToArray())
+                .Trim();
         }
     }
 }
