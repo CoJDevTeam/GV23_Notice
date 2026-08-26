@@ -36,40 +36,144 @@ namespace GV23_Notice.Services.Email
         // =========================
         // S49
         // =========================
-        private (string Subject, string BodyHtml) BuildS49(NoticeEmailRequest req)
+        private (string Subject, string BodyHtml) BuildS49(
+     NoticeEmailRequest req)
         {
-            var heading = "PUBLIC NOTICE CALLING FOR INSPECTION OF THE SUPPLEMENTARY VALUATION ROLL AND LODGING OF OBJECTIONS";
+            var heading =
+                "PUBLIC NOTICE CALLING FOR INSPECTION OF THE " +
+                "SUPPLEMENTARY VALUATION ROLL AND LODGING OF OBJECTIONS";
 
-            var inspectionStart = req.InspectionStart ?? DateOnly.FromDateTime(DateTime.Today);
-            var inspectionEnd = req.InspectionEnd ?? inspectionStart.AddDays(30);
+            var inspectionStart =
+                req.InspectionStart ??
+                DateOnly.FromDateTime(DateTime.Today);
 
-            var dateRangeText = req.ExtendedEnd.HasValue
-                ? $"{inspectionStart:dd MMMM yyyy} – {req.ExtendedEnd.Value:dd MMMM yyyy} until 15:00"
-                : $"{inspectionStart:dd MMMM yyyy} – {inspectionEnd:dd MMMM yyyy} until 15:00";
+            var inspectionEnd =
+                req.InspectionEnd ??
+                inspectionStart.AddDays(30);
+
+            var finalEndDate =
+                req.ExtendedEnd ?? inspectionEnd;
+
+            var dateRangeText =
+                $"{inspectionStart:dd MMMM yyyy} – " +
+                $"{finalEndDate:dd MMMM yyyy} until 15:00";
+
+            var propertyDesc =
+                req.Items?
+                    .FirstOrDefault()?
+                    .PropertyDesc?
+                    .Trim()
+                ?? "";
+
+            // Fail early. Never send an S49 email with a blank property.
+            if (string.IsNullOrWhiteSpace(propertyDesc))
+            {
+                throw new InvalidOperationException(
+                    "S49 email cannot be generated because " +
+                    "Property Description is empty.");
+            }
+
+            var subject =
+                $"{req.RollShortCode} Section 49 Notice - {propertyDesc}";
 
             var mid = new StringBuilder();
 
-            mid.Append($"<p><b>{H(heading)}</b></p>");
+            mid.Append(
+                $"<p><b>{H(heading)}</b></p>");
 
-            // property list
-            mid.Append(PropertyBlock(req));
+            // =========================================================
+            // STANDALONE S49 PROPERTY DETAILS
+            // =========================================================
+            mid.Append(
+                "<div style='" +
+                "margin:16px 0;" +
+                "padding:12px 14px;" +
+                "background:#f5f5f5;" +
+                "border-left:4px solid #E6B000;" +
+                "'>");
 
+            mid.Append(
+                "<div style='" +
+                "font-size:12px;" +
+                "color:#666;" +
+                "margin-bottom:4px;" +
+                "'>" +
+                "Property Description" +
+                "</div>");
+
+            mid.Append(
+                "<div style='" +
+                "font-size:15px;" +
+                "font-weight:700;" +
+                "color:#111;" +
+                "'>");
+
+            mid.Append(H(propertyDesc));
+
+            mid.Append("</div>");
+            mid.Append("</div>");
+
+            // =========================================================
+            // S49 NOTICE BODY
+            // =========================================================
             mid.Append("<p>");
-            mid.Append("Notice is hereby given in terms of Section 49(1)(a)(i) read together with section 78 (2) of the ");
-            mid.Append("<b>Local Government: Municipal Property Rates Act No. 6 of 2004</b> as amended, ");
-            mid.Append("that the ");
-            if (!string.IsNullOrWhiteSpace(req.RollTypeText))
-                mid.Append($"<b>{H(req.RollTypeText!)}</b> ");
-            else
-                mid.Append("<b>valuation roll</b> ");
 
-            mid.Append("for the financial years ");
-            mid.Append($"<b>{H(req.FinancialYearsText ?? "")}</b> ");
-            mid.Append("is open for public inspection ");
-            mid.Append($"from <b>{H(dateRangeText)}</b>.");
+            mid.Append(
+                "Notice is hereby given in terms of " +
+                "Section 49(1)(a)(i) read together with section 78 (2) " +
+                "of the ");
+
+            mid.Append(
+                "<b>Local Government: Municipal Property Rates Act " +
+                "No. 6 of 2004</b> as amended, ");
+
+            mid.Append("that the ");
+
+            if (!string.IsNullOrWhiteSpace(req.RollTypeText))
+            {
+                mid.Append(
+                    $"<b>{H(req.RollTypeText)}</b> ");
+            }
+            else
+            {
+                mid.Append(
+                    "<b>supplementary valuation roll</b> ");
+            }
+
+            mid.Append(
+                "for the financial years ");
+
+            mid.Append(
+                $"<b>{H(req.FinancialYearsText ?? "")}</b> ");
+
+            mid.Append(
+                "is open for public inspection from ");
+
+            mid.Append(
+                $"<b>{H(dateRangeText)}</b>.");
+
             mid.Append("</p>");
 
-            return (Subject(req, "Section 49 Notice"), BaseHtml(req, mid.ToString()));
+            // =========================================================
+            // ATTACHMENT MESSAGE
+            // =========================================================
+            mid.Append(
+                "<p>" +
+                "Please find the official <b>Section 49 Notice</b> " +
+                "for the above property attached to this email." +
+                "</p>");
+
+            mid.Append(
+                "<p>" +
+                "Kind Regards,<br/>" +
+                "<b>City of Johannesburg</b><br/>" +
+                "Valuation Services Department" +
+                "</p>");
+
+            return (
+                subject,
+                BaseHtml(req, mid.ToString())
+            );
         }
 
         // =========================

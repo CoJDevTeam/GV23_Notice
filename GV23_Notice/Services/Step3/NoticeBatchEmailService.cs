@@ -53,7 +53,7 @@ namespace GV23_Notice.Services.Email
         // ── Count ready-to-send records ──────────────────────────────────────
 
         private static readonly TimeZoneInfo SouthAfricaTimeZone =
-    GetSouthAfricaTimeZone();
+     GetSouthAfricaTimeZone();
 
         private static TimeZoneInfo GetSouthAfricaTimeZone()
         {
@@ -65,12 +65,25 @@ namespace GV23_Notice.Services.Email
             }
             catch (TimeZoneNotFoundException)
             {
-                // Linux / containers / some Azure environments
+                // Linux / Azure containers
                 return TimeZoneInfo.FindSystemTimeZoneById(
                     "Africa/Johannesburg");
             }
         }
 
+        private static DateTime? ToSouthAfricaTime(DateTime? utcDate)
+        {
+            if (!utcDate.HasValue)
+                return null;
+
+            var utc = DateTime.SpecifyKind(
+                utcDate.Value,
+                DateTimeKind.Utc);
+
+            return TimeZoneInfo.ConvertTimeFromUtc(
+                utc,
+                SouthAfricaTimeZone);
+        }
         private static DateTimeOffset SouthAfricaNow()
         {
             return TimeZoneInfo.ConvertTime(
@@ -427,8 +440,26 @@ namespace GV23_Notice.Services.Email
                     if (string.IsNullOrWhiteSpace(recipientEmail))
                         throw new InvalidOperationException($"Recipient email is empty for RunLog {log.Id}.");
 
-                    var req = BuildEmailRequest(settings, roll, log);
-                    req.RecipientEmail = recipientEmail;
+                    NoticeEmailRequest req;
+
+                    if (settings.Notice == NoticeKind.S49)
+                    {
+                        req = await BuildS49EmailRequestAsync(
+                            settings,
+                            roll,
+                            log,
+                            recipientEmail,
+                            ct);
+                    }
+                    else
+                    {
+                        req = BuildEmailRequest(
+                            settings,
+                            roll,
+                            log);
+
+                        req.RecipientEmail = recipientEmail;
+                    }
 
                     var (subject, bodyHtml) = _templates.Build(req);
 
@@ -629,6 +660,95 @@ namespace GV23_Notice.Services.Email
             return req;
         }
 
+        private async Task<NoticeEmailRequest> BuildS49EmailRequestAsync(
+    NoticeSettings settings,
+    Domain.Rolls.RollRegistry roll,
+    NoticeRunLog log,
+    string recipientEmail,
+    CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(log.PremiseId))
+            {
+                throw new InvalidOperationException(
+                    $"S49 RunLog {log.Id} has no PremiseId.");
+            }
+
+            var (rows, contact) =
+                await _s49Repo.LoadPremiseAsync(
+                    roll.RollId,
+                    log.PremiseId,
+                    ct);
+
+            if (rows == null || rows.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"No S49 roll data found for PremiseId {log.PremiseId}.");
+            }
+
+            var firstRow = rows[0];
+
+            var propertyDesc =
+                firstRow.PropertyDesc?.Trim() ?? "";
+
+            if (string.IsNullOrWhiteSpace(propertyDesc))
+            {
+                throw new InvalidOperationException(
+                    $"Property description is empty for S49 PremiseId {log.PremiseId}.");
+            }
+
+            // Keep RunLog populated as well for stats / audit / filenames
+            log.PropertyDesc = propertyDesc;
+
+            var effectiveRecipientEmail =
+                !string.IsNullOrWhiteSpace(contact?.Email)
+                    ? contact!.Email!.Trim()
+                    : recipientEmail;
+
+            return new NoticeEmailRequest
+            {
+                Notice = NoticeKind.S49,
+
+                RollShortCode = roll.ShortCode ?? "",
+                RollName = roll.Name ?? "",
+                RollDisplayName = roll.Name ?? "",
+
+                RecipientName =
+                    contact?.Addr1?.Trim() ?? "Property Owner",
+
+                RecipientEmail = effectiveRecipientEmail,
+
+                IsMulti = false,
+
+                FinancialYearsText =
+                    settings.FinancialYearsText,
+
+                InspectionStart =
+                    settings.ObjectionStartDate.HasValue
+                        ? DateOnly.FromDateTime(
+                            settings.ObjectionStartDate.Value)
+                        : null,
+
+                InspectionEnd =
+                    settings.ObjectionEndDate.HasValue
+                        ? DateOnly.FromDateTime(
+                            settings.ObjectionEndDate.Value)
+                        : null,
+
+                ExtendedEnd =
+                    settings.ExtensionDate.HasValue
+                        ? DateOnly.FromDateTime(
+                            settings.ExtensionDate.Value)
+                        : null,
+
+                Items = new List<NoticeEmailPropertyItem>
+        {
+            new()
+            {
+                PropertyDesc = propertyDesc
+            }
+        }
+            };
+        }
         // ── Save .eml file (RFC 2822 MIME with HTML body + PDF attachment) ───
         private static async Task<string> SaveEmlAsync(
     string emlPath,
