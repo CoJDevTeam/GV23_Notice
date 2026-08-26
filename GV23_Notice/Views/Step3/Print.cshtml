@@ -2,8 +2,8 @@
 @using GV23_Notice.Domain.Workflow
 @inject GV23_Notice.Services.QA.INoticeQaService QaService
 @{
-   
 
+   
     var key = Model.WorkflowKey;
 
     var tpa = ViewBag.TpaPrint as GV23_Notice.Models.Workflow.ViewModels.ThirdPartyAppealPrintVm;
@@ -1109,7 +1109,7 @@
     
     </div>
 
-    <!-- STEP TRAIL — different for S52 (no Batches step) vs standard -->
+    <!-- STEP TRAIL — respects QA requirement dynamically -->
     <div class="sp-trail">
         <div style="display:flex;align-items:center;gap:6px">
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Configure</div>
@@ -1117,6 +1117,7 @@
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Approve</div>
             <div class="sp-arrow">›</div>
             <div class="sp-bc done"><div class="sp-bc-dot">✓</div>Kickoff</div>
+
             @if (!Model.IsS52 && !isDirectThirdParty)
             {
                 <div class="sp-arrow">›</div>
@@ -1131,15 +1132,34 @@
                 <div class="sp-bc-dot">@(Model.IsS52 || isDirectThirdParty ? "4" : "5")</div>Print
             </div>
 
-            <div class="sp-arrow">›</div>
+            @if (qaRequired)
+            {
+                <div class="sp-arrow">›</div>
 
-            <div class="sp-bc">
-                <div class="sp-bc-dot">@(Model.IsS52 || isDirectThirdParty ? "5" : "6")</div>Send Email
-            </div>
+                <div class="sp-bc">
+                    <div class="sp-bc-dot">@(Model.IsS52 || isDirectThirdParty ? "5" : "6")</div>QA
+                </div>
+
+                <div class="sp-arrow">›</div>
+
+                <div class="sp-bc">
+                    <div class="sp-bc-dot">@(Model.IsS52 || isDirectThirdParty ? "6" : "7")</div>Send Email
+                </div>
+            }
+            else
+            {
+                <div class="sp-arrow">›</div>
+
+                <div class="sp-bc">
+                    <div class="sp-bc-dot">@(Model.IsS52 || isDirectThirdParty ? "5" : "6")</div>Send Email
+                </div>
+            }
         </div>
+
         <div class="sp-trail-label">
             Print @(Model.IsS52 ? "Range" : isClaTpa ? "CLA Notices" : isTpa ? "Third-Party Applications" : "Batches")
-            &nbsp;·&nbsp; <span>Step 3</span>
+            &nbsp;·&nbsp;
+            <span>@(qaRequired ? "QA Required" : "Step 3")</span>
         </div>
     </div>
 
@@ -1453,9 +1473,20 @@
                         </div>
                     }
 
-                    <a href="@Url.Action("SendEmail", "Step3", new { key })" class="btn-outline-gold">
-                        📧 Go to Send Email →
-                    </a>
+                    @if (mustGoQa)
+                    {
+                        <a href="@Url.Action("QA", "Step3", new { key })"
+                               class="btn-outline-gold">
+                            🔍 Go to QA →
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="@Url.Action("SendEmail", "Step3", new { key })"
+                               class="btn-outline-gold">
+                            📧 Go to Send Email →
+                        </a>
+                    }
 
                     <a href="@kickoffUrl" class="btn-outline-dark">
                         ← Back to Kickoff
@@ -1617,7 +1648,14 @@
                             All Batches Printed
                         </div>
                         <div style="font-size:.7rem;opacity:.75">
-                            @Model.TotalPrinted.ToString("N0") notices saved. Proceed to Send Email.
+                            @if (mustGoQa)
+                            {
+                                <text>@Model.TotalPrinted.ToString("N0") notices saved. Proceed to QA before sending email.</text>
+                            }
+                            else
+                            {
+                                <text>@Model.TotalPrinted.ToString("N0") notices saved. Proceed to Send Email.</text>
+                            }
                         </div>
                     </div>
                 </div>

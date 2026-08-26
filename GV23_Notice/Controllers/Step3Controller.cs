@@ -1101,44 +1101,72 @@ namespace GV23_Notice.Controllers
         // ── QA ───────────────────────────────────────────────────────────────
 
         [HttpGet("QA")]
-        public async Task<IActionResult> QA(Guid key, CancellationToken ct)
+        public async Task<IActionResult> QA(
+     Guid key,
+     CancellationToken ct)
         {
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
 
-            /*
-             * Same QA view for all notices.
-             * Normal notices use NoticeBatches / NoticeRunLogs inside the service.
-             * TPA uses ThirdPartyAppealApplicationNotices inside the service.
-             * CLA support requires INoticeQaService to read
-             * ClaThirdPartyApplicationNotices.
-             */
-            var vm = await _qa.BuildQaVmAsync(key, ct);
+            var requiresQa =
+                await _qa.RequiresQaAsync(key, ct);
+
+            if (!requiresQa)
+            {
+                TempData["Success"] =
+                    "QA is not required for this notice. You can proceed to Send Email.";
+
+                return RedirectToAction(
+                    nameof(SendEmail),
+                    new { key });
+            }
+
+            var vm =
+                await _qa.BuildQaVmAsync(key, ct);
 
             return View("QA", vm);
         }
-
         [HttpPost("CreateQA")]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> CreateQA(Guid key, CancellationToken ct)
+        public async Task<IActionResult> CreateQA(
+        Guid key,
+        CancellationToken ct)
         {
             if (key == Guid.Empty)
                 return BadRequest("Invalid workflow key.");
 
-            var user = User?.Identity?.Name ?? "Unknown";
+            if (!await _qa.RequiresQaAsync(key, ct))
+            {
+                TempData["Success"] =
+                    "QA is not required for this notice.";
+
+                return RedirectToAction(
+                    nameof(SendEmail),
+                    new { key });
+            }
+
+            var user =
+                User?.Identity?.Name ?? "Unknown";
 
             try
             {
-                var qaRunId = await _qa.CreateQaRunAsync(key, user, ct);
+                var qaRunId =
+                    await _qa.CreateQaRunAsync(
+                        key,
+                        user,
+                        ct);
 
-                TempData["Success"] = $"QA sample #{qaRunId} created successfully.";
+                TempData["Success"] =
+                    $"QA sample #{qaRunId} created successfully.";
             }
             catch (Exception ex)
             {
                 TempData["Error"] = ex.Message;
             }
 
-            return RedirectToAction(nameof(QA), new { key });
+            return RedirectToAction(
+                nameof(QA),
+                new { key });
         }
 
         [HttpPost("ApproveQA")]

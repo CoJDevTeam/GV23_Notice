@@ -144,7 +144,9 @@ ORDER BY MIN(r.Id) ASC;";
                     Extent = rd["Extent"] == DBNull.Value ? 0 : (decimal)rd["Extent"],
                     Reason = rd["Reason"]?.ToString(),
                     EmailSent = rd["EmailSent"] == DBNull.Value ? 0
-                                           : int.TryParse(rd["EmailSent"]?.ToString(), out var es) ? es : 1
+                                           : int.TryParse(rd["EmailSent"]?.ToString(), out var es) ? es : 1,
+                    WEFDate = rd["WefDate"] == DBNull.Value? null: Convert.ToDateTime(rd["WefDate"]),
+
                 });
             }
 

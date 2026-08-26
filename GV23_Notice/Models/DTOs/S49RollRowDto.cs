@@ -27,6 +27,7 @@
             public string? ValuationSplitIndicator { get; set; }
 
             public string? ValuationKey { get; set; }
+            public DateTime? WEFDate { get; set; }
         }
     }
 

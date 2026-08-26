@@ -54,5 +54,8 @@
         public string Category { get; set; } = "";
         public string Remarks { get; set; } = "";
 
+        public string EffectiveDate { get; set; } = "";
+        public DateTime? WEFDate { get; set; } = null;
+
     }
 }

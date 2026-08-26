@@ -418,7 +418,12 @@ namespace GV23_Notice.Services.Storage
          ? r.ExtentText
          : Extent(r.Extent),
 
-                Remarks = r.Reason ?? ""
+                Remarks = r.Reason ?? "",
+                EffectiveDate = r.WEFDate.HasValue
+            ? r.WEFDate.Value.ToString(
+                "dd MMMM yyyy",
+                CultureInfo.GetCultureInfo("en-ZA"))
+            : "",
             }).ToList();
 
             if (forceFour)

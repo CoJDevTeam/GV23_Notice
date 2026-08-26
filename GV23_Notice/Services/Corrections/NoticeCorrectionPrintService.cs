@@ -10,6 +10,7 @@ using GV23_Notice.Services.Notices.Section52;
 using GV23_Notice.Services.Notices.Section53;
 using GV23_Notice.Services.Notices.Section53.COJ_Notice_2026.Models.ViewModels.Section53;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace GV23_Notice.Services.Corrections
 {
@@ -441,7 +442,8 @@ namespace GV23_Notice.Services.Corrections
                     Category = item.NewCategory ?? "",
                     MarketValue = FormatMoney(item.NewMarketValue),
                     Extent = item.NewExtent ?? "",
-                    Remarks = ""
+                    Remarks = "",
+                
                 });
             }
 

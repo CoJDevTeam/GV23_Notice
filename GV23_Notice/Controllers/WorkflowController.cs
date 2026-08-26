@@ -2338,7 +2338,8 @@ namespace GV23_Notice.Controllers
                     Category = x.Category ?? "",
                     MarketValue = x.MarketValue <= 0 ? "" : x.MarketValue.ToString("N0"),
                     Extent = x.Extent <= 0 ? "" : x.Extent.ToString("N0"),
-                    Remarks = ""
+                    Remarks = "",
+                    WEFDate = null
                 }).ToList();
             }
             else
@@ -2352,6 +2353,7 @@ namespace GV23_Notice.Controllers
                 MarketValue = first.MarketValue.ToString("N0"),
                 Extent = first.Extent.ToString("N0"),
                 Remarks = ""
+                ,WEFDate=first.WEFDate
             }
         };
             }

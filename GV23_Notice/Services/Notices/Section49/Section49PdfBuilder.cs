@@ -50,7 +50,7 @@ namespace GV23_Notice.Services.Notices.Section49
             if (rows.Count == 0)
             {
                 // fallback row (should not happen if DB loader works)
-                rows.Add(new Section49PropertyRow { Category = "", MarketValue = "", Extent = "", Remarks = "" });
+                rows.Add(new Section49PropertyRow { Category = "", MarketValue = "", Extent = "", Remarks = "" , WEFDate = null });
             }
 
             // Force 4 rows for split/multipurpose
@@ -238,9 +238,18 @@ namespace GV23_Notice.Services.Notices.Section49
                             foreach (var rr in rows)
                             {
                                 DataCell(rr.Category);
-                                DataCell(rr.Extent);
-                                DataCell(rr.MarketValue);
-                                DataCell("");
+
+                                DataCell(
+                                    rr.Extent,
+                                    right: true);
+
+                                DataCell(
+                                    rr.MarketValue,
+                                    right: true);
+
+                                DataCell(
+                                    rr.EffectiveDate,
+                                    center: true);
                             }
                         });
 

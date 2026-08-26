@@ -29,23 +29,27 @@ namespace GV23_Notice.Services.QA
             _sourceStatus = sourceStatus;
         }
 
-        public async Task<bool> RequiresQaAsync(Guid workflowKey, CancellationToken ct)
+        public async Task<bool> RequiresQaAsync(
+     Guid workflowKey,
+     CancellationToken ct)
         {
             var settings = await _db.NoticeSettings
                 .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey || x.WorkflowKey == workflowKey, ct);
+                .FirstOrDefaultAsync(
+                    x => x.ApprovalKey == workflowKey ||
+                         x.WorkflowKey == workflowKey,
+                    ct);
 
             if (settings == null)
                 return false;
 
-            /*
-             * QA is now dynamic for normal printed notices.
-             * S52 and TPA can also use QA if their printed records exist,
-             * but the sample logic decides grouping dynamically.
-             */
             return settings.Notice switch
             {
-                NoticeKind.S49 => true,
+                // TEMPORARY:
+                // S49 bypasses QA and can proceed directly from Print to Send Email.
+                // Change back to true when S49 QA is ready.
+                NoticeKind.S49 => false,
+
                 NoticeKind.S51 => true,
                 NoticeKind.S52 => true,
                 NoticeKind.S53 => true,
@@ -55,6 +59,7 @@ namespace GV23_Notice.Services.QA
                 NoticeKind.S78 => true,
                 NoticeKind.TPA => true,
                 NoticeKind.CLA_TPA => true,
+
                 _ => false
             };
         }

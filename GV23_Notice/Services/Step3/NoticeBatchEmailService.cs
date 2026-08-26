@@ -51,6 +51,32 @@ namespace GV23_Notice.Services.Email
         }
 
         // ── Count ready-to-send records ──────────────────────────────────────
+
+        private static readonly TimeZoneInfo SouthAfricaTimeZone =
+    GetSouthAfricaTimeZone();
+
+        private static TimeZoneInfo GetSouthAfricaTimeZone()
+        {
+            try
+            {
+                // Windows / IIS
+                return TimeZoneInfo.FindSystemTimeZoneById(
+                    "South Africa Standard Time");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                // Linux / containers / some Azure environments
+                return TimeZoneInfo.FindSystemTimeZoneById(
+                    "Africa/Johannesburg");
+            }
+        }
+
+        private static DateTimeOffset SouthAfricaNow()
+        {
+            return TimeZoneInfo.ConvertTime(
+                DateTimeOffset.UtcNow,
+                SouthAfricaTimeZone);
+        }
         public async Task<int> CountSelectedRecordsAsync(
      IEnumerable<int> batchIds, CancellationToken ct)
         {
@@ -634,7 +660,10 @@ namespace GV23_Notice.Services.Email
 
             var boundary = $"----=_Part_{Guid.NewGuid():N}";
             var bodyB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(bodyHtml ?? ""));
-            var now = DateTime.Now.ToString("ddd, dd MMM yyyy HH:mm:ss zzz");
+            var now = SouthAfricaNow()
+    .ToString(
+        "ddd, dd MMM yyyy HH:mm:ss zzz",
+        System.Globalization.CultureInfo.InvariantCulture);
 
             var safeSubject = string.IsNullOrWhiteSpace(subject)
                 ? "Notice"
@@ -963,7 +992,8 @@ namespace GV23_Notice.Services.Email
             string? propertyDesc,
             string? recipientEmail)
         {
-            var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var stamp = SouthAfricaNow()
+       .ToString("yyyyMMdd_HHmmss");
 
             var email = MakeSafeFilePart(recipientEmail);
             if (string.IsNullOrWhiteSpace(email))
