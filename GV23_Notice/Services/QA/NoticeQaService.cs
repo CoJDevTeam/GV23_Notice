@@ -2,7 +2,6 @@
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
-using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Workflow;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +12,7 @@ namespace GV23_Notice.Services.QA
     public sealed class NoticeQaService : INoticeQaService
     {
         private readonly AppDbContext _db;
-        private readonly IRollDbConnectionFactory _rollConn;
+        private readonly IConfiguration _config;
         private readonly INoticeSourceStatusService _sourceStatus;
 
         private const int QaTargetTotal = 10;
@@ -21,11 +20,11 @@ namespace GV23_Notice.Services.QA
 
         public NoticeQaService(
             AppDbContext db,
-            IRollDbConnectionFactory rollConn,
+            IConfiguration config,
             INoticeSourceStatusService sourceStatus)
         {
             _db = db;
-            _rollConn = rollConn;
+            _config = config;
             _sourceStatus = sourceStatus;
         }
 
@@ -259,6 +258,18 @@ namespace GV23_Notice.Services.QA
             if (printedLogs.Count == 0)
                 throw new InvalidOperationException("No printed notices found for QA. Print the batch first.");
 
+            // A notice may have more than one Printed run log after a reprint.
+            // QA must contain each objection only once, using the latest printed run.
+            printedLogs = printedLogs
+                .GroupBy(
+                    x => x.ObjectionNo.Trim(),
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(g => g
+                    .OrderByDescending(x => x.NoticeRunLogId)
+                    .First())
+                .OrderBy(x => x.ObjectionNo)
+                .ToList();
+
             var objectionNos = printedLogs
                 .Select(x => x.ObjectionNo)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -370,7 +381,7 @@ namespace GV23_Notice.Services.QA
                         ? null
                         : actualPropertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase)
                             ? "Multi must have Multiple Purposes as the main category and at least one split category."
-                            : "Captured category does not match the expected QA rule."
+                            : "New_Category_MVD is missing. QA accepts any captured property category."
                 });
             }
 
@@ -518,8 +529,21 @@ namespace GV23_Notice.Services.QA
             if (objectionNos.Count == 0)
                 return rows;
 
-            await using var cn = _rollConn.Create(sourceDb);
+            // Use the same SQL server / environment as the workflow status service.
+            // DefaultConnection points at Notice_DB; the source roll DB is qualified
+            // explicitly below. This prevents QA status and QA category data from
+            // being read from different SQL environments.
+            var baseConnection =
+                _config.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException(
+                    "DefaultConnection is missing.");
+
+            await using var cn =
+                new SqlConnection(baseConnection);
+
             await cn.OpenAsync(ct);
+
+            var sourceDbSql = QuoteDb(sourceDb);
 
             var table = new DataTable();
             table.Columns.Add("Value", typeof(string));
@@ -530,7 +554,7 @@ namespace GV23_Notice.Services.QA
             var isRevisedMvd = notice == NoticeKind.S53Rev;
 
             var sql = isRevisedMvd
-                ? @"
+                ? $@"
 SELECT
     p.Objection_No,
     p.objection_Status,
@@ -546,10 +570,10 @@ SELECT
 
     COALESCE(NULLIF(LTRIM(RTRIM(CAST(p.New3_Category_ReviseMVD AS NVARCHAR(255)))), ''), 
              CAST(p.New3_Category_MVD AS NVARCHAR(255))) AS New3_Category_MVD
-FROM dbo.Obj_Property_Info p
+FROM {sourceDbSql}.dbo.Obj_Property_Info p
 INNER JOIN @ObjectionNos n
     ON LTRIM(RTRIM(p.Objection_No)) = LTRIM(RTRIM(n.Value));"
-                : @"
+                : $@"
 SELECT
     p.Objection_No,
     p.objection_Status,
@@ -559,7 +583,7 @@ SELECT
     p.New_Category_MVD,
     p.New2_Category_MVD,
     p.New3_Category_MVD
-FROM dbo.Obj_Property_Info p
+FROM {sourceDbSql}.dbo.Obj_Property_Info p
 INNER JOIN @ObjectionNos n
     ON LTRIM(RTRIM(p.Objection_No)) = LTRIM(RTRIM(n.Value));";
 
@@ -589,6 +613,14 @@ INNER JOIN @ObjectionNos n
             }
 
             return rows;
+        }
+
+        private static string QuoteDb(string dbName)
+        {
+            if (string.IsNullOrWhiteSpace(dbName))
+                throw new InvalidOperationException("Source database name is empty.");
+
+            return "[" + dbName.Trim().Replace("]", "]]") + "]";
         }
 
         private static string? ReadString(SqlDataReader rd, string column)
@@ -623,7 +655,7 @@ INNER JOIN @ObjectionNos n
         {
             return propertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase)
                 ? "Multiple Purposes with split categories"
-                : "Check New_Category_MVD";
+                : "Any captured property category in New_Category_MVD";
         }
 
         private static bool IsCategoryValid(
@@ -632,11 +664,20 @@ INNER JOIN @ObjectionNos n
             string? new2CategoryMvd = null,
             string? new3CategoryMvd = null)
         {
+            // Do not restrict QA to Residential / Business and Commercial.
+            // The source system contains many valid rating categories
+            // (e.g. Agricultural, Industrial, Private Open Space, Religious,
+            // Vacant Land, Public Service Infrastructure, etc.).
+            //
+            // For every non-Multi property type, any non-empty captured
+            // New_Category_MVD is valid for QA.
             if (!propertyType.Equals("Multi", StringComparison.OrdinalIgnoreCase))
             {
                 return !string.IsNullOrWhiteSpace(newCategoryMvd);
             }
 
+            // Multipurpose is the only special case because it requires
+            // the main Multiple Purposes category plus at least one split.
             var mainCategoryOk = IsMultiMainCategory(newCategoryMvd);
 
             var hasSplitCategory =
