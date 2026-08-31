@@ -273,19 +273,34 @@ namespace GV23_Notice.Services.QA
 
             if (settings.Notice.IsSection53Family())
             {
-                var invalidStatusRows = sourceRows
-                    .Where(x => !string.Equals(
-                        x.ObjectionStatus?.Trim(),
-                        NoticeWorkflowStatus.QaPending,
-                        StringComparison.OrdinalIgnoreCase))
-                    .Select(x => $"{x.ObjectionNo} [{x.ObjectionStatus}]")
-                    .ToList();
+                var invalidStatusRows = new List<string>();
 
-                if (invalidStatusRows.Any())
+                foreach (var objectionNo in objectionNos)
+                {
+                    if (string.IsNullOrWhiteSpace(objectionNo))
+                        continue;
+
+                    var cleanObjectionNo = objectionNo.Trim();
+
+                    var isQaPending =
+                        await _sourceStatus.IsS53StatusAsync(
+                            settings.RollId,
+                            cleanObjectionNo,
+                            NoticeWorkflowStatus.QaPending,
+                            ct);
+
+                    if (!isQaPending)
+                    {
+                        invalidStatusRows.Add(cleanObjectionNo);
+                    }
+                }
+
+                if (invalidStatusRows.Count > 0)
                 {
                     throw new InvalidOperationException(
-                        "Cannot create QA. All S53 source records must be on 'QA-Pending'. Invalid records: " +
-                        string.Join(", ", invalidStatusRows.Take(20)));
+                        $"Cannot create QA. All S53 source records must be on " +
+                        $"'{NoticeWorkflowStatus.QaPending}'. " +
+                        $"Invalid records: {string.Join(", ", invalidStatusRows.Take(20))}");
                 }
             }
 
