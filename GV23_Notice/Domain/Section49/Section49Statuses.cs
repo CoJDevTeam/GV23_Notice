@@ -1,6 +1,6 @@
-﻿namespace GV23_Notice.Domain.Section49Sup4
+﻿namespace GV23_Notice.Domain.Section49
 {
-    public static class Section49Sup4Statuses
+    public static class Section49Statuses
     {
         public const string Pending = "Pending";
 

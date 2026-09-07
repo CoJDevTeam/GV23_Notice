@@ -1,10 +1,17 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace GV23_Notice.Domain.Section49Sup4
+namespace GV23_Notice.Domain.Section49
 {
+    /// <summary>
+    /// Standard Section 49 audit/tracking record.
+    ///
+    /// This model is not tied to a specific roll.
+    /// The actual database/table is resolved dynamically
+    /// using RollRegistry.SourceDb and RollDb configuration.
+    /// </summary>
     [Table("Section49Table", Schema = "dbo")]
-    public sealed class Section49Sup4Record
+    public sealed class Section49Record
     {
         [Key]
         public long Id { get; set; }
@@ -44,13 +51,13 @@ namespace GV23_Notice.Domain.Section49Sup4
         public string? EmailAddr { get; set; }
 
         /// <summary>
-        /// Yes = source postal record had an email address.
-        /// No  = source postal record did not have an email address.
+        /// Yes = source contact/postal table had an email address.
+        /// No  = no source email address was available.
         /// </summary>
         [Required]
         [Column("Has_Email")]
         [MaxLength(3)]
-        public string HasEmail { get; set; } = "No";
+        public string HasEmail { get; set; } = Section49EmailFlags.No;
 
         [Required]
         [Column("Batch_Name")]
@@ -83,17 +90,14 @@ namespace GV23_Notice.Domain.Section49Sup4
         public string? SentBy { get; set; }
 
         /// <summary>
-        /// The client's real email address from Supp4_Postal_address.
-        /// This must never be overwritten by test mode.
+        /// Original client email before any test-mode redirect.
         /// </summary>
         [Column("Original_Email_Addr")]
         [MaxLength(320)]
         public string? OriginalEmailAddr { get; set; }
 
         /// <summary>
-        /// Actual SMTP recipient.
-        /// Production = OriginalEmailAddr
-        /// Test mode  = configured test recipient.
+        /// Actual recipient used by SMTP.
         /// </summary>
         [Column("Actual_Sent_To")]
         [MaxLength(320)]
@@ -105,10 +109,33 @@ namespace GV23_Notice.Domain.Section49Sup4
         [Required]
         [Column("Send_Status")]
         [MaxLength(50)]
-        public string SendStatus { get; set; } = Section49Sup4Statuses.Pending;
+        public string SendStatus { get; set; } =
+            Section49Statuses.Pending;
 
         [Column("Error_Message")]
         [MaxLength(2000)]
         public string? ErrorMessage { get; set; }
+
+        // QA fields
+        [Column("Qa_Selected")]
+        public bool? QaSelected { get; set; }
+
+        [Column("Qa_Property_Type")]
+        [MaxLength(50)]
+        public string? QaPropertyType { get; set; }
+
+        [Column("Qa_Approved")]
+        public bool? QaApproved { get; set; }
+
+        [Column("Qa_Approved_By")]
+        [MaxLength(150)]
+        public string? QaApprovedBy { get; set; }
+
+        [Column("Qa_Approved_Date")]
+        public DateTime? QaApprovedDate { get; set; }
+
+        [Column("Qa_Comment")]
+        [MaxLength(1000)]
+        public string? QaComment { get; set; }
     }
 }
