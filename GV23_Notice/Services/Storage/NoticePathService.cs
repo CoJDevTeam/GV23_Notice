@@ -1,4 +1,5 @@
 ﻿using GV23_Notice.Domain.Rolls;
+using GV23_Notice.Domain.Section49;
 using GV23_Notice.Domain.Storage;
 using GV23_Notice.Domain.Workflow;
 using Microsoft.Extensions.Options;
@@ -9,12 +10,18 @@ namespace GV23_Notice.Services.Storage
     public sealed class NoticePathService : INoticePathService
     {
         private readonly StorageOptions _opt;
+        private readonly RollDbOptions _rollDb;
+        private readonly Section49Options _section49;
 
-        public NoticePathService(IOptions<StorageOptions> opt)
+        public NoticePathService(
+            IOptions<StorageOptions> opt,
+            IOptions<RollDbOptions> rollDb,
+            IOptions<Section49Options> section49)
         {
             _opt = opt.Value;
+            _rollDb = rollDb.Value;
+            _section49 = section49.Value;
         }
-
         public string GetRootPath(RollRegistry roll, NoticeKind notice)
         {
             var key = (roll.ShortCode ?? "").Trim();
@@ -370,6 +377,120 @@ namespace GV23_Notice.Services.Storage
             var s = sb.ToString();
             while (s.Contains("__")) s = s.Replace("__", "_");
             return s.Trim('_');
+        }
+        public string BuildS49PdfPath(
+    RollRegistry roll,
+    string propertyDesc)
+        {
+            var safeProperty =
+                SafeName(propertyDesc);
+
+            if (string.IsNullOrWhiteSpace(safeProperty))
+                safeProperty = "Unknown_Property";
+
+            // ----------------------------------------------------
+            // Check whether this roll has the new configured
+            // Section 49 storage.
+            // ----------------------------------------------------
+            if (!string.IsNullOrWhiteSpace(roll.SourceDb))
+            {
+                var source =
+                    _rollDb.GetSource(
+                        roll.SourceDb.Trim());
+
+                var storage =
+                    source.Section49?.Storage;
+
+                if (
+                    storage != null
+                    &&
+                    !string.IsNullOrWhiteSpace(
+                        storage.PdfRootPath))
+                {
+                    var filePattern =
+                        _section49
+                            .StorageDefaults
+                            .PdfFileNamePattern;
+
+                    if (string.IsNullOrWhiteSpace(filePattern))
+                    {
+                        filePattern =
+                            "Section49_{PropertyDesc}.pdf";
+                    }
+
+                    var fileName =
+                        filePattern.Replace(
+                            "{PropertyDesc}",
+                            safeProperty,
+                            StringComparison.OrdinalIgnoreCase);
+
+                    fileName =
+                        SafeName(fileName);
+
+                    var root =
+                        storage.PdfRootPath.Trim();
+
+                    if (
+                        _section49
+                            .StorageDefaults
+                            .CreatePropertyFolderForPdf)
+                    {
+                        return Path.Combine(
+                            root,
+                            safeProperty,
+                            fileName);
+                    }
+
+                    return Path.Combine(
+                        root,
+                        fileName);
+                }
+            }
+
+            // ----------------------------------------------------
+            // Legacy fallback.
+            // ----------------------------------------------------
+            var oldRoot =
+                GetRootPath(
+                    roll,
+                    NoticeKind.S49);
+
+            var oldMain =
+                $"{SafeName(roll.ShortCode)}_Section 49";
+
+            var oldFile =
+                $"{safeProperty}_Section49_Notice.pdf";
+
+            return Path.Combine(
+                oldRoot,
+                oldMain,
+                safeProperty,
+                oldFile);
+        }
+
+        public string? GetS49SignaturePath(
+    RollRegistry roll)
+        {
+            if (!string.IsNullOrWhiteSpace(
+                    roll.SourceDb))
+            {
+                var source =
+                    _rollDb.GetSource(
+                        roll.SourceDb.Trim());
+
+                var configured =
+                    source.Section49?
+                        .Storage?
+                        .SignaturePath;
+
+                if (!string.IsNullOrWhiteSpace(
+                        configured))
+                {
+                    return configured.Trim();
+                }
+            }
+
+            return null;
         }
     }
 }

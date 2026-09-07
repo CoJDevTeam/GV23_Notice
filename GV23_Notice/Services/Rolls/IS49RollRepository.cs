@@ -32,5 +32,12 @@ namespace GV23_Notice.Services.Rolls
     int batchSize,
     bool requireFullBatch,
     CancellationToken ct);
+
+        Task MarkPrintedAsync(
+    int rollId,
+    string premiseId,
+    string batchName,
+    string pdfPath,
+    CancellationToken ct);
     }
 }

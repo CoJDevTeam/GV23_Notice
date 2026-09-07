@@ -46,10 +46,10 @@ namespace GV23_Notice.Services.Storage
             ISection49PdfBuilder s49Builder,
             ISection51PdfBuilder s51Builder,
             Section52PdfService s52Builder,
-            ISection53PdfService s53Builder,             
+            ISection53PdfService s53Builder,
             IWebHostEnvironment env,
             ILogger<NoticeBatchPrintService> log,
-            IConfiguration config,INoticeSourceStatusService sourceStatus, IOptions<StorageOptions> storage)
+            IConfiguration config, INoticeSourceStatusService sourceStatus, IOptions<StorageOptions> storage)
         {
             _db = db;
             _paths = paths;
@@ -57,7 +57,7 @@ namespace GV23_Notice.Services.Storage
             _s49Builder = s49Builder;
             _s51Builder = s51Builder;
             _s52Builder = s52Builder;
-            _s53Builder = s53Builder;                   
+            _s53Builder = s53Builder;
             _env = env;
             _log = log;
             _config = config;
@@ -257,6 +257,29 @@ namespace GV23_Notice.Services.Storage
                         ? ex.Message[..2000]
                         : ex.Message;
 
+                    // Keep the roll-level Section 49 audit in sync with
+                    // NoticeRunLog when PDF generation or saving fails.
+                    if (settings.Notice == NoticeKind.S49 &&
+                        !string.IsNullOrWhiteSpace(log.PremiseId))
+                    {
+                        try
+                        {
+                            await _s49Repo.MarkPrintFailedAsync(
+                                roll.RollId,
+                                log.PremiseId,
+                                ct);
+                        }
+                        catch (Exception auditEx)
+                        {
+                            _log.LogError(
+                                auditEx,
+                                "Failed to update Section 49 print-failure audit. " +
+                                "PremiseId={PremiseId}, Batch={BatchName}",
+                                log.PremiseId,
+                                batch.BatchName);
+                        }
+                    }
+
                     result.Failed++;
                 }
 
@@ -298,6 +321,24 @@ namespace GV23_Notice.Services.Storage
             byte[] pdfBytes;
             string propertyDesc;
 
+            // ============================================================
+            // S49 PRINT AUDIT
+            // Mark the exact locked batch record as Printing BEFORE
+            // building the PDF. Legacy rolls keep their existing P status;
+            // EmailAvailability rolls update Section49Table.
+            // ============================================================
+            if (settings.Notice == NoticeKind.S49)
+            {
+                if (string.IsNullOrWhiteSpace(log.PremiseId))
+                    throw new InvalidOperationException(
+                        $"RunLog {log.Id} has no PremiseId for Section 49 printing.");
+
+                await _s49Repo.MarkPrintingAsync(
+                    roll.RollId,
+                    log.PremiseId,
+                    ct);
+            }
+
             switch (settings.Notice)
             {
                 case NoticeKind.S49:
@@ -326,7 +367,14 @@ namespace GV23_Notice.Services.Storage
             // ── Build save path ─────────────────────────────────────────────
             string pdfPath;
 
-            if (settings.Notice == NoticeKind.S51)
+            if (settings.Notice == NoticeKind.S49)
+            {
+                pdfPath =
+                    _paths.BuildS49PdfPath(
+                        roll,
+                        propertyDesc);
+            }
+            else if (settings.Notice == NoticeKind.S51)
             {
                 pdfPath = _paths.BuildPdfPath(
                     roll: roll,
@@ -375,6 +423,27 @@ namespace GV23_Notice.Services.Storage
 
             log.PdfPath = pdfPath;
             log.Status = RunStatus.Printed;
+            log.ErrorMessage = null;
+
+            // ============================================================
+            // S49 AUDIT SNAPSHOT
+            // The same record inserted into Section49Table at batch
+            // creation is now updated with the actual generated PDF path.
+            // ============================================================
+            if (settings.Notice == NoticeKind.S49)
+            {
+                if (string.IsNullOrWhiteSpace(log.PremiseId))
+                    throw new InvalidOperationException(
+                        $"RunLog {log.Id} has no PremiseId after Section 49 printing.");
+
+                await _s49Repo.MarkPrintedAsync(
+                    roll.RollId,
+                    log.PremiseId,
+                    batch.BatchName,
+                    pdfPath,
+                    ct);
+            }
+
             await _db.SaveChangesAsync(ct);
         }
 
@@ -401,6 +470,15 @@ namespace GV23_Notice.Services.Storage
             //static string Num(decimal v) =>
             //    v.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
 
+            var configuredSignature =
+_paths.GetS49SignaturePath(
+roll);
+
+            var signaturePath =
+!string.IsNullOrWhiteSpace(
+    configuredSignature)
+    ? configuredSignature
+    : settings.SignaturePath;
             static string Extent(object? v) =>
     ExtentDisplayHelper.SameAsDb(v);
 
@@ -449,15 +527,37 @@ namespace GV23_Notice.Services.Storage
 
             var ctx = new Section49NoticeContext
             {
-                HeaderImagePath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG"),
-                LetterDate = settings.LetterDate,
-                InspectionStartDate = settings.ObjectionStartDate ?? settings.LetterDate,
-                InspectionEndDate = settings.ObjectionEndDate ?? settings.LetterDate.AddDays(30),
-                ExtendedEndDate = settings.ExtensionDate,
-                FinancialYearsText = settings.FinancialYearsText,
-                SignaturePath = settings.SignaturePath,
-                ForceFourRows = forceFour,
-                PropertyRows = propRows
+                HeaderImagePath =
+         Path.Combine(
+             _env.WebRootPath,
+             "Images",
+             "Obj_Header.PNG"),
+
+                LetterDate =
+         settings.LetterDate,
+
+                InspectionStartDate =
+         settings.ObjectionStartDate
+         ?? settings.LetterDate,
+
+                InspectionEndDate =
+         settings.ObjectionEndDate
+         ?? settings.LetterDate.AddDays(30),
+
+                ExtendedEndDate =
+         settings.ExtensionDate,
+
+                FinancialYearsText =
+         settings.FinancialYearsText,
+
+                SignaturePath =
+         signaturePath,
+
+                ForceFourRows =
+         forceFour,
+
+                PropertyRows =
+         propRows
             };
 
             var pdfBytes = _s49Builder.BuildNotice(pdfData, ctx);
@@ -505,7 +605,7 @@ namespace GV23_Notice.Services.Storage
             }
 
 
-            
+
             static string? Ext(SqlDataReader r, string col)
             {
                 try
@@ -769,25 +869,25 @@ namespace GV23_Notice.Services.Storage
                 _ => null
             };
 
-            
-                if (pairedType != null)
+
+            if (pairedType != null)
+            {
+                var pairedRow = await FetchMvdRowAsync(
+                    cs,
+                    settings.Notice,
+                    batch.RollId,
+                    log.ObjectionNo,
+                    batch.BatchName,
+                    pairedType,
+                    ct);
+
+                if (pairedRow != null)
                 {
-                    var pairedRow = await FetchMvdRowAsync(
-                        cs,
-                        settings.Notice,
-                        batch.RollId,
-                        log.ObjectionNo,
-                        batch.BatchName,
-                        pairedType,
-                        ct);
+                    pairedRow.IsRevisedMvd = settings.Notice == NoticeKind.S53Rev;
+                    pairedRow.RollName = roll.Name ?? roll.ShortCode ?? "Valuation Roll";
 
-                    if (pairedRow != null)
-                    {
-                        pairedRow.IsRevisedMvd = settings.Notice == NoticeKind.S53Rev;
-                        pairedRow.RollName = roll.Name ?? roll.ShortCode ?? "Valuation Roll";
-
-                        var pairedDesc = pairedRow.PropertyDesc ?? propertyDesc;
-                        var pairedBytes = _s53Builder.BuildNoticePdf(pairedRow, letterDate);
+                    var pairedDesc = pairedRow.PropertyDesc ?? propertyDesc;
+                    var pairedBytes = _s53Builder.BuildNoticePdf(pairedRow, letterDate);
 
                     var pairedPath = BuildSection53PdfPath(
    roll: roll,
@@ -799,14 +899,14 @@ namespace GV23_Notice.Services.Storage
 
                     SavePdf(pairedPath, pairedBytes);
 
-                        _log.LogInformation(
-                            "S53 paired PDF saved: {ObjectionNo} {Type} → {Path}",
-                            log.ObjectionNo,
-                            pairedType,
-                            pairedPath);
-                    }
+                    _log.LogInformation(
+                        "S53 paired PDF saved: {ObjectionNo} {Type} → {Path}",
+                        log.ObjectionNo,
+                        pairedType,
+                        pairedPath);
                 }
-            
+            }
+
 
             return (pdfBytes, propertyDesc);
         }
@@ -882,7 +982,7 @@ namespace GV23_Notice.Services.Storage
             return Path.Combine(folder, fileName);
         }
 
-      
+
 
         private static string SafeFile(string? value)
         {

@@ -1,10 +1,14 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Section49;
+using GV23_Notice.Domain.Rolls;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services.Workflow;
+using GV23_Notice.Services.Rolls;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Data;
 
 namespace GV23_Notice.Services.QA
@@ -14,6 +18,9 @@ namespace GV23_Notice.Services.QA
         private readonly AppDbContext _db;
         private readonly IConfiguration _config;
         private readonly INoticeSourceStatusService _sourceStatus;
+        private readonly Section49Options _section49;
+        private readonly RollDbOptions _rollDb;
+        private readonly IRollDbConnectionFactory _rollConnectionFactory;
 
         private const int QaTargetTotal = 10;
         private const int QaMaxPerGroup = 3;
@@ -21,13 +28,18 @@ namespace GV23_Notice.Services.QA
         public NoticeQaService(
             AppDbContext db,
             IConfiguration config,
-            INoticeSourceStatusService sourceStatus)
+            INoticeSourceStatusService sourceStatus,
+            IOptions<Section49Options> section49Options,
+            IOptions<RollDbOptions> rollDbOptions,
+            IRollDbConnectionFactory rollConnectionFactory)
         {
             _db = db;
             _config = config;
             _sourceStatus = sourceStatus;
+            _section49 = section49Options.Value;
+            _rollDb = rollDbOptions.Value;
+            _rollConnectionFactory = rollConnectionFactory;
         }
-
         public async Task<bool> RequiresQaAsync(
      Guid workflowKey,
      CancellationToken ct)
@@ -44,10 +56,8 @@ namespace GV23_Notice.Services.QA
 
             return settings.Notice switch
             {
-                // TEMPORARY:
-                // S49 bypasses QA and can proceed directly from Print to Send Email.
-                // Change back to true when S49 QA is ready.
-                NoticeKind.S49 => false,
+                // Section 49 QA is configuration driven.
+                NoticeKind.S49 => _section49.Qa.Enabled,
 
                 NoticeKind.S51 => true,
                 NoticeKind.S52 => true,
@@ -67,6 +77,20 @@ namespace GV23_Notice.Services.QA
         {
             if (!await RequiresQaAsync(workflowKey, ct))
                 return true;
+
+            var settings = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.ApprovalKey == workflowKey ||
+                         x.WorkflowKey == workflowKey,
+                    ct);
+
+            if (settings?.Notice == NoticeKind.S49)
+            {
+                return await IsS49QaApprovedAsync(
+                    workflowKey,
+                    ct);
+            }
 
             return await _db.NoticeQaRuns
                 .AsNoTracking()
@@ -195,6 +219,15 @@ namespace GV23_Notice.Services.QA
 
             if (!await RequiresQaAsync(workflowKey, ct))
                 throw new InvalidOperationException("This notice type does not require this QA step.");
+
+            if (settings.Notice == NoticeKind.S49)
+            {
+                return await CreateS49QaRunAsync(
+                    workflowKey,
+                    settings,
+                    user,
+                    ct);
+            }
 
             if (settings.Notice == NoticeKind.TPA)
             {
@@ -416,6 +449,18 @@ namespace GV23_Notice.Services.QA
                 .FirstOrDefaultAsync(x => x.Id == qaRun.NoticeSettingsId, ct)
                 ?? throw new InvalidOperationException("Notice settings not found for QA run.");
 
+            if (settings.Notice == NoticeKind.S49)
+            {
+                await ApproveS49QaAsync(
+                    qaRun,
+                    settings,
+                    user,
+                    comment,
+                    ct);
+
+                return;
+            }
+
             if (settings.Notice == NoticeKind.TPA)
             {
                 await ApproveTpaQaAsync(
@@ -518,6 +563,898 @@ namespace GV23_Notice.Services.QA
                     ct);
             }
         }
+
+        // ============================================================
+        // SECTION 49 QA
+        // ============================================================
+
+        private async Task<bool> IsS49QaApprovedAsync(
+            Guid workflowKey,
+            CancellationToken ct)
+        {
+            /*
+             * Section 49 approval is batch-based.
+             *
+             * Every completely printed STEP3 batch must have its own
+             * Approved QA run.  NoticeQaRun does not need a new batch
+             * column: the batch is derived from the QA item's
+             * NoticeRunLogId.
+             */
+            var batches = await _db.NoticeBatches
+                .AsNoTracking()
+                .Where(x =>
+                    x.WorkflowKey == workflowKey &&
+                    x.Notice == NoticeKind.S49 &&
+                    x.BatchKind == "STEP3" &&
+                    x.NumberOfRecords > 0)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.NumberOfRecords
+                })
+                .ToListAsync(ct);
+
+            if (batches.Count == 0)
+                return false;
+
+            var batchIds = batches
+                .Select(x => x.Id)
+                .ToList();
+
+            var logs = await _db.NoticeRunLogs
+                .AsNoTracking()
+                .Where(x => batchIds.Contains(x.NoticeBatchId))
+                .Select(x => new
+                {
+                    x.Id,
+                    x.NoticeBatchId,
+                    x.Status,
+                    x.PdfPath
+                })
+                .ToListAsync(ct);
+
+            var fullyPrintedBatchIds = batches
+                .Where(batch =>
+                {
+                    var batchLogs = logs
+                        .Where(x => x.NoticeBatchId == batch.Id)
+                        .ToList();
+
+                    return batchLogs.Count == batch.NumberOfRecords &&
+                           batchLogs.Count > 0 &&
+                           batchLogs.All(x =>
+                               x.Status == RunStatus.Printed &&
+                               !string.IsNullOrWhiteSpace(x.PdfPath));
+                })
+                .Select(x => x.Id)
+                .ToList();
+
+            if (fullyPrintedBatchIds.Count == 0)
+                return false;
+
+            var approvedRuns = await _db.NoticeQaRuns
+                .AsNoTracking()
+                .Include(x => x.Items)
+                .Where(x =>
+                    x.WorkflowKey == workflowKey &&
+                    x.Notice == NoticeKind.S49 &&
+                    x.Status == "Approved")
+                .ToListAsync(ct);
+
+            foreach (var batchId in fullyPrintedBatchIds)
+            {
+                var batchRunLogIds = logs
+                    .Where(x => x.NoticeBatchId == batchId)
+                    .Select(x => x.Id)
+                    .ToHashSet();
+
+                var approvedForBatch = approvedRuns.Any(run =>
+                    run.Items.Any(item =>
+                        item.NoticeRunLogId.HasValue &&
+                        batchRunLogIds.Contains(item.NoticeRunLogId.Value)));
+
+                if (!approvedForBatch)
+                    return false;
+            }
+
+            return true;
+        }
+
+        private async Task<int> CreateS49QaRunAsync(
+            Guid workflowKey,
+            NoticeSettings settings,
+            string user,
+            CancellationToken ct)
+        {
+            if (!_section49.Qa.Enabled)
+            {
+                throw new InvalidOperationException(
+                    "Section 49 QA is disabled in configuration.");
+            }
+
+            var batches = await _db.NoticeBatches
+                .AsNoTracking()
+                .Where(x =>
+                    x.WorkflowKey == workflowKey &&
+                    x.Notice == NoticeKind.S49 &&
+                    x.BatchKind == "STEP3" &&
+                    x.NumberOfRecords > 0)
+                .OrderBy(x => x.Id)
+                .ToListAsync(ct);
+
+            if (batches.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "No Section 49 batches were found for this workflow.");
+            }
+
+            /*
+             * Pick the first completely printed batch that does not
+             * already have an Approved QA run.
+             */
+            NoticeBatch? selectedBatch = null;
+            List<NoticeRunLog>? selectedBatchLogs = null;
+
+            var approvedRuns = await _db.NoticeQaRuns
+                .AsNoTracking()
+                .Include(x => x.Items)
+                .Where(x =>
+                    x.WorkflowKey == workflowKey &&
+                    x.Notice == NoticeKind.S49 &&
+                    x.Status == "Approved")
+                .ToListAsync(ct);
+
+            foreach (var batch in batches)
+            {
+                var batchLogs = await _db.NoticeRunLogs
+                    .AsNoTracking()
+                    .Where(x => x.NoticeBatchId == batch.Id)
+                    .OrderBy(x => x.Id)
+                    .ToListAsync(ct);
+
+                if (batchLogs.Count != batch.NumberOfRecords ||
+                    batchLogs.Count == 0)
+                {
+                    continue;
+                }
+
+                var allPrinted = batchLogs.All(x =>
+                    x.Status == RunStatus.Printed &&
+                    !string.IsNullOrWhiteSpace(x.PdfPath));
+
+                if (!allPrinted)
+                    continue;
+
+                var runLogIds = batchLogs
+                    .Select(x => x.Id)
+                    .ToHashSet();
+
+                var alreadyApproved = approvedRuns.Any(run =>
+                    run.Items.Any(item =>
+                        item.NoticeRunLogId.HasValue &&
+                        runLogIds.Contains(item.NoticeRunLogId.Value)));
+
+                if (alreadyApproved)
+                    continue;
+
+                selectedBatch = batch;
+                selectedBatchLogs = batchLogs;
+                break;
+            }
+
+            if (selectedBatch == null ||
+                selectedBatchLogs == null)
+            {
+                throw new InvalidOperationException(
+                    "No completely printed Section 49 batch is waiting for QA. " +
+                    "Print the full batch first, or all printed batches may already be QA-approved.");
+            }
+
+            if (_section49.Qa.RequireAllNoticesPrintedBeforeQa)
+            {
+                if (selectedBatchLogs.Count != selectedBatch.NumberOfRecords ||
+                    selectedBatchLogs.Any(x =>
+                        x.Status != RunStatus.Printed ||
+                        string.IsNullOrWhiteSpace(x.PdfPath)))
+                {
+                    throw new InvalidOperationException(
+                        $"Section 49 batch '{selectedBatch.BatchName}' must be fully printed before QA can start.");
+                }
+            }
+
+            var candidates = await LoadS49QaCandidatesAsync(
+                settings.RollId,
+                selectedBatch,
+                selectedBatchLogs,
+                ct);
+
+            if (candidates.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"No Section 49 QA candidates could be resolved for batch '{selectedBatch.BatchName}'.");
+            }
+
+            var sampleRules = GetS49SampleRules();
+            var picked = new List<S49QaCandidate>();
+
+            foreach (var rule in sampleRules)
+            {
+                var available = candidates
+                    .Where(x =>
+                        string.Equals(
+                            x.SampleKey,
+                            rule.Key,
+                            StringComparison.OrdinalIgnoreCase))
+                    .OrderBy(_ => Guid.NewGuid())
+                    .Take(rule.Count)
+                    .ToList();
+
+                if (available.Count != rule.Count)
+                {
+                    throw new InvalidOperationException(
+                        $"Section 49 QA cannot be created for batch '{selectedBatch.BatchName}'. " +
+                        $"Required {rule.Count} '{rule.Label}' sample(s), but only {available.Count} were found.");
+                }
+
+                foreach (var item in available)
+                {
+                    item.SampleLabel = rule.Label;
+                    picked.Add(item);
+                }
+            }
+
+            if (picked.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Section 49 QA configuration contains no sample rules.");
+            }
+
+            /*
+             * Replace only open S49 runs that belong to THIS batch.
+             * An approved run for another batch remains untouched.
+             */
+            var selectedRunLogIds = selectedBatchLogs
+                .Select(x => x.Id)
+                .ToHashSet();
+
+            var openRuns = await _db.NoticeQaRuns
+                .Include(x => x.Items)
+                .Where(x =>
+                    x.WorkflowKey == workflowKey &&
+                    x.Notice == NoticeKind.S49 &&
+                    x.Status == "Open")
+                .ToListAsync(ct);
+
+            foreach (var openRun in openRuns)
+            {
+                var belongsToSelectedBatch = openRun.Items.Any(item =>
+                    item.NoticeRunLogId.HasValue &&
+                    selectedRunLogIds.Contains(item.NoticeRunLogId.Value));
+
+                if (belongsToSelectedBatch)
+                    openRun.Status = "Replaced";
+            }
+
+            var qaRun = new NoticeQaRun
+            {
+                WorkflowKey = workflowKey,
+                NoticeSettingsId = settings.Id,
+                RollId = settings.RollId,
+                Notice = NoticeKind.S49,
+                Status = "Open",
+                CreatedBy = user,
+                CreatedAtUtc = DateTime.UtcNow
+            };
+
+            foreach (var row in picked)
+            {
+                var hasPremise =
+                    !string.IsNullOrWhiteSpace(row.PremiseId);
+
+                var hasProperty =
+                    !string.IsNullOrWhiteSpace(row.PropertyDesc);
+
+                var hasPdfPath =
+                    !string.IsNullOrWhiteSpace(row.PdfPath);
+
+                var pdfExists =
+                    hasPdfPath &&
+                    File.Exists(row.PdfPath!);
+
+                var passed =
+                    hasPremise &&
+                    hasProperty &&
+                    hasPdfPath &&
+                    pdfExists;
+
+                var comments = new List<string>();
+
+                if (!hasPremise)
+                    comments.Add("Premise ID is missing.");
+
+                if (!hasProperty)
+                    comments.Add("Property description is missing.");
+
+                if (!hasPdfPath)
+                    comments.Add("PDF path is missing.");
+                else if (!pdfExists)
+                    comments.Add("The printed PDF file does not exist on disk.");
+
+                qaRun.Items.Add(new NoticeQaItem
+                {
+                    NoticeRunLogId = row.NoticeRunLogId,
+
+                    /*
+                     * S49 does not use an objection number.
+                     * PremiseId is the audit key for the notice.
+                     */
+                    ObjectionNo = null,
+                    PremiseId = row.PremiseId,
+
+                    PropertyType = row.SampleLabel,
+                    PropertyDesc = row.PropertyDesc,
+                    PdfPath = row.PdfPath,
+
+                    /*
+                     * Reuse the existing QA display fields to show the
+                     * S49 source categories without changing the QA tables.
+                     */
+                    NewCategoryMvd = row.Categories.ElementAtOrDefault(0),
+                    New2CategoryMvd = row.Categories.ElementAtOrDefault(1),
+                    New3CategoryMvd = row.Categories.ElementAtOrDefault(2),
+
+                    ExpectedCategory =
+                        $"Section 49 QA sample: {row.SampleLabel}. " +
+                        $"Batch: {selectedBatch.BatchName}.",
+
+                    IsCategoryValid = passed,
+                    QaStatus = passed ? "Passed" : "Failed",
+                    QaComment = passed
+                        ? null
+                        : string.Join(" ", comments)
+                });
+            }
+
+            _db.NoticeQaRuns.Add(qaRun);
+            await _db.SaveChangesAsync(ct);
+
+            await UpdateS49AuditBatchStatusAsync(
+                settings.RollId,
+                selectedBatch.BatchName,
+                Section49Statuses.QaPending,
+                ct);
+
+            return qaRun.Id;
+        }
+
+        private async Task ApproveS49QaAsync(
+            NoticeQaRun qaRun,
+            NoticeSettings settings,
+            string user,
+            string? comment,
+            CancellationToken ct)
+        {
+            if (qaRun.Status == "Approved")
+                return;
+
+            if (qaRun.Items.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve Section 49 QA because there are no QA sample items.");
+            }
+
+            var failedItems = qaRun.Items
+                .Where(x =>
+                    !x.IsCategoryValid ||
+                    x.QaStatus == "Failed")
+                .ToList();
+
+            if (failedItems.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    "Section 49 QA cannot be approved because one or more sample files failed validation.");
+            }
+
+            var runLogIds = qaRun.Items
+                .Where(x => x.NoticeRunLogId.HasValue)
+                .Select(x => x.NoticeRunLogId!.Value)
+                .Distinct()
+                .ToList();
+
+            if (runLogIds.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Section 49 QA items are not linked to NoticeRunLogs.");
+            }
+
+            var batchIds = await _db.NoticeRunLogs
+                .AsNoTracking()
+                .Where(x => runLogIds.Contains(x.Id))
+                .Select(x => x.NoticeBatchId)
+                .Distinct()
+                .ToListAsync(ct);
+
+            if (batchIds.Count != 1)
+            {
+                throw new InvalidOperationException(
+                    "Section 49 QA samples must all come from the same locked batch.");
+            }
+
+            var batchId = batchIds[0];
+
+            var batch = await _db.NoticeBatches
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x =>
+                        x.Id == batchId &&
+                        x.WorkflowKey == qaRun.WorkflowKey &&
+                        x.Notice == NoticeKind.S49 &&
+                        x.BatchKind == "STEP3",
+                    ct)
+                ?? throw new InvalidOperationException(
+                    "The Section 49 QA batch could not be resolved.");
+
+            var batchLogs = await _db.NoticeRunLogs
+                .AsNoTracking()
+                .Where(x => x.NoticeBatchId == batch.Id)
+                .ToListAsync(ct);
+
+            if (batchLogs.Count != batch.NumberOfRecords ||
+                batchLogs.Count == 0 ||
+                batchLogs.Any(x =>
+                    x.Status != RunStatus.Printed ||
+                    string.IsNullOrWhiteSpace(x.PdfPath)))
+            {
+                throw new InvalidOperationException(
+                    $"Section 49 batch '{batch.BatchName}' is no longer fully printed. " +
+                    "QA cannot be approved.");
+            }
+
+            var requiredRules = GetS49SampleRules();
+
+            foreach (var rule in requiredRules)
+            {
+                var actual = qaRun.Items.Count(x =>
+                    string.Equals(
+                        x.PropertyType,
+                        rule.Label,
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (actual < rule.Count)
+                {
+                    throw new InvalidOperationException(
+                        $"Section 49 QA is missing the required '{rule.Label}' sample.");
+                }
+            }
+
+            qaRun.Status = "Approved";
+            qaRun.ApprovedBy = user;
+            qaRun.ApprovedAtUtc = DateTime.UtcNow;
+            qaRun.Comment = comment;
+
+            await _db.SaveChangesAsync(ct);
+
+            await UpdateS49AuditBatchStatusAsync(
+                settings.RollId,
+                batch.BatchName,
+                Section49Statuses.QaApproved,
+                ct);
+        }
+
+        private async Task<List<S49QaCandidate>> LoadS49QaCandidatesAsync(
+            int rollId,
+            NoticeBatch batch,
+            List<NoticeRunLog> printedLogs,
+            CancellationToken ct)
+        {
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.RollId == rollId,
+                    ct)
+                ?? throw new InvalidOperationException(
+                    $"Roll {rollId} was not found.");
+
+            if (string.IsNullOrWhiteSpace(roll.SourceDb))
+            {
+                throw new InvalidOperationException(
+                    $"SourceDb is missing for RollId {rollId}.");
+            }
+
+            var sourceDb = roll.SourceDb.Trim();
+            var source = _rollDb.GetSource(sourceDb);
+
+            if (string.IsNullOrWhiteSpace(source.RollTable))
+            {
+                throw new InvalidOperationException(
+                    $"RollTable is not configured for '{sourceDb}'.");
+            }
+
+            var cleanLogs = printedLogs
+                .Where(x => !string.IsNullOrWhiteSpace(x.PremiseId))
+                .GroupBy(
+                    x => x.PremiseId!.Trim(),
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(g => g
+                    .OrderByDescending(x => x.Id)
+                    .First())
+                .ToList();
+
+            if (cleanLogs.Count == 0)
+                return new List<S49QaCandidate>();
+
+            await using var cn =
+                _rollConnectionFactory.Create(
+                    sourceDb);
+
+            await cn.OpenAsync(ct);
+
+            const string createTempSql = """
+                CREATE TABLE #S49Premises
+                (
+                    PREMISE_ID VARCHAR(50) NOT NULL PRIMARY KEY
+                );
+                """;
+
+            await using (var createCmd =
+                new SqlCommand(
+                    createTempSql,
+                    cn))
+            {
+                await createCmd.ExecuteNonQueryAsync(ct);
+            }
+
+            foreach (var log in cleanLogs)
+            {
+                const string insertSql = """
+                    INSERT INTO #S49Premises
+                    (
+                        PREMISE_ID
+                    )
+                    VALUES
+                    (
+                        @PremiseId
+                    );
+                    """;
+
+                await using var insertCmd =
+                    new SqlCommand(
+                        insertSql,
+                        cn);
+
+                insertCmd.Parameters.Add(
+                    new SqlParameter(
+                        "@PremiseId",
+                        SqlDbType.VarChar,
+                        50)
+                    {
+                        Value = log.PremiseId!.Trim()
+                    });
+
+                await insertCmd.ExecuteNonQueryAsync(ct);
+            }
+
+            var rollTable =
+                QuoteSqlIdentifier(
+                    source.RollTable);
+
+            var sql = $"""
+                SELECT
+                    LTRIM(RTRIM(r.PREMISEID))
+                        AS PremiseId,
+
+                    r.PropertyDesc
+                        AS PropertyDesc,
+
+                    r.CatDesc
+                        AS Category
+
+                FROM dbo.{rollTable} r
+
+                INNER JOIN #S49Premises p
+                    ON LTRIM(RTRIM(r.PREMISEID))
+                     = p.PREMISE_ID
+
+                ORDER BY
+                    r.Id;
+                """;
+
+            var metadata = new List<S49RollQaRow>();
+
+            await using (var cmd =
+                new SqlCommand(
+                    sql,
+                    cn))
+            {
+                cmd.CommandTimeout = 90;
+
+                await using var reader =
+                    await cmd.ExecuteReaderAsync(ct);
+
+                while (await reader.ReadAsync(ct))
+                {
+                    metadata.Add(
+                        new S49RollQaRow
+                        {
+                            PremiseId =
+                                ReadString(
+                                    reader,
+                                    "PremiseId")
+                                ?? "",
+
+                            PropertyDesc =
+                                ReadString(
+                                    reader,
+                                    "PropertyDesc"),
+
+                            Category =
+                                ReadString(
+                                    reader,
+                                    "Category")
+                        });
+                }
+            }
+
+            var metadataByPremise = metadata
+                .Where(x =>
+                    !string.IsNullOrWhiteSpace(
+                        x.PremiseId))
+                .GroupBy(
+                    x => x.PremiseId.Trim(),
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.ToList(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            var candidates =
+                new List<S49QaCandidate>();
+
+            foreach (var log in cleanLogs)
+            {
+                var premiseId =
+                    log.PremiseId!.Trim();
+
+                if (!metadataByPremise.TryGetValue(
+                        premiseId,
+                        out var rows))
+                {
+                    continue;
+                }
+
+                var propertyDesc =
+                    rows
+                        .Select(x => x.PropertyDesc)
+                        .FirstOrDefault(x =>
+                            !string.IsNullOrWhiteSpace(x))
+                    ?? log.PropertyDesc
+                    ?? premiseId;
+
+                var categories = rows
+                    .Select(x => x.Category?.Trim())
+                    .Where(x =>
+                        !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(
+                        StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                candidates.Add(
+                    new S49QaCandidate
+                    {
+                        NoticeRunLogId = log.Id,
+                        PremiseId = premiseId,
+                        PropertyDesc = propertyDesc,
+                        PdfPath = log.PdfPath,
+                        Categories = categories,
+                        SampleKey = ResolveS49SampleKey(
+                            propertyDesc,
+                            categories)
+                    });
+            }
+
+            return candidates;
+        }
+
+        private List<Section49QaSampleOptions> GetS49SampleRules()
+        {
+            var configured = _section49.Qa.Samples
+                ?.Where(x =>
+                    !string.IsNullOrWhiteSpace(x.Key) &&
+                    x.Count > 0)
+                .ToList();
+
+            if (configured != null &&
+                configured.Count > 0)
+            {
+                return configured;
+            }
+
+            return new List<Section49QaSampleOptions>
+            {
+                new()
+                {
+                    Key = "SectionalTitle",
+                    Label = "Sectional Title",
+                    Count = 1
+                },
+                new()
+                {
+                    Key = "Multipurpose",
+                    Label = "Multipurpose",
+                    Count = 1
+                },
+                new()
+                {
+                    Key = "SingleProperty",
+                    Label = "Single Property",
+                    Count = 1
+                }
+            };
+        }
+
+        private static string ResolveS49SampleKey(
+            string? propertyDesc,
+            IReadOnlyCollection<string> categories)
+        {
+            /*
+             * Multipurpose takes precedence because a multipurpose record
+             * can have several roll rows/categories for the same premise.
+             */
+            if (categories.Any(IsS49MultipurposeValue))
+                return "Multipurpose";
+
+            if (IsS49SectionalTitle(
+                    propertyDesc,
+                    categories))
+            {
+                return "SectionalTitle";
+            }
+
+            return "SingleProperty";
+        }
+
+        private static bool IsS49MultipurposeValue(
+            string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            var compact = value
+                .Trim()
+                .ToUpperInvariant()
+                .Replace(" ", "")
+                .Replace("-", "")
+                .Replace("_", "")
+                .Replace("*", "");
+
+            return compact.Contains("MULTIPURPOSE") ||
+                   compact.Contains("MULTIPLEPURPOSE");
+        }
+
+        private static bool IsS49SectionalTitle(
+            string? propertyDesc,
+            IEnumerable<string> categories)
+        {
+            if (categories.Any(x =>
+                    !string.IsNullOrWhiteSpace(x) &&
+                    x.Contains(
+                        "SECTIONAL",
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            if (string.IsNullOrWhiteSpace(propertyDesc))
+                return false;
+
+            var desc = propertyDesc.Trim();
+
+            return desc.StartsWith(
+                       "SS ",
+                       StringComparison.OrdinalIgnoreCase)
+                   ||
+                   desc.StartsWith(
+                       "SS-",
+                       StringComparison.OrdinalIgnoreCase)
+                   ||
+                   desc.Contains(
+                       "SECTIONAL TITLE",
+                       StringComparison.OrdinalIgnoreCase);
+        }
+
+        private async Task UpdateS49AuditBatchStatusAsync(
+            int rollId,
+            string batchName,
+            string status,
+            CancellationToken ct)
+        {
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.RollId == rollId,
+                    ct)
+                ?? throw new InvalidOperationException(
+                    $"Roll {rollId} was not found.");
+
+            if (string.IsNullOrWhiteSpace(roll.SourceDb))
+                return;
+
+            var sourceDb = roll.SourceDb.Trim();
+            var source = _rollDb.GetSource(sourceDb);
+
+            /*
+             * Legacy S49 rolls do not have a configured Section49Table.
+             * Their existing source workflow remains unchanged.
+             */
+            if (source.Section49 == null ||
+                !source.Section49.HasAuditTable)
+            {
+                return;
+            }
+
+            var auditTable =
+                QuoteSqlIdentifier(
+                    source.Section49.AuditTable);
+
+            var sql = $"""
+                UPDATE dbo.{auditTable}
+
+                SET
+                    Send_Status = @Status,
+                    Error_Message = NULL
+
+                WHERE
+                    Batch_Name = @BatchName;
+                """;
+
+            await using var cn =
+                _rollConnectionFactory.Create(
+                    sourceDb);
+
+            await cn.OpenAsync(ct);
+
+            await using var cmd =
+                new SqlCommand(
+                    sql,
+                    cn)
+                {
+                    CommandTimeout = 60
+                };
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@Status",
+                    SqlDbType.NVarChar,
+                    50)
+                {
+                    Value = status
+                });
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@BatchName",
+                    SqlDbType.NVarChar,
+                    100)
+                {
+                    Value = batchName
+                });
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        private static string QuoteSqlIdentifier(
+            string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidOperationException(
+                    "SQL identifier cannot be empty.");
+            }
+
+            return $"[{value.Replace("]", "]]")}]";
+        }
+
         private async Task<List<ObjPropertyInfoLite>> LoadObjPropertyInfoRowsAsync(
          string sourceDb,
          List<string> objectionNos,
@@ -830,6 +1767,27 @@ INNER JOIN #ObjectionNos n
                 .FirstOrDefaultAsync(x => x.ApprovalKey == workflowKey || x.WorkflowKey == workflowKey, ct)
                 ?? throw new InvalidOperationException("Workflow settings not found.");
 
+            if (settings.Notice == NoticeKind.S49)
+            {
+                var samples = GetS49SampleRules();
+                var targetTotal = samples.Sum(x => x.Count);
+
+                return new NoticeQaRuleVm
+                {
+                    TargetTotal = targetTotal,
+                    MaxPerGroup = samples.Count == 0
+                        ? 0
+                        : samples.Max(x => x.Count),
+                    GroupLabel = "Section 49 QA Sample",
+                    Description =
+                        "Section 49 QA uses the same fully printed locked batch and selects: " +
+                        string.Join(
+                            ", ",
+                            samples.Select(x => $"{x.Count} {x.Label}")) +
+                        "."
+                };
+            }
+
             var groupLabel = DetermineQaGroupLabel(settings.Notice);
 
             return new NoticeQaRuleVm
@@ -937,6 +1895,7 @@ INNER JOIN #ObjectionNos n
         {
             return notice switch
             {
+                NoticeKind.S49 => "Section 49 QA Sample",
                 NoticeKind.S52 => "VAB",
                 NoticeKind.TPA => "VAB",
                 NoticeKind.CLA_TPA => "Property Type",
@@ -1491,6 +2450,25 @@ INNER JOIN #ObjectionNos n
             await _db.SaveChangesAsync(ct);
         }
 
+
+
+        private sealed class S49QaCandidate
+        {
+            public int NoticeRunLogId { get; set; }
+            public string PremiseId { get; set; } = "";
+            public string PropertyDesc { get; set; } = "";
+            public string? PdfPath { get; set; }
+            public List<string> Categories { get; set; } = new();
+            public string SampleKey { get; set; } = "";
+            public string SampleLabel { get; set; } = "";
+        }
+
+        private sealed class S49RollQaRow
+        {
+            public string PremiseId { get; set; } = "";
+            public string? PropertyDesc { get; set; }
+            public string? Category { get; set; }
+        }
 
         private sealed class ClaQaLite
         {

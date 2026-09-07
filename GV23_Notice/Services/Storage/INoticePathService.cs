@@ -117,5 +117,13 @@ namespace GV23_Notice.Services.Storage
         /// Invalid Notice .eml path — same folder as PDF, .eml extension.
         /// </summary>
         string BuildInEmlPath(RollRegistry roll, string objectionNo, string propertyDesc, bool isOmission);
+
+
+        string BuildS49PdfPath(
+    RollRegistry roll,
+    string propertyDesc);
+
+        string? GetS49SignaturePath(
+            RollRegistry roll);
     }
 }

@@ -1627,6 +1627,92 @@ namespace GV23_Notice.Services.Rolls
                     ?.ToString()
                     ?.Trim();
         }
+        public async Task MarkPrintedAsync(
+    int rollId,
+    string premiseId,
+    string batchName,
+    string pdfPath,
+    CancellationToken ct)
+        {
+            var resolved =
+                await ResolveAsync(
+                    rollId,
+                    ct);
+
+            // Legacy rolls stay on their existing workflow.
+            if (!IsEmailAvailabilityMode(
+                    resolved.Section49))
+            {
+                return;
+            }
+
+            if (!resolved.Section49.HasAuditTable)
+            {
+                throw new InvalidOperationException(
+                    $"Section 49 audit table is not configured for " +
+                    $"'{resolved.SourceDb}'.");
+            }
+
+            var auditTable =
+                QuoteSqlIdentifier(
+                    resolved.Section49.AuditTable);
+
+            var sql = $"""
+        UPDATE dbo.{auditTable}
+
+        SET
+            Pdf_Path = @PdfPath,
+            Send_Status = 'Printed',
+            Error_Message = NULL
+
+        WHERE
+            PREMISE_ID = @PremiseId
+            AND Batch_Name = @BatchName;
+        """;
+
+            await using var cn =
+                _connectionFactory.Create(
+                    resolved.SourceDb);
+
+            await cn.OpenAsync(ct);
+
+            await using var cmd =
+                new SqlCommand(
+                    sql,
+                    cn)
+                {
+                    CommandTimeout = 30
+                };
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@PremiseId",
+                    SqlDbType.VarChar,
+                    50)
+                {
+                    Value = premiseId
+                });
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@BatchName",
+                    SqlDbType.NVarChar,
+                    100)
+                {
+                    Value = batchName
+                });
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@PdfPath",
+                    SqlDbType.NVarChar,
+                    2000)
+                {
+                    Value = pdfPath
+                });
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
 
         // ============================================================
         // PRIVATE RESOLVED MODEL
