@@ -1,5 +1,7 @@
 ﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Email;
+using GV23_Notice.Domain.Rolls;
+using GV23_Notice.Domain.Section49;
 using GV23_Notice.Domain.Storage;
 using GV23_Notice.Models.Security;
 using GV23_Notice.Services;
@@ -61,6 +63,10 @@ builder.Services.Configure<Section53PdfOptions>(builder.Configuration.GetSection
 builder.Services.Configure<EmailTemplateOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 
+builder.Services.Configure<RollDbOptions>(builder.Configuration.GetSection(RollDbOptions.SectionName));
+
+builder.Services.Configure<Section49Options>(builder.Configuration.GetSection(Section49Options.SectionName));
+
 // ----------------------------------------------------
 // MVC / Razor
 // ----------------------------------------------------
@@ -90,8 +96,11 @@ builder.Services.AddScoped<IBatchNameService, BatchNameService>();
 // ----------------------------------------------------
 // Roll DB Connection Factory
 // ----------------------------------------------------
-builder.Services.AddScoped<IRollDbConnectionFactory, RollDbConnectionFactory>();
-builder.Services.AddScoped<IS49RollRepository, S49RollRepository>();
+builder.Services.AddScoped<IWorkflowRollResolver,WorkflowRollResolver>();
+
+builder.Services.AddScoped<IRollDbConnectionFactory,RollDbConnectionFactory>();
+
+builder.Services.AddScoped<IS49RollRepository,S49RollRepository>();
 
 // ----------------------------------------------------
 // Holiday / Appeal Close Date

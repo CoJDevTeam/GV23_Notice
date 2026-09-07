@@ -11,20 +11,24 @@ namespace GV23_Notice.Services.Rolls
 {
     public sealed class S49RollRepository : IS49RollRepository
     {
-        private readonly AppDbContext _db;
+      
+
         private readonly IConfiguration _cfg;
+        private readonly IWorkflowRollResolver _rollResolver;
+        private readonly IRollDbConnectionFactory _connectionFactory;
         private readonly RollDbOptions _rollDb;
 
         public S49RollRepository(
-            AppDbContext db,
             IConfiguration cfg,
+            IWorkflowRollResolver rollResolver,
+            IRollDbConnectionFactory connectionFactory,
             IOptions<RollDbOptions> rollDbOptions)
         {
-            _db = db;
             _cfg = cfg;
+            _rollResolver = rollResolver;
+            _connectionFactory = connectionFactory;
             _rollDb = rollDbOptions.Value;
         }
-
         // ============================================================
         // NOTICE_DB CONNECTION
         // ============================================================
@@ -44,73 +48,67 @@ namespace GV23_Notice.Services.Rolls
         // ============================================================
 
         private async Task<ResolvedS49Roll> ResolveAsync(
-            int rollId,
-            CancellationToken ct)
+     int rollId,
+     CancellationToken ct)
         {
+            // ---------------------------------------------------------
+            // RollRegistry is resolved by the shared roll resolver.
+            // ---------------------------------------------------------
             var roll =
-                await _db.RollRegistry
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(
-                        r => r.RollId == rollId,
-                        ct)
-                ??
-                throw new InvalidOperationException(
-                    $"RollRegistry entry was not found for RollId {rollId}.");
+                await _rollResolver.ResolveByRollIdAsync(
+                    rollId,
+                    ct);
 
-            if (string.IsNullOrWhiteSpace(roll.SourceDb))
+            if (string.IsNullOrWhiteSpace(
+                    roll.SourceDb))
             {
                 throw new InvalidOperationException(
                     $"RollRegistry.SourceDb is missing for RollId {rollId}.");
             }
 
-            var dbName =
+            var sourceDb =
                 roll.SourceDb.Trim();
 
+            // ---------------------------------------------------------
+            // All roll-specific settings come from:
+            //
+            // RollDb:Sources:{SourceDb}
+            // ---------------------------------------------------------
             var source =
-                _rollDb.GetSource(dbName);
+                _rollDb.GetSource(
+                    sourceDb);
 
             if (string.IsNullOrWhiteSpace(
                     source.RollTable))
             {
                 throw new InvalidOperationException(
-                    $"Roll table is not configured for '{dbName}'.");
+                    $"RollTable is not configured for '{sourceDb}'.");
             }
 
             if (string.IsNullOrWhiteSpace(
                     source.ContactTable))
             {
                 throw new InvalidOperationException(
-                    $"Contact table is not configured for '{dbName}'.");
+                    $"ContactTable is not configured for '{sourceDb}'.");
             }
-
-            if (string.IsNullOrWhiteSpace(
-                    _rollDb.BaseSqlConnection))
-            {
-                throw new InvalidOperationException(
-                    "RollDb:BaseSqlConnection is not configured.");
-            }
-
-            var csb =
-                new SqlConnectionStringBuilder(
-                    _rollDb.BaseSqlConnection)
-                {
-                    InitialCatalog = dbName
-                };
 
             return new ResolvedS49Roll
             {
-                RollId = rollId,
+                RollId =
+                    roll.RollId,
 
-                SourceDb = dbName,
+                ShortCode =
+                    roll.ShortCode?.Trim()
+                    ?? string.Empty,
+
+                SourceDb =
+                    sourceDb,
 
                 RollTable =
                     source.RollTable.Trim(),
 
                 ContactTable =
                     source.ContactTable.Trim(),
-
-                ConnectionString =
-                    csb.ConnectionString,
 
                 Section49 =
                     source.Section49
@@ -147,8 +145,8 @@ namespace GV23_Notice.Services.Rolls
                 new List<string>();
 
             await using var cn =
-                new SqlConnection(
-                    resolved.ConnectionString);
+     _connectionFactory.Create(
+         resolved.SourceDb);
 
             await cn.OpenAsync(ct);
 
@@ -505,8 +503,8 @@ namespace GV23_Notice.Services.Rolls
                 """;
 
             await using var cn =
-                new SqlConnection(
-                    resolved.ConnectionString);
+         _connectionFactory.Create(
+             resolved.SourceDb);
 
             await cn.OpenAsync(ct);
 
@@ -680,12 +678,12 @@ namespace GV23_Notice.Services.Rolls
         // NEW-ROLL AUDIT STATUS
         // ============================================================
 
-        private static async Task UpdateAuditStatusAsync(
-            ResolvedS49Roll resolved,
-            string premiseId,
-            string status,
-            string? error,
-            CancellationToken ct)
+        private async Task UpdateAuditStatusAsync(
+     ResolvedS49Roll resolved,
+     string premiseId,
+     string status,
+     string? error,
+     CancellationToken ct)
         {
             if (!resolved.Section49.HasAuditTable)
             {
@@ -698,28 +696,24 @@ namespace GV23_Notice.Services.Rolls
                     resolved.Section49.AuditTable);
 
             var sql = $"""
-                UPDATE dbo.{auditTable}
-
-                SET
-                    Send_Status =
-                        @Status,
-
-                    Error_Message =
-                        @Error
-
-                WHERE
-                    PREMISE_ID =
-                        @PremiseId;
-                """;
+        UPDATE dbo.{auditTable}
+        SET
+            Send_Status = @Status,
+            Error_Message = @Error
+        WHERE
+            PREMISE_ID = @PremiseId;
+        """;
 
             await using var cn =
-                new SqlConnection(
-                    resolved.ConnectionString);
+                _connectionFactory.Create(
+                    resolved.SourceDb);
 
             await cn.OpenAsync(ct);
 
             await using var cmd =
-                new SqlCommand(sql, cn)
+                new SqlCommand(
+                    sql,
+                    cn)
                 {
                     CommandTimeout = 30
                 };
@@ -1012,6 +1006,9 @@ namespace GV23_Notice.Services.Rolls
         {
             public int RollId { get; init; }
 
+            public string ShortCode { get; init; } =
+                string.Empty;
+
             public string SourceDb { get; init; } =
                 string.Empty;
 
@@ -1019,9 +1016,6 @@ namespace GV23_Notice.Services.Rolls
                 string.Empty;
 
             public string ContactTable { get; init; } =
-                string.Empty;
-
-            public string ConnectionString { get; init; } =
                 string.Empty;
 
             public RollSection49Options Section49 { get; init; } =
