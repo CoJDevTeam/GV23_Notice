@@ -1,10 +1,13 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Section49;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.Workflow.ViewModels;
+using GV23_Notice.Services.Rolls;
 using GV23_Notice.Services.Workflow;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GV23_Notice.Services.Step3
 {
@@ -12,12 +15,18 @@ namespace GV23_Notice.Services.Step3
     {
         private readonly AppDbContext _db;
         private readonly INoticeSourceStatusService _sourceStatus;
-        private readonly IConfiguration _config;
-        public Step3BatchService(AppDbContext db, INoticeSourceStatusService sourceStatus, IConfiguration config)
+        private readonly IS49RollRepository _s49Repo;
+        private readonly Section49Options _section49;
+        public Step3BatchService(
+       AppDbContext db,
+       INoticeSourceStatusService sourceStatus,
+       IS49RollRepository s49Repo,
+       IOptions<Section49Options> section49Options)
         {
             _db = db;
             _sourceStatus = sourceStatus;
-            _config = config;
+            _s49Repo = s49Repo;
+            _section49 = section49Options.Value;
         }
 
         public async Task<int> CreateBatchAsync(Guid workflowKey, DateTime batchDate, string createdBy, CancellationToken ct)
@@ -89,26 +98,84 @@ namespace GV23_Notice.Services.Step3
             {
                 case NoticeKind.S49:
                     {
-                        // SP: EXEC dbo.S49_Step3_AssignTop500ToBatch @RollId, @BatchName, @BatchDate
-                        var picked = await _db.Set<S49BatchPickRow>()
-                            .FromSqlRaw("EXEC dbo.S49_Step3_AssignTop500ToBatch @p0, @p1, @p2",
-                                s.RollId, batchName, batchDateUtc)
-                            .ToListAsync(ct);
+                        var batchSize =
+                            _section49.Batch.Size;
 
-                        var runLogs = picked
-                            .Where(x => !string.IsNullOrWhiteSpace(x.PremiseId))
-                            .Select(x => new NoticeRunLog
-                            {
-                                NoticeBatchId = batch.Id,
-                                PremiseId = x.PremiseId,
-                                RecipientEmail = x.RecipientEmail,
-                                Status = RunStatus.Generated,
-                                CreatedAtUtc = nowUtc
-                            }).ToList();
+                        if (batchSize <= 0)
+                        {
+                            throw new InvalidOperationException(
+                                "Section49:Batch:Size must be greater than zero.");
+                        }
 
-                        _db.NoticeRunLogs.AddRange(runLogs);
-                        batch.NumberOfRecords = runLogs.Count;
+                        var picked =
+                            await _s49Repo.AssignBatchAsync(
+                                rollId: s.RollId,
+                                batchName: batchName,
+                                batchDate: batchDateUtc,
+                                createdBy: createdBy,
+                                batchSize: batchSize,
+                                requireFullBatch:
+                                    _section49.Batch.RequireFullBatch,
+                                ct: ct);
+
+                        var validRows =
+                            picked
+                                .Where(x =>
+                                    !string.IsNullOrWhiteSpace(
+                                        x.PremiseId))
+                                .ToList();
+
+                        if (
+                            _section49.Batch.RequireFullBatch
+                            &&
+                            validRows.Count != batchSize)
+                        {
+                            throw new InvalidOperationException(
+                                $"Section 49 batch '{batchName}' must contain exactly " +
+                                $"{batchSize} records. The repository returned " +
+                                $"{validRows.Count}.");
+                        }
+
+                        if (validRows.Count == 0)
+                        {
+                            throw new InvalidOperationException(
+                                "No Section 49 records were available for batching.");
+                        }
+
+                        var runLogs =
+                            validRows
+                                .Select(x =>
+                                    new NoticeRunLog
+                                    {
+                                        NoticeBatchId =
+                                            batch.Id,
+
+                                        PremiseId =
+                                            x.PremiseId,
+
+                                        RecipientEmail =
+                                            x.RecipientEmail,
+
+                                        Status =
+                                            RunStatus.Generated,
+
+                                        CreatedAtUtc =
+                                            nowUtc
+                                    })
+                                .ToList();
+
+                        _db.NoticeRunLogs
+                            .AddRange(runLogs);
+
+                        batch.NumberOfRecords =
+                            runLogs.Count;
+
+                        batch.Mode =
+                            ResolveBatchModeFromCount(
+                                runLogs.Count);
+
                         await _db.SaveChangesAsync(ct);
+
                         return batch.Id;
                     }
 

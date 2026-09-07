@@ -23,5 +23,14 @@ namespace GV23_Notice.Services.Rolls
 
         /// <summary>Mark 'N' — email send failed (PDF exists).</summary>
         Task MarkEmailFailedAsync(int rollId, string premiseId, CancellationToken ct);
+
+        Task<List<S49BatchPickRow>> AssignBatchAsync(
+    int rollId,
+    string batchName,
+    DateTime batchDate,
+    string createdBy,
+    int batchSize,
+    bool requireFullBatch,
+    CancellationToken ct);
     }
 }

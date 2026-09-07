@@ -997,6 +997,636 @@ namespace GV23_Notice.Services.Rolls
 
             return $"[{value.Replace("]", "]]")}]";
         }
+        public async Task<List<S49BatchPickRow>> AssignBatchAsync(
+    int rollId,
+    string batchName,
+    DateTime batchDate,
+    string createdBy,
+    int batchSize,
+    bool requireFullBatch,
+    CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(batchName))
+            {
+                throw new InvalidOperationException(
+                    "Section 49 batch name is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(createdBy))
+            {
+                throw new InvalidOperationException(
+                    "CreatedBy is required for Section 49 batch creation.");
+            }
+
+            if (batchSize <= 0)
+            {
+                throw new InvalidOperationException(
+                    "Section 49 batch size must be greater than zero.");
+            }
+
+            var resolved =
+                await ResolveAsync(
+                    rollId,
+                    ct);
+
+            // ---------------------------------------------------------
+            // Existing rolls:
+            // GV23 / SUPP1 / SUPP2 / SUPP3
+            // Keep using the existing Notice_DB stored procedure.
+            // ---------------------------------------------------------
+            if (!IsEmailAvailabilityMode(
+                    resolved.Section49))
+            {
+                return await AssignLegacyBatchAsync(
+                    rollId,
+                    batchName,
+                    batchDate,
+                    batchSize,
+                    requireFullBatch,
+                    ct);
+            }
+
+            // ---------------------------------------------------------
+            // New dynamic standard:
+            // SUPP4 and future configured rolls.
+            // ---------------------------------------------------------
+            return await AssignDynamicBatchAsync(
+                resolved,
+                batchName,
+                batchDate,
+                createdBy,
+                batchSize,
+                requireFullBatch,
+                ct);
+        }
+        private async Task<List<S49BatchPickRow>>
+    AssignLegacyBatchAsync(
+        int rollId,
+        string batchName,
+        DateTime batchDate,
+        int batchSize,
+        bool requireFullBatch,
+        CancellationToken ct)
+        {
+            var rows =
+                new List<S49BatchPickRow>();
+
+            await using var cn =
+                NoticeDb();
+
+            await cn.OpenAsync(ct);
+
+            await using var cmd =
+                new SqlCommand(
+                    "dbo.S49_Step3_AssignTop500ToBatch",
+                    cn)
+                {
+                    CommandType =
+                        CommandType.StoredProcedure,
+
+                    CommandTimeout = 180
+                };
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@RollId",
+                    SqlDbType.Int)
+                {
+                    Value = rollId
+                });
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@BatchName",
+                    SqlDbType.NVarChar,
+                    100)
+                {
+                    Value = batchName
+                });
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@BatchDate",
+                    SqlDbType.Date)
+                {
+                    Value = batchDate.Date
+                });
+
+            await using var rd =
+                await cmd.ExecuteReaderAsync(ct);
+
+            while (await rd.ReadAsync(ct))
+            {
+                rows.Add(
+                    new S49BatchPickRow
+                    {
+                        PremiseId =
+                            GetReaderString(
+                                rd,
+                                "PremiseId"),
+
+                        RecipientEmail =
+                            GetReaderString(
+                                rd,
+                                "RecipientEmail")
+                    });
+            }
+
+            rows =
+                rows
+                    .Where(x =>
+                        !string.IsNullOrWhiteSpace(
+                            x.PremiseId))
+                    .ToList();
+
+            if (
+                requireFullBatch
+                &&
+                rows.Count != batchSize)
+            {
+                throw new InvalidOperationException(
+                    $"Section 49 batch '{batchName}' requires exactly " +
+                    $"{batchSize} records but the legacy procedure returned " +
+                    $"{rows.Count}.");
+            }
+
+            return rows;
+        }
+
+        private async Task<List<S49BatchPickRow>>
+    AssignDynamicBatchAsync(
+        ResolvedS49Roll resolved,
+        string batchName,
+        DateTime batchDate,
+        string createdBy,
+        int batchSize,
+        bool requireFullBatch,
+        CancellationToken ct)
+        {
+            if (!resolved.Section49.HasAuditTable)
+            {
+                throw new InvalidOperationException(
+                    $"Section 49 AuditTable is not configured for " +
+                    $"'{resolved.SourceDb}'.");
+            }
+
+            var rollTable =
+                QuoteSqlIdentifier(
+                    resolved.RollTable);
+
+            var contactTable =
+                QuoteSqlIdentifier(
+                    resolved.ContactTable);
+
+            var auditTable =
+                QuoteSqlIdentifier(
+                    resolved.Section49.AuditTable);
+
+            var result =
+                new List<S49BatchPickRow>();
+
+            await using var cn =
+                _connectionFactory.Create(
+                    resolved.SourceDb);
+
+            await cn.OpenAsync(ct);
+
+            await using var transaction =
+                (SqlTransaction)await cn.BeginTransactionAsync(ct);
+
+            try
+            {
+                var sql = $"""
+            SET NOCOUNT ON;
+            SET XACT_ABORT ON;
+
+            ------------------------------------------------------------
+            -- Prevent duplicate batch name
+            ------------------------------------------------------------
+            IF EXISTS
+            (
+                SELECT 1
+                FROM dbo.{auditTable}
+                WHERE Batch_Name = @BatchName
+            )
+            BEGIN
+                THROW 51001,
+                    'Section 49 batch name already exists.',
+                    1;
+            END;
+
+
+            ------------------------------------------------------------
+            -- Freeze the selected premises.
+            ------------------------------------------------------------
+            CREATE TABLE #Picked
+            (
+                PREMISE_ID VARCHAR(50) NOT NULL PRIMARY KEY,
+                FirstId BIGINT NULL
+            );
+
+
+            INSERT INTO #Picked
+            (
+                PREMISE_ID,
+                FirstId
+            )
+            SELECT TOP (@BatchSize)
+
+                LTRIM(RTRIM(r.PREMISEID))
+                    AS PREMISE_ID,
+
+                MIN(r.Id)
+                    AS FirstId
+
+            FROM dbo.{rollTable} r
+                WITH
+                (
+                    UPDLOCK,
+                    READPAST,
+                    ROWLOCK
+                )
+
+            WHERE
+                NULLIF(
+                    LTRIM(RTRIM(r.PREMISEID)),
+                    ''
+                ) IS NOT NULL
+
+                AND
+                (
+                    r.Batch_Name IS NULL
+                    OR
+                    LTRIM(RTRIM(r.Batch_Name)) = ''
+                )
+
+            GROUP BY
+                LTRIM(RTRIM(r.PREMISEID))
+
+            ORDER BY
+                MIN(r.Id);
+
+
+            ------------------------------------------------------------
+            -- Validate selected count.
+            ------------------------------------------------------------
+            DECLARE @SelectedCount INT;
+
+            SELECT
+                @SelectedCount = COUNT(*)
+            FROM #Picked;
+
+
+            IF
+            (
+                @RequireFullBatch = 1
+                AND
+                @SelectedCount <> @BatchSize
+            )
+            BEGIN
+                DECLARE @ErrorMessage NVARCHAR(500);
+
+                SET @ErrorMessage =
+                    CONCAT(
+                        'Section 49 batch requires exactly ',
+                        @BatchSize,
+                        ' records. Only ',
+                        @SelectedCount,
+                        ' records were available.'
+                    );
+
+                THROW 51002,
+                    @ErrorMessage,
+                    1;
+            END;
+
+
+            IF @SelectedCount = 0
+            BEGIN
+                THROW 51003,
+                    'No Section 49 records are available for batching.',
+                    1;
+            END;
+
+
+            ------------------------------------------------------------
+            -- Create permanent Section 49 audit snapshot.
+            ------------------------------------------------------------
+            INSERT INTO dbo.{auditTable}
+            (
+                PREMISE_ID,
+                Property_Desc,
+
+                ADDR1,
+                ADDR2,
+                ADDR3,
+                ADDR4,
+                ADDR5,
+
+                EMAIL_ADDR,
+                Has_Email,
+
+                Batch_Name,
+                Batch_Date,
+
+                Created_By,
+
+                Original_Email_Addr,
+
+                Is_Test_Mode,
+                Send_Status
+            )
+
+            SELECT
+                p.PREMISE_ID,
+
+                ISNULL(
+                    NULLIF(
+                        LTRIM(RTRIM(RollRow.PropertyDesc)),
+                        ''
+                    ),
+                    p.PREMISE_ID
+                ) AS Property_Desc,
+
+                ContactRow.ADDR1,
+                ContactRow.ADDR2,
+                ContactRow.ADDR3,
+                ContactRow.ADDR4,
+                ContactRow.ADDR5,
+
+                NULLIF(
+                    LTRIM(RTRIM(ContactRow.EMAIL_ADDR)),
+                    ''
+                ) AS EMAIL_ADDR,
+
+                CASE
+                    WHEN NULLIF(
+                        LTRIM(RTRIM(ContactRow.EMAIL_ADDR)),
+                        ''
+                    ) IS NULL
+                    THEN 'No'
+                    ELSE 'Yes'
+                END AS Has_Email,
+
+                @BatchName,
+                @BatchDate,
+
+                @CreatedBy,
+
+                NULLIF(
+                    LTRIM(RTRIM(ContactRow.EMAIL_ADDR)),
+                    ''
+                ) AS Original_Email_Addr,
+
+                0 AS Is_Test_Mode,
+
+                'Pending'
+                    AS Send_Status
+
+            FROM #Picked p
+
+            OUTER APPLY
+            (
+                SELECT TOP 1
+                    r.PropertyDesc
+                FROM dbo.{rollTable} r
+                WHERE
+                    LTRIM(RTRIM(r.PREMISEID))
+                    =
+                    p.PREMISE_ID
+                ORDER BY
+                    r.Id
+            ) RollRow
+
+            OUTER APPLY
+            (
+                SELECT TOP 1
+                    c.EMAIL_ADDR,
+                    c.ADDR1,
+                    c.ADDR2,
+                    c.ADDR3,
+                    c.ADDR4,
+                    c.ADDR5
+
+                FROM dbo.{contactTable} c
+
+                WHERE
+                    LTRIM(RTRIM(c.PREMISE_ID))
+                    =
+                    p.PREMISE_ID
+
+                ORDER BY
+                    CASE
+                        WHEN NULLIF(
+                            LTRIM(RTRIM(c.EMAIL_ADDR)),
+                            ''
+                        ) IS NOT NULL
+                        THEN 0
+                        ELSE 1
+                    END,
+
+                    c.ID DESC
+            ) ContactRow;
+
+
+            ------------------------------------------------------------
+            -- Stamp the source roll.
+            --
+            -- IMPORTANT:
+            -- Email_Sent is availability only for these configured
+            -- rolls:
+            --
+            -- Yes = an email address exists
+            -- No  = no email address exists
+            ------------------------------------------------------------
+            UPDATE r
+
+            SET
+                r.Batch_Name =
+                    @BatchName,
+
+                r.Batch_Date =
+                    @BatchDate,
+
+                r.Email_Sent =
+                    CASE
+                        WHEN NULLIF(
+                            LTRIM(RTRIM(ContactRow.EMAIL_ADDR)),
+                            ''
+                        ) IS NULL
+                        THEN 'No'
+                        ELSE 'Yes'
+                    END
+
+            FROM dbo.{rollTable} r
+
+            INNER JOIN #Picked p
+                ON
+                    LTRIM(RTRIM(r.PREMISEID))
+                    =
+                    p.PREMISE_ID
+
+            OUTER APPLY
+            (
+                SELECT TOP 1
+                    c.EMAIL_ADDR
+
+                FROM dbo.{contactTable} c
+
+                WHERE
+                    LTRIM(RTRIM(c.PREMISE_ID))
+                    =
+                    p.PREMISE_ID
+
+                ORDER BY
+                    CASE
+                        WHEN NULLIF(
+                            LTRIM(RTRIM(c.EMAIL_ADDR)),
+                            ''
+                        ) IS NOT NULL
+                        THEN 0
+                        ELSE 1
+                    END,
+
+                    c.ID DESC
+            ) ContactRow;
+
+
+            ------------------------------------------------------------
+            -- Return the exact locked batch.
+            ------------------------------------------------------------
+            SELECT
+                s.PREMISE_ID
+                    AS PremiseId,
+
+                s.EMAIL_ADDR
+                    AS RecipientEmail
+
+            FROM dbo.{auditTable} s
+
+            WHERE
+                s.Batch_Name =
+                    @BatchName
+
+            ORDER BY
+                s.Id;
+            """;
+
+                await using var cmd =
+                    new SqlCommand(
+                        sql,
+                        cn,
+                        transaction)
+                    {
+                        CommandTimeout = 180
+                    };
+
+                cmd.Parameters.Add(
+                    new SqlParameter(
+                        "@BatchName",
+                        SqlDbType.NVarChar,
+                        100)
+                    {
+                        Value = batchName
+                    });
+
+                cmd.Parameters.Add(
+                    new SqlParameter(
+                        "@BatchDate",
+                        SqlDbType.Date)
+                    {
+                        Value = batchDate.Date
+                    });
+
+                cmd.Parameters.Add(
+                    new SqlParameter(
+                        "@CreatedBy",
+                        SqlDbType.NVarChar,
+                        150)
+                    {
+                        Value = createdBy
+                    });
+
+                cmd.Parameters.Add(
+                    new SqlParameter(
+                        "@BatchSize",
+                        SqlDbType.Int)
+                    {
+                        Value = batchSize
+                    });
+
+                cmd.Parameters.Add(
+                    new SqlParameter(
+                        "@RequireFullBatch",
+                        SqlDbType.Bit)
+                    {
+                        Value = requireFullBatch
+                    });
+
+                await using var rd =
+                    await cmd.ExecuteReaderAsync(ct);
+
+                while (await rd.ReadAsync(ct))
+                {
+                    result.Add(
+                        new S49BatchPickRow
+                        {
+                            PremiseId =
+                                GetReaderString(
+                                    rd,
+                                    "PremiseId"),
+
+                            RecipientEmail =
+                                GetReaderString(
+                                    rd,
+                                    "RecipientEmail")
+                        });
+                }
+
+                await rd.CloseAsync();
+
+                var validCount =
+                    result.Count(x =>
+                        !string.IsNullOrWhiteSpace(
+                            x.PremiseId));
+
+                if (
+                    requireFullBatch
+                    &&
+                    validCount != batchSize)
+                {
+                    throw new InvalidOperationException(
+                        $"Section 49 batch '{batchName}' expected exactly " +
+                        $"{batchSize} records but {validCount} were created.");
+                }
+
+                await transaction.CommitAsync(ct);
+
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct);
+                throw;
+            }
+        }
+
+        private static string? GetReaderString(
+    SqlDataReader reader,
+    string columnName)
+        {
+            var ordinal =
+                reader.GetOrdinal(
+                    columnName);
+
+            return reader.IsDBNull(
+                    ordinal)
+                ? null
+                : reader.GetValue(
+                        ordinal)
+                    ?.ToString()
+                    ?.Trim();
+        }
 
         // ============================================================
         // PRIVATE RESOLVED MODEL
