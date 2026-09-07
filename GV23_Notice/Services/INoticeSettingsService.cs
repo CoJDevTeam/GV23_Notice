@@ -407,6 +407,8 @@ namespace GV23_Notice.Services
 
                 "QUERY" =>
                     RollCode.QUERY,
+                "SUPP 4" =>
+               RollCode.SUPP4,
 
                 _ => throw new InvalidOperationException(
                     $"Unsupported RollRegistry.ShortCode '{roll.ShortCode}' for RollId {rollId}.")

@@ -6,7 +6,8 @@
         SUPP1 = 2,
         SUPP2 = 3,
         SUPP3 = 4,
-        QUERY = 5
+        QUERY = 5,
+        SUPP4 = 6
     }
 
     public enum NoticeKind

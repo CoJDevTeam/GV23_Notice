@@ -519,20 +519,16 @@ namespace GV23_Notice.Services.QA
             }
         }
         private async Task<List<ObjPropertyInfoLite>> LoadObjPropertyInfoRowsAsync(
-      string sourceDb,
-      List<string> objectionNos,
-      NoticeKind notice,
-      CancellationToken ct)
+         string sourceDb,
+         List<string> objectionNos,
+         NoticeKind notice,
+         CancellationToken ct)
         {
             var rows = new List<ObjPropertyInfoLite>();
 
-            if (objectionNos.Count == 0)
+            if (objectionNos == null || objectionNos.Count == 0)
                 return rows;
 
-            // Use the same SQL server / environment as the workflow status service.
-            // DefaultConnection points at Notice_DB; the source roll DB is qualified
-            // explicitly below. This prevents QA status and QA category data from
-            // being read from different SQL environments.
             var baseConnection =
                 _config.GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException(
@@ -545,13 +541,57 @@ namespace GV23_Notice.Services.QA
 
             var sourceDbSql = QuoteDb(sourceDb);
 
-            var table = new DataTable();
-            table.Columns.Add("Value", typeof(string));
+            // ============================================================
+            // CREATE TEMP TABLE
+            // Avoid dependency on dbo.StringList table type.
+            // ============================================================
 
-            foreach (var no in objectionNos.Distinct(StringComparer.OrdinalIgnoreCase))
-                table.Rows.Add(no);
+            const string createTempSql = @"
+CREATE TABLE #ObjectionNos
+(
+    Objection_No NVARCHAR(100) NOT NULL PRIMARY KEY
+);";
 
-            var isRevisedMvd = notice == NoticeKind.S53Rev;
+            await using (var createCmd =
+                new SqlCommand(createTempSql, cn))
+            {
+                await createCmd.ExecuteNonQueryAsync(ct);
+            }
+
+            // ============================================================
+            // INSERT OBJECTION NUMBERS
+            // ============================================================
+
+            var cleanObjectionNos = objectionNos
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var objectionNo in cleanObjectionNos)
+            {
+                const string insertSql = @"
+INSERT INTO #ObjectionNos (Objection_No)
+VALUES (@ObjectionNo);";
+
+                await using var insertCmd =
+                    new SqlCommand(insertSql, cn);
+
+                insertCmd.Parameters.Add(
+                    "@ObjectionNo",
+                    SqlDbType.NVarChar,
+                    100)
+                    .Value = objectionNo;
+
+                await insertCmd.ExecuteNonQueryAsync(ct);
+            }
+
+            var isRevisedMvd =
+                notice == NoticeKind.S53Rev;
+
+            // ============================================================
+            // READ SOURCE DATA
+            // ============================================================
 
             var sql = isRevisedMvd
                 ? $@"
@@ -562,17 +602,61 @@ SELECT
     p.Property_Desc,
     p.Premise_id,
 
-    COALESCE(NULLIF(LTRIM(RTRIM(CAST(p.New_Category_ReviseMVD AS NVARCHAR(255)))), ''), 
-             CAST(p.New_Category_MVD AS NVARCHAR(255))) AS New_Category_MVD,
+    COALESCE(
+        NULLIF(
+            LTRIM(RTRIM(
+                CAST(
+                    p.New_Category_ReviseMVD
+                    AS NVARCHAR(255)
+                )
+            )),
+            ''
+        ),
+        CAST(
+            p.New_Category_MVD
+            AS NVARCHAR(255)
+        )
+    ) AS New_Category_MVD,
 
-    COALESCE(NULLIF(LTRIM(RTRIM(CAST(p.New2_Category_ReviseMVD AS NVARCHAR(255)))), ''), 
-             CAST(p.New2_Category_MVD AS NVARCHAR(255))) AS New2_Category_MVD,
+    COALESCE(
+        NULLIF(
+            LTRIM(RTRIM(
+                CAST(
+                    p.New2_Category_ReviseMVD
+                    AS NVARCHAR(255)
+                )
+            )),
+            ''
+        ),
+        CAST(
+            p.New2_Category_MVD
+            AS NVARCHAR(255)
+        )
+    ) AS New2_Category_MVD,
 
-    COALESCE(NULLIF(LTRIM(RTRIM(CAST(p.New3_Category_ReviseMVD AS NVARCHAR(255)))), ''), 
-             CAST(p.New3_Category_MVD AS NVARCHAR(255))) AS New3_Category_MVD
+    COALESCE(
+        NULLIF(
+            LTRIM(RTRIM(
+                CAST(
+                    p.New3_Category_ReviseMVD
+                    AS NVARCHAR(255)
+                )
+            )),
+            ''
+        ),
+        CAST(
+            p.New3_Category_MVD
+            AS NVARCHAR(255)
+        )
+    ) AS New3_Category_MVD
+
 FROM {sourceDbSql}.dbo.Obj_Property_Info p
-INNER JOIN @ObjectionNos n
-    ON LTRIM(RTRIM(p.Objection_No)) = LTRIM(RTRIM(n.Value));"
+
+INNER JOIN #ObjectionNos n
+    ON LTRIM(RTRIM(p.Objection_No))
+       =
+       LTRIM(RTRIM(n.Objection_No));"
+
                 : $@"
 SELECT
     p.Objection_No,
@@ -583,38 +667,71 @@ SELECT
     p.New_Category_MVD,
     p.New2_Category_MVD,
     p.New3_Category_MVD
-FROM {sourceDbSql}.dbo.Obj_Property_Info p
-INNER JOIN @ObjectionNos n
-    ON LTRIM(RTRIM(p.Objection_No)) = LTRIM(RTRIM(n.Value));";
 
-            await using var cmd = new SqlCommand(sql, cn);
+FROM {sourceDbSql}.dbo.Obj_Property_Info p
+
+INNER JOIN #ObjectionNos n
+    ON LTRIM(RTRIM(p.Objection_No))
+       =
+       LTRIM(RTRIM(n.Objection_No));";
+
+            await using var cmd =
+                new SqlCommand(sql, cn);
+
             cmd.CommandTimeout = 90;
 
-            var param = cmd.Parameters.AddWithValue("@ObjectionNos", table);
-            param.SqlDbType = SqlDbType.Structured;
-            param.TypeName = "dbo.StringList";
-
-            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            await using var rd =
+                await cmd.ExecuteReaderAsync(ct);
 
             while (await rd.ReadAsync(ct))
             {
                 rows.Add(new ObjPropertyInfoLite
                 {
-                    ObjectionNo = ReadString(rd, "Objection_No") ?? "",
-                    ObjectionStatus = ReadString(rd, "objection_Status"),
-                    PropertyType = ReadString(rd, "Property_Type"),
-                    PropertyDesc = ReadString(rd, "Property_Desc"),
-                    PremiseId = ReadString(rd, "Premise_id"),
+                    ObjectionNo =
+                        ReadString(
+                            rd,
+                            "Objection_No")
+                        ?? "",
 
-                    NewCategoryMvd = ReadString(rd, "New_Category_MVD"),
-                    New2CategoryMvd = ReadString(rd, "New2_Category_MVD"),
-                    New3CategoryMvd = ReadString(rd, "New3_Category_MVD")
+                    ObjectionStatus =
+                        ReadString(
+                            rd,
+                            "objection_Status"),
+
+                    PropertyType =
+                        ReadString(
+                            rd,
+                            "Property_Type"),
+
+                    PropertyDesc =
+                        ReadString(
+                            rd,
+                            "Property_Desc"),
+
+                    PremiseId =
+                        ReadString(
+                            rd,
+                            "Premise_id"),
+
+                    NewCategoryMvd =
+                        ReadString(
+                            rd,
+                            "New_Category_MVD"),
+
+                    New2CategoryMvd =
+                        ReadString(
+                            rd,
+                            "New2_Category_MVD"),
+
+                    New3CategoryMvd =
+                        ReadString(
+                            rd,
+                            "New3_Category_MVD")
                 });
             }
 
             return rows;
         }
-
         private static string QuoteDb(string dbName)
         {
             if (string.IsNullOrWhiteSpace(dbName))
