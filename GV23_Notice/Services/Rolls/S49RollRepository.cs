@@ -440,7 +440,7 @@ namespace GV23_Notice.Services.Rolls
 
                     TRY_CONVERT(
                         DECIMAL(18,4),
-                        r.Extent
+                        r.Area
                     ) AS Extent,
 
                     r.Reason

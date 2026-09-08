@@ -4,6 +4,8 @@ using GV23_Notice.Domain.Workflow.Entities;
 using GV23_Notice.Helpers;
 using GV23_Notice.Models;
 using GV23_Notice.Models.DTOs;
+using GV23_Notice.Models.DTOs.GV23_Notice.Models.DTOs;
+using GV23_Notice.Services.Rolls;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
@@ -15,13 +17,21 @@ namespace GV23_Notice.Services.Preview
     {
         private readonly string _noticeDbConnStr;
         private readonly AppDbContext _db;
+        private readonly IS49RollRepository _s49Roll;
 
 
-        public PreviewDbDataService(IConfiguration cfg, AppDbContext db)
+        public PreviewDbDataService(
+            IConfiguration cfg,
+            AppDbContext db,
+            IS49RollRepository s49Roll)
         {
             _db = db;
-            _noticeDbConnStr = cfg.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException("Missing DefaultConnection for Notice_DB.");
+            _s49Roll = s49Roll;
+
+            _noticeDbConnStr =
+                cfg.GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException(
+                    "Missing DefaultConnection for Notice_DB.");
         }
 
         // -----------------------
@@ -53,77 +63,333 @@ namespace GV23_Notice.Services.Preview
 
             return rows;
         }
-        public async Task<S49PreviewDbData> S49PreviewDbDataAsync(int rollId, bool split, CancellationToken ct)
+        public async Task<S49PreviewDbData> S49PreviewDbDataAsync(
+            int rollId,
+            bool split,
+            CancellationToken ct)
         {
-            // 1) pick one row to discover premiseId
-            var pickProc = split ? "dbo.S49_Preview_SelectSplitTop1" : "dbo.S49_Preview_SelectSingleTop1";
+            /*
+             * Section 49 preview now uses IS49RollRepository.
+             *
+             * This is the same dynamic source used by batching, printing
+             * and emailing. SUPP4 therefore resolves:
+             *
+             * SourceDb     = Objection_Supp4
+             * RollTable    = Sup4
+             * ContactTable = Supp4_Postal_address
+             *
+             * No legacy S49 preview stored procedure is used here.
+             */
 
-            var pickRow = await ExecSingleAsync(pickProc, cmd =>
+            var premiseIds =
+                await _s49Roll.PickNextPremiseIdsAsync(
+                    rollId,
+                    100,
+                    ct);
+
+            if (premiseIds.Count == 0)
             {
-                cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
-            }, ct);
+                throw new InvalidOperationException(
+                    "S49 preview: no roll rows were available.");
+            }
 
-            if (pickRow is null)
-                throw new InvalidOperationException("S49 preview: no roll row found.");
+            List<S49RollRowDto>? selectedRows = null;
+            SapContactDto? selectedContact = null;
+            string? selectedPremiseId = null;
 
-            var premiseId = pickRow.Str("PREMISEID") ?? pickRow.Str("PremiseId") ?? "";
-            if (string.IsNullOrWhiteSpace(premiseId))
-                throw new InvalidOperationException("S49 preview: missing PREMISEID.");
-
-            // 2) now pull all rows for that premiseId
-            var listProc = split
-                ? "dbo.S49_Preview_SelectSplitByPremise"
-                : "dbo.S49_Preview_SelectSingleByPremise"; // make this too, same idea but no split filter
-
-            var rollRows = await ExecListAsync(listProc, cmd =>
+            // First try to honour the requested single/split preview.
+            foreach (var premiseId in premiseIds)
             {
-                cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
-                cmd.Parameters.Add(new SqlParameter("@PremiseId", SqlDbType.VarChar, 50) { Value = premiseId.Trim() });
-            }, ct);
+                ct.ThrowIfCancellationRequested();
 
-            if (rollRows.Count == 0)
-                throw new InvalidOperationException("S49 preview: no roll rows found for premise.");
+                var (rows, contact) =
+                    await _s49Roll.LoadPremiseAsync(
+                        rollId,
+                        premiseId,
+                        ct);
 
-            // 3) sap contact
-            var contactRow = await ExecSingleAsync("dbo.S49_Preview_SelectSapContactByPremise", cmd =>
+                if (rows.Count == 0)
+                    continue;
+
+                var isMulti =
+                    rows.Count > 1;
+
+                if (split && !isMulti)
+                    continue;
+
+                if (!split && isMulti)
+                    continue;
+
+                selectedRows =
+                    rows;
+
+                selectedContact =
+                    contact;
+
+                selectedPremiseId =
+                    premiseId;
+
+                break;
+            }
+
+            // Fallback: use the first valid premise so Step 2 can preview.
+            if (selectedRows == null)
             {
-                cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = rollId });
-                cmd.Parameters.Add(new SqlParameter("@PremiseId", SqlDbType.VarChar, 50) { Value = premiseId.Trim() });
-            }, ct);
+                foreach (var premiseId in premiseIds)
+                {
+                    ct.ThrowIfCancellationRequested();
 
-            // 4) pick a header row (newest)
-            var header = rollRows[0];
-            var s49Addr = BuildPreviewAddress(contactRow);
+                    var (rows, contact) =
+                        await _s49Roll.LoadPremiseAsync(
+                            rollId,
+                            premiseId,
+                            ct);
+
+                    if (rows.Count == 0)
+                        continue;
+
+                    selectedRows =
+                        rows;
+
+                    selectedContact =
+                        contact;
+
+                    selectedPremiseId =
+                        premiseId;
+
+                    break;
+                }
+            }
+
+            if (selectedRows == null ||
+                selectedRows.Count == 0 ||
+                string.IsNullOrWhiteSpace(selectedPremiseId))
+            {
+                throw new InvalidOperationException(
+                    "S49 preview: no valid roll row could be loaded.");
+            }
+
+            var first =
+                selectedRows[0];
+
+            var address =
+                BuildPreviewAddress(
+                    selectedContact?.Addr1,
+                    selectedContact?.Addr2,
+                    selectedContact?.Addr3,
+                    selectedContact?.Addr4,
+                    selectedContact?.Addr5);
+
+            /*
+             * NoticePreviewService already consumes RollRows as RowMap.
+             * Recreate that existing structure from the generic repository DTOs
+             * without changing the preview PDF service.
+             */
+            var rollRows =
+                selectedRows
+                    .Select(ToS49PreviewRowMap)
+                    .ToList();
 
             return new S49PreviewDbData
             {
-                RollId = rollId,
-                PremiseId = premiseId,
+                RollId =
+                    rollId,
 
-                // Use header row for summary fields
-                PropertyDesc = header.Str("PropertyDesc") ?? header.Str("Property_Desc"),
-                LisStreetAddress = header.Str("LisStreetAddress"),
-                ValuationKey = header.Str("VALUATIONKEY") ?? header.Str("ValuationKey"),
-                CatDesc = header.Str("CatDesc"),
-                RateableArea = header.Dec("RateableArea"),
-                MarketValue = header.Dec("MarketValue"),
-                Reason = header.Str("Reason"),
-                ValuationSplitIndicator = header.Str("ValuationSplitIndicator"),
+                PremiseId =
+                    selectedPremiseId.Trim(),
 
-                Email = SafeEmail(contactRow?.Str("EMAIL_ADDR") ?? contactRow?.Str("Email")),
-                
-              
-                Addr1 = s49Addr.Addr1,
-                Addr2 = s49Addr.Addr2,
-                Addr3 = s49Addr.Addr3,
-                Addr4 = s49Addr.Addr4,
-                Addr5 = s49Addr.Addr5,
-                PremiseAddress = contactRow?.Str("PREMISE_ADDRESS"),
-                AccountNo = contactRow?.Str("ACCOUNT_NO"),
+                PropertyDesc =
+                    first.PropertyDesc,
 
-                // ✅ THIS is what MapS49ToPdf must use
-                RollRows = rollRows
+                LisStreetAddress =
+                    first.LisStreetAddress,
+
+                ValuationKey =
+                    first.ValuationKey,
+
+                CatDesc =
+                    first.CatDesc,
+
+                RateableArea =
+                    first.Extent,
+
+                MarketValue =
+                    first.MarketValue,
+
+                Reason =
+                    first.Reason,
+
+                ValuationSplitIndicator =
+                    first.ValuationSplitIndicator,
+
+                // No email is valid for S49 preview/printing.
+                Email =
+                    SafeEmail(
+                        selectedContact?.Email),
+
+                Addr1 =
+                    address.Addr1,
+
+                Addr2 =
+                    address.Addr2,
+
+                Addr3 =
+                    address.Addr3,
+
+                Addr4 =
+                    address.Addr4,
+
+                Addr5 =
+                    address.Addr5,
+
+                PremiseAddress =
+                    selectedContact?.PremiseAddress,
+
+                AccountNo =
+                    selectedContact?.AccountNo,
+
+                RollRows =
+                    rollRows
             };
+        }
+
+        private static RowMap ToS49PreviewRowMap(
+            S49RollRowDto row)
+        {
+            /*
+             * RowMap's constructor is private and its public factory accepts
+             * IDataRecord. Build a one-row DataTable so we can keep the
+             * existing RowMap/NoticePreviewService contract unchanged.
+             */
+            var table =
+                new DataTable();
+
+            table.Columns.Add(
+                "PREMISEID",
+                typeof(string));
+
+            table.Columns.Add(
+                "PremiseId",
+                typeof(string));
+
+            table.Columns.Add(
+                "PropertyDesc",
+                typeof(string));
+
+            table.Columns.Add(
+                "Property_Desc",
+                typeof(string));
+
+            table.Columns.Add(
+                "LisStreetAddress",
+                typeof(string));
+
+            table.Columns.Add(
+                "VALUATIONKEY",
+                typeof(string));
+
+            table.Columns.Add(
+                "ValuationKey",
+                typeof(string));
+
+            table.Columns.Add(
+                "CatDesc",
+                typeof(string));
+
+            table.Columns.Add(
+                "RateableArea",
+                typeof(decimal));
+
+            table.Columns.Add(
+                "Extent",
+                typeof(decimal));
+
+            table.Columns.Add(
+                "MarketValue",
+                typeof(decimal));
+
+            table.Columns.Add(
+                "Reason",
+                typeof(string));
+
+            table.Columns.Add(
+                "ValuationSplitIndicator",
+                typeof(string));
+
+            table.Columns.Add(
+                "WefDate",
+                typeof(DateTime));
+
+            var data =
+                table.NewRow();
+
+            data["PREMISEID"] =
+                DbValue(row.PremiseId);
+
+            data["PremiseId"] =
+                DbValue(row.PremiseId);
+
+            data["PropertyDesc"] =
+                DbValue(row.PropertyDesc);
+
+            data["Property_Desc"] =
+                DbValue(row.PropertyDesc);
+
+            data["LisStreetAddress"] =
+                DbValue(row.LisStreetAddress);
+
+            data["VALUATIONKEY"] =
+                DbValue(row.ValuationKey);
+
+            data["ValuationKey"] =
+                DbValue(row.ValuationKey);
+
+            data["CatDesc"] =
+                DbValue(row.CatDesc);
+
+            data["RateableArea"] =
+                row.Extent;
+
+            data["Extent"] =
+                row.Extent;
+
+            data["MarketValue"] =
+                row.MarketValue;
+
+            data["Reason"] =
+                DbValue(row.Reason);
+
+            data["ValuationSplitIndicator"] =
+                DbValue(
+                    row.ValuationSplitIndicator);
+
+            data["WefDate"] =
+                row.WEFDate.HasValue
+                    ? row.WEFDate.Value
+                    : DBNull.Value;
+
+            table.Rows.Add(
+                data);
+
+            using var reader =
+                table.CreateDataReader();
+
+            if (!reader.Read())
+            {
+                throw new InvalidOperationException(
+                    "Could not create Section 49 preview RowMap.");
+            }
+
+            return RowMap.FromReader(
+                reader);
+        }
+
+        private static object DbValue(
+            string? value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? DBNull.Value
+                : value.Trim();
         }
         public async Task<S51PreviewDbData> S51PreviewDbDataAsync(
       int rollId,
@@ -152,9 +418,9 @@ namespace GV23_Notice.Services.Preview
                 PropertyDesc = row.Str("Property_desc") ?? row.Str("PropertyDesc"),
                 Email = SafeEmail(row.Str("Email") ?? row.Str("EMAIL_ADDR")),
                 valuationKey = row.Str("Valuation_Key"),
-              
 
-             
+
+
                 Addr1 = s51Addr.Addr1,
                 Addr2 = s51Addr.Addr2,
                 Addr3 = s51Addr.Addr3,
@@ -345,15 +611,15 @@ namespace GV23_Notice.Services.Preview
 
                 Email = SafeEmail(row.Str("Email")),
 
-                
 
-           
+
+
                 Addr1 = s53Addr.Addr1,
                 Addr2 = s53Addr.Addr2,
                 Addr3 = s53Addr.Addr3,
                 Addr4 = s53Addr.Addr4,
                 Addr5 = s53Addr.Addr5,
-              
+
 
                 GvMarketValue = row.Str("GV_Market_Value"),
                 GvMarketValue2 = row.Str("GV_Market_Value2"),
@@ -404,7 +670,7 @@ namespace GV23_Notice.Services.Preview
                 ValuationKey = row.Str("valuation_Key") ?? row.Str("VALUATIONKEY"),
 
 
-            
+
 
                 Addr1 = djAddr.Addr1,
                 Addr2 = djAddr.Addr2,
@@ -412,7 +678,7 @@ namespace GV23_Notice.Services.Preview
                 Addr4 = djAddr.Addr4,
                 Addr5 = djAddr.Addr5,
 
-               
+
             };
         }
 

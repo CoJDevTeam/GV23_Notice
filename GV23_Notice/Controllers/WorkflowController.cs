@@ -1240,6 +1240,8 @@ namespace GV23_Notice.Controllers
                 "SUPP 2" => RollCode.SUPP2,
                 "SUPP3" => RollCode.SUPP3,
                 "SUPP 3" => RollCode.SUPP3,
+                "SUPP4" => RollCode.SUPP4,
+                "SUPP 4" => RollCode.SUPP4,
                 "QUERY" => RollCode.QUERY,
                 _ => throw new InvalidOperationException($"Unsupported RollRegistry.ShortCode '{roll.ShortCode}'.")
             };
