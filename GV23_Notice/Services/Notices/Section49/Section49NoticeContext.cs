@@ -3,20 +3,30 @@
     public sealed class Section49NoticeContext
     {
         public string HeaderImagePath { get; set; } = "";
-        public DateTime LetterDate { get; set; } = DateTime.Today;
+
+        public DateTime LetterDate { get; set; } =
+            DateTime.Today;
 
         public DateTime InspectionStartDate { get; set; }
+
         public DateTime InspectionEndDate { get; set; }
+
         public DateTime? ExtendedEndDate { get; set; }
 
         public string? FinancialYearsText { get; set; }
+
         public string? RollHeaderText { get; set; }
 
         public string? SignaturePath { get; set; }
 
-        public bool ForceFourRows { get; set; } = false;
+        // Section 49 must use the objection portal, not the long
+        // joburg.org.za / GVR Online route.
+        public string PortalUrl { get; set; } =
+            "https://objections.joburg.org.za/";
+
+        public bool ForceFourRows { get; set; } =
+            false;
+
         public List<Section49PropertyRow>? PropertyRows { get; set; }
-
-
     }
 }

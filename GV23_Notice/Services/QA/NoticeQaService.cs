@@ -661,10 +661,10 @@ namespace GV23_Notice.Services.QA
         }
 
         private async Task<int> CreateS49QaRunAsync(
-            Guid workflowKey,
-            NoticeSettings settings,
-            string user,
-            CancellationToken ct)
+     Guid workflowKey,
+     NoticeSettings settings,
+     string user,
+     CancellationToken ct)
         {
             if (!_section49.Qa.Enabled)
             {
@@ -774,8 +774,27 @@ namespace GV23_Notice.Services.QA
                     $"No Section 49 QA candidates could be resolved for batch '{selectedBatch.BatchName}'.");
             }
 
-            var sampleRules = GetS49SampleRules();
-            var picked = new List<S49QaCandidate>();
+            /*
+             * Preferred QA categories:
+             * - Sectional Title
+             * - Multipurpose
+             * - Single Property
+             *
+             * IMPORTANT:
+             * These are preferences only.
+             *
+             * If the batch does not contain one of these categories,
+             * QA must still continue by selecting another printed notice
+             * from the same locked batch.
+             */
+            var sampleRules =
+                GetS49SampleRules();
+
+            var picked =
+                new List<S49QaCandidate>();
+
+            var pickedRunLogIds =
+                new HashSet<int>();
 
             foreach (var rule in sampleRules)
             {
@@ -785,28 +804,84 @@ namespace GV23_Notice.Services.QA
                             x.SampleKey,
                             rule.Key,
                             StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(_ => Guid.NewGuid())
+                    .Where(x =>
+                        !pickedRunLogIds.Contains(
+                            x.NoticeRunLogId))
+                    .OrderBy(_ =>
+                        Guid.NewGuid())
                     .Take(rule.Count)
                     .ToList();
 
-                if (available.Count != rule.Count)
-                {
-                    throw new InvalidOperationException(
-                        $"Section 49 QA cannot be created for batch '{selectedBatch.BatchName}'. " +
-                        $"Required {rule.Count} '{rule.Label}' sample(s), but only {available.Count} were found.");
-                }
-
                 foreach (var item in available)
                 {
-                    item.SampleLabel = rule.Label;
-                    picked.Add(item);
+                    item.SampleLabel =
+                        rule.Label;
+
+                    picked.Add(
+                        item);
+
+                    pickedRunLogIds.Add(
+                        item.NoticeRunLogId);
                 }
+            }
+
+            /*
+             * The target number of QA samples is still based on the
+             * configured sample rules.
+             *
+             * Example:
+             * Sectional Title = 1
+             * Multipurpose    = 1
+             * Single Property = 1
+             *
+             * Target = 3
+             *
+             * If a preferred category is missing, fill the remaining
+             * slots with ANY other printed notice from the SAME batch.
+             */
+            var targetSampleCount =
+                sampleRules.Sum(x => x.Count);
+
+            if (targetSampleCount <= 0)
+            {
+                targetSampleCount = 1;
+            }
+
+            var fallbackCandidates = candidates
+                .Where(x =>
+                    !pickedRunLogIds.Contains(
+                        x.NoticeRunLogId))
+                .OrderBy(_ =>
+                    Guid.NewGuid())
+                .ToList();
+
+            foreach (var item in fallbackCandidates)
+            {
+                if (picked.Count >= targetSampleCount)
+                    break;
+
+                if (string.IsNullOrWhiteSpace(
+                        item.SampleLabel))
+                {
+                    item.SampleLabel =
+                        string.IsNullOrWhiteSpace(item.SampleKey)
+                            ? "General QA"
+                            : item.SampleKey;
+                }
+
+                picked.Add(
+                    item);
+
+                pickedRunLogIds.Add(
+                    item.NoticeRunLogId);
             }
 
             if (picked.Count == 0)
             {
                 throw new InvalidOperationException(
-                    "Section 49 QA configuration contains no sample rules.");
+                    $"Section 49 QA cannot be created for batch " +
+                    $"'{selectedBatch.BatchName}' because no printed " +
+                    $"notices were available for QA.");
             }
 
             /*
@@ -829,37 +904,58 @@ namespace GV23_Notice.Services.QA
             {
                 var belongsToSelectedBatch = openRun.Items.Any(item =>
                     item.NoticeRunLogId.HasValue &&
-                    selectedRunLogIds.Contains(item.NoticeRunLogId.Value));
+                    selectedRunLogIds.Contains(
+                        item.NoticeRunLogId.Value));
 
                 if (belongsToSelectedBatch)
-                    openRun.Status = "Replaced";
+                {
+                    openRun.Status =
+                        "Replaced";
+                }
             }
 
             var qaRun = new NoticeQaRun
             {
-                WorkflowKey = workflowKey,
-                NoticeSettingsId = settings.Id,
-                RollId = settings.RollId,
-                Notice = NoticeKind.S49,
-                Status = "Open",
-                CreatedBy = user,
-                CreatedAtUtc = DateTime.UtcNow
+                WorkflowKey =
+                    workflowKey,
+
+                NoticeSettingsId =
+                    settings.Id,
+
+                RollId =
+                    settings.RollId,
+
+                Notice =
+                    NoticeKind.S49,
+
+                Status =
+                    "Open",
+
+                CreatedBy =
+                    user,
+
+                CreatedAtUtc =
+                    DateTime.UtcNow
             };
 
             foreach (var row in picked)
             {
                 var hasPremise =
-                    !string.IsNullOrWhiteSpace(row.PremiseId);
+                    !string.IsNullOrWhiteSpace(
+                        row.PremiseId);
 
                 var hasProperty =
-                    !string.IsNullOrWhiteSpace(row.PropertyDesc);
+                    !string.IsNullOrWhiteSpace(
+                        row.PropertyDesc);
 
                 var hasPdfPath =
-                    !string.IsNullOrWhiteSpace(row.PdfPath);
+                    !string.IsNullOrWhiteSpace(
+                        row.PdfPath);
 
                 var pdfExists =
                     hasPdfPath &&
-                    File.Exists(row.PdfPath!);
+                    File.Exists(
+                        row.PdfPath!);
 
                 var passed =
                     hasPremise &&
@@ -867,56 +963,107 @@ namespace GV23_Notice.Services.QA
                     hasPdfPath &&
                     pdfExists;
 
-                var comments = new List<string>();
+                var comments =
+                    new List<string>();
 
                 if (!hasPremise)
-                    comments.Add("Premise ID is missing.");
+                {
+                    comments.Add(
+                        "Premise ID is missing.");
+                }
 
                 if (!hasProperty)
-                    comments.Add("Property description is missing.");
+                {
+                    comments.Add(
+                        "Property description is missing.");
+                }
 
                 if (!hasPdfPath)
-                    comments.Add("PDF path is missing.");
-                else if (!pdfExists)
-                    comments.Add("The printed PDF file does not exist on disk.");
-
-                qaRun.Items.Add(new NoticeQaItem
                 {
-                    NoticeRunLogId = row.NoticeRunLogId,
+                    comments.Add(
+                        "PDF path is missing.");
+                }
+                else if (!pdfExists)
+                {
+                    comments.Add(
+                        "The printed PDF file does not exist on disk.");
+                }
 
-                    /*
-                     * S49 does not use an objection number.
-                     * PremiseId is the audit key for the notice.
-                     */
-                    ObjectionNo = null,
-                    PremiseId = row.PremiseId,
+                qaRun.Items.Add(
+                    new NoticeQaItem
+                    {
+                        NoticeRunLogId =
+                            row.NoticeRunLogId,
 
-                    PropertyType = row.SampleLabel,
-                    PropertyDesc = row.PropertyDesc,
-                    PdfPath = row.PdfPath,
+                        /*
+                         * S49 does not use an objection number.
+                         * PremiseId is the audit key.
+                         */
+                        ObjectionNo =
+                            null,
 
-                    /*
-                     * Reuse the existing QA display fields to show the
-                     * S49 source categories without changing the QA tables.
-                     */
-                    NewCategoryMvd = row.Categories.ElementAtOrDefault(0),
-                    New2CategoryMvd = row.Categories.ElementAtOrDefault(1),
-                    New3CategoryMvd = row.Categories.ElementAtOrDefault(2),
+                        PremiseId =
+                            row.PremiseId,
 
-                    ExpectedCategory =
-                        $"Section 49 QA sample: {row.SampleLabel}. " +
-                        $"Batch: {selectedBatch.BatchName}.",
+                        /*
+                         * This is the QA sample label.
+                         *
+                         * Could be:
+                         * Sectional Title
+                         * Multipurpose
+                         * Single Property
+                         * Residential
+                         * Business and Commercial
+                         * General QA
+                         */
+                        PropertyType =
+                            row.SampleLabel,
 
-                    IsCategoryValid = passed,
-                    QaStatus = passed ? "Passed" : "Failed",
-                    QaComment = passed
-                        ? null
-                        : string.Join(" ", comments)
-                });
+                        PropertyDesc =
+                            row.PropertyDesc,
+
+                        PdfPath =
+                            row.PdfPath,
+
+                        /*
+                         * Reuse the existing QA display fields to show
+                         * the actual S49 categories from the source.
+                         */
+                        NewCategoryMvd =
+                            row.Categories.ElementAtOrDefault(0),
+
+                        New2CategoryMvd =
+                            row.Categories.ElementAtOrDefault(1),
+
+                        New3CategoryMvd =
+                            row.Categories.ElementAtOrDefault(2),
+
+                        ExpectedCategory =
+                            $"Section 49 QA sample: {row.SampleLabel}. " +
+                            $"Batch: {selectedBatch.BatchName}.",
+
+                        IsCategoryValid =
+                            passed,
+
+                        QaStatus =
+                            passed
+                                ? "Passed"
+                                : "Failed",
+
+                        QaComment =
+                            passed
+                                ? null
+                                : string.Join(
+                                    " ",
+                                    comments)
+                    });
             }
 
-            _db.NoticeQaRuns.Add(qaRun);
-            await _db.SaveChangesAsync(ct);
+            _db.NoticeQaRuns.Add(
+                qaRun);
+
+            await _db.SaveChangesAsync(
+                ct);
 
             await UpdateS49AuditBatchStatusAsync(
                 settings.RollId,
@@ -928,11 +1075,11 @@ namespace GV23_Notice.Services.QA
         }
 
         private async Task ApproveS49QaAsync(
-            NoticeQaRun qaRun,
-            NoticeSettings settings,
-            string user,
-            string? comment,
-            CancellationToken ct)
+       NoticeQaRun qaRun,
+       NoticeSettings settings,
+       string user,
+       string? comment,
+       CancellationToken ct)
         {
             if (qaRun.Status == "Approved")
                 return;
@@ -943,21 +1090,35 @@ namespace GV23_Notice.Services.QA
                     "Cannot approve Section 49 QA because there are no QA sample items.");
             }
 
+            /*
+             * S49 QA now validates the actual selected notices.
+             *
+             * Sectional Title / Multipurpose / Single Property are
+             * preferred sampling categories only.
+             *
+             * Missing a preferred category must NOT block approval.
+             */
             var failedItems = qaRun.Items
                 .Where(x =>
                     !x.IsCategoryValid ||
-                    x.QaStatus == "Failed")
+                    string.Equals(
+                        x.QaStatus,
+                        "Failed",
+                        StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             if (failedItems.Count > 0)
             {
                 throw new InvalidOperationException(
-                    "Section 49 QA cannot be approved because one or more sample files failed validation.");
+                    "Section 49 QA cannot be approved because one or more " +
+                    "sample files failed validation.");
             }
 
             var runLogIds = qaRun.Items
-                .Where(x => x.NoticeRunLogId.HasValue)
-                .Select(x => x.NoticeRunLogId!.Value)
+                .Where(x =>
+                    x.NoticeRunLogId.HasValue)
+                .Select(x =>
+                    x.NoticeRunLogId!.Value)
                 .Distinct()
                 .ToList();
 
@@ -967,10 +1128,15 @@ namespace GV23_Notice.Services.QA
                     "Section 49 QA items are not linked to NoticeRunLogs.");
             }
 
+            /*
+             * Every QA item must belong to exactly one batch.
+             */
             var batchIds = await _db.NoticeRunLogs
                 .AsNoTracking()
-                .Where(x => runLogIds.Contains(x.Id))
-                .Select(x => x.NoticeBatchId)
+                .Where(x =>
+                    runLogIds.Contains(x.Id))
+                .Select(x =>
+                    x.NoticeBatchId)
                 .Distinct()
                 .ToListAsync(ct);
 
@@ -980,7 +1146,8 @@ namespace GV23_Notice.Services.QA
                     "Section 49 QA samples must all come from the same locked batch.");
             }
 
-            var batchId = batchIds[0];
+            var batchId =
+                batchIds[0];
 
             var batch = await _db.NoticeBatches
                 .AsNoTracking()
@@ -994,9 +1161,15 @@ namespace GV23_Notice.Services.QA
                 ?? throw new InvalidOperationException(
                     "The Section 49 QA batch could not be resolved.");
 
+            /*
+             * Re-confirm that the original batch is still completely printed.
+             *
+             * QA approval must never approve a partially printed/replaced batch.
+             */
             var batchLogs = await _db.NoticeRunLogs
                 .AsNoTracking()
-                .Where(x => x.NoticeBatchId == batch.Id)
+                .Where(x =>
+                    x.NoticeBatchId == batch.Id)
                 .ToListAsync(ct);
 
             if (batchLogs.Count != batch.NumberOfRecords ||
@@ -1010,37 +1183,65 @@ namespace GV23_Notice.Services.QA
                     "QA cannot be approved.");
             }
 
-            var requiredRules = GetS49SampleRules();
-
-            foreach (var rule in requiredRules)
+            /*
+             * Confirm every selected QA PDF still exists.
+             */
+            foreach (var item in qaRun.Items)
             {
-                var actual = qaRun.Items.Count(x =>
-                    string.Equals(
-                        x.PropertyType,
-                        rule.Label,
-                        StringComparison.OrdinalIgnoreCase));
-
-                if (actual < rule.Count)
+                if (string.IsNullOrWhiteSpace(
+                        item.PdfPath))
                 {
                     throw new InvalidOperationException(
-                        $"Section 49 QA is missing the required '{rule.Label}' sample.");
+                        $"QA PDF path is missing for PremiseId '{item.PremiseId}'.");
+                }
+
+                if (!File.Exists(
+                        item.PdfPath))
+                {
+                    throw new InvalidOperationException(
+                        $"QA PDF does not exist for PremiseId '{item.PremiseId}'.");
                 }
             }
 
-            qaRun.Status = "Approved";
-            qaRun.ApprovedBy = user;
-            qaRun.ApprovedAtUtc = DateTime.UtcNow;
-            qaRun.Comment = comment;
+            /*
+             * IMPORTANT:
+             *
+             * We deliberately DO NOT validate:
+             *
+             * Sectional Title = 1
+             * Multipurpose    = 1
+             * Single Property = 1
+             *
+             * Those are sampling preferences only.
+             *
+             * If the batch contains no Sectional Title or Multipurpose,
+             * the fallback samples selected during QA creation are valid.
+             */
 
-            await _db.SaveChangesAsync(ct);
+            qaRun.Status =
+                "Approved";
 
+            qaRun.ApprovedBy =
+                user;
+
+            qaRun.ApprovedAtUtc =
+                DateTime.UtcNow;
+
+            qaRun.Comment =
+                comment;
+
+            await _db.SaveChangesAsync(
+                ct);
+
+            /*
+             * Unlock this exact batch for Section 49 sending.
+             */
             await UpdateS49AuditBatchStatusAsync(
                 settings.RollId,
                 batch.BatchName,
                 Section49Statuses.QaApproved,
                 ct);
         }
-
         private async Task<List<S49QaCandidate>> LoadS49QaCandidatesAsync(
             int rollId,
             NoticeBatch batch,

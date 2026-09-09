@@ -469,28 +469,152 @@ namespace GV23_Notice.Services.Storage
         }
 
         public string? GetS49SignaturePath(
-    RollRegistry roll)
+     RollRegistry roll)
         {
-            if (!string.IsNullOrWhiteSpace(
-                    roll.SourceDb))
+            var rollShortCode =
+                (roll.ShortCode ?? string.Empty)
+                .Trim();
+
+            if (string.IsNullOrWhiteSpace(rollShortCode))
+                return null;
+
+            /*
+             * Signatures uploaded from Date Configuration are stored:
+             *
+             * {RollRoot}\Signature Folder\{RollShortCode}_S49\v1
+             * {RollRoot}\Signature Folder\{RollShortCode}_S49\v2
+             * ...
+             *
+             * Example SUPP4:
+             * C:\Sup4\Signature Folder\SUPP 4_S49\v2
+             */
+
+            string rollRoot;
+
+            try
             {
-                var source =
-                    _rollDb.GetSource(
-                        roll.SourceDb.Trim());
-
-                var configured =
-                    source.Section49?
-                        .Storage?
-                        .SignaturePath;
-
-                if (!string.IsNullOrWhiteSpace(
-                        configured))
-                {
-                    return configured.Trim();
-                }
+                rollRoot =
+                    GetRootPath(
+                        roll,
+                        NoticeKind.S49);
+            }
+            catch
+            {
+                return null;
             }
 
-            return null;
+            var signatureRoot =
+                Path.Combine(
+                    rollRoot,
+                    "Signature Folder");
+
+            if (!Directory.Exists(
+                    signatureRoot))
+            {
+                return null;
+            }
+
+            var noticeFolder =
+                Path.Combine(
+                    signatureRoot,
+                    $"{rollShortCode}_S49");
+
+            if (!Directory.Exists(
+                    noticeFolder))
+            {
+                return null;
+            }
+
+            /*
+             * Find latest version:
+             * v1
+             * v2
+             * v3
+             */
+            var latestVersionFolder =
+                Directory
+                    .EnumerateDirectories(
+                        noticeFolder,
+                        "v*",
+                        SearchOption.TopDirectoryOnly)
+                    .Select(path =>
+                        new
+                        {
+                            Path = path,
+                            Version =
+                                ParseSignatureVersion(
+                                    Path.GetFileName(path))
+                        })
+                    .Where(x =>
+                        x.Version.HasValue)
+                    .OrderByDescending(x =>
+                        x.Version!.Value)
+                    .Select(x =>
+                        x.Path)
+                    .FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(
+                    latestVersionFolder))
+            {
+                return null;
+            }
+
+            /*
+             * Find the uploaded signature image inside latest version.
+             */
+            var allowedExtensions =
+                new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase)
+                {
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".bmp"
+                };
+
+            var signatureFile =
+                Directory
+                    .EnumerateFiles(
+                        latestVersionFolder,
+                        "*.*",
+                        SearchOption.AllDirectories)
+                    .Where(file =>
+                        allowedExtensions.Contains(
+                            Path.GetExtension(file)))
+                    .OrderBy(file =>
+                        file)
+                    .FirstOrDefault();
+
+            return signatureFile;
+        }
+
+        private static int? ParseSignatureVersion(
+            string? folderName)
+        {
+            if (string.IsNullOrWhiteSpace(
+                    folderName))
+            {
+                return null;
+            }
+
+            var value =
+                folderName.Trim();
+
+            if (!value.StartsWith(
+                    "v",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var versionPart =
+                value[1..];
+
+            return int.TryParse(
+                versionPart,
+                out var version)
+                    ? version
+                    : null;
         }
     }
 }

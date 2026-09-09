@@ -456,112 +456,210 @@ namespace GV23_Notice.Services.Storage
             CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.PremiseId))
-                throw new InvalidOperationException($"RunLog {log.Id} has no PremiseId.");
+            {
+                throw new InvalidOperationException(
+                    $"RunLog {log.Id} has no PremiseId.");
+            }
 
-            var (rows, contact) = await _s49Repo.LoadPremiseAsync(roll.RollId, log.PremiseId, ct);
+            var rollDisplayName =
+                !string.IsNullOrWhiteSpace(settings.RollName)
+                    ? settings.RollName.Trim()
+                    : !string.IsNullOrWhiteSpace(roll.Name)
+                        ? roll.Name.Trim()
+                        : roll.ShortCode?.Trim()
+                          ?? "Valuation Roll";
+
+            var (rows, contact) =
+                await _s49Repo.LoadPremiseAsync(
+                    roll.RollId,
+                    log.PremiseId,
+                    ct);
 
             if (rows.Count == 0)
+            {
                 throw new InvalidOperationException(
-                    $"No roll rows found for PremiseId={log.PremiseId} in RollId={roll.RollId}.");
+                    $"No roll rows found for PremiseId={log.PremiseId} " +
+                    $"in RollId={roll.RollId}.");
+            }
 
-            static string Money(decimal v) =>
-                "R " + v.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+            static string Money(decimal value)
+            {
+                return "R " +
+                       value
+                           .ToString(
+                               "N0",
+                               CultureInfo.InvariantCulture)
+                           .Replace(
+                               ",",
+                               " ");
+            }
 
-            //static string Num(decimal v) =>
-            //    v.ToString("N0", CultureInfo.InvariantCulture).Replace(",", " ");
+            static string FormatExtent(object? value)
+            {
+                return ExtentDisplayHelper.SameAsDb(value);
+            }
 
             var configuredSignature =
-_paths.GetS49SignaturePath(
-roll);
+                _paths.GetS49SignaturePath(
+                    roll);
 
             var signaturePath =
-!string.IsNullOrWhiteSpace(
-    configuredSignature)
-    ? configuredSignature
-    : settings.SignaturePath;
-            static string Extent(object? v) =>
-    ExtentDisplayHelper.SameAsDb(v);
+                !string.IsNullOrWhiteSpace(configuredSignature)
+                    ? configuredSignature
+                    : settings.SignaturePath;
 
-            var firstRow = rows[0];
-            var propertyDesc = firstRow.PropertyDesc ?? log.PremiseId;
-            var forceFour = rows.Count > 1;
+            var firstRow =
+                rows[0];
 
-            var propRows = rows.Select(r => new Section49PropertyRow
-            {
-                Category = r.CatDesc ?? "",
-                MarketValue = Money(r.MarketValue),
+            var propertyDesc =
+                !string.IsNullOrWhiteSpace(firstRow.PropertyDesc)
+                    ? firstRow.PropertyDesc.Trim()
+                    : log.PremiseId;
 
-                // Extent must stay same as DB. Do not use N0/N2.
-                Extent = !string.IsNullOrWhiteSpace(r.ExtentText)
-         ? r.ExtentText
-         : Extent(r.Extent),
+            var forceFour =
+                rows.Count > 1;
 
-                Remarks = r.Reason ?? "",
-                EffectiveDate = r.WEFDate.HasValue
-            ? r.WEFDate.Value.ToString(
-                "dd MMMM yyyy",
-                CultureInfo.GetCultureInfo("en-ZA"))
-            : "",
-            }).ToList();
+            var propRows =
+                rows
+                    .Select(r =>
+                        new Section49PropertyRow
+                        {
+                            Category =
+                                r.CatDesc
+                                ?? "",
+
+                            MarketValue =
+                                Money(
+                                    r.MarketValue),
+
+                            Extent =
+                                FormatExtent(
+                                    r.Extent),
+
+                            Remarks =
+                                r.Reason
+                                ?? "",
+
+                            EffectiveDate =
+                                r.WEFDate.HasValue
+                                    ? r.WEFDate.Value.ToString(
+                                        "dd MMMM yyyy",
+                                        CultureInfo.GetCultureInfo(
+                                            "en-ZA"))
+                                    : ""
+                        })
+                    .ToList();
 
             if (forceFour)
             {
-                while (propRows.Count < 4) propRows.Add(new Section49PropertyRow());
-                propRows = propRows.Take(4).ToList();
+                while (propRows.Count < 4)
+                {
+                    propRows.Add(
+                        new Section49PropertyRow());
+                }
+
+                propRows =
+                    propRows
+                        .Take(4)
+                        .ToList();
             }
 
-            var pdfData = new Section49PdfData
-            {
-                Addr1 = contact?.Addr1 ?? "",
-                Addr2 = contact?.Addr2 ?? "",
-                Addr3 = contact?.Addr3 ?? "",
-                Addr4 = contact?.Addr4 ?? "",
-                Addr5 = contact?.Addr5 ?? "",
-                PropertyDesc = propertyDesc,
-                PhysicalAddress = firstRow.LisStreetAddress ?? contact?.PremiseAddress ?? "",
-                ValuationKey = firstRow.ValuationKey ?? "",
-                ForceFourRows = forceFour,
-                PropertyRows = propRows,
-                PremiseId = log.PremiseId
-            };
+            var pdfData =
+                new Section49PdfData
+                {
+                    Addr1 =
+                        contact?.Addr1
+                        ?? "",
 
-            var ctx = new Section49NoticeContext
-            {
-                HeaderImagePath =
-         Path.Combine(
-             _env.WebRootPath,
-             "Images",
-             "Obj_Header.PNG"),
+                    Addr2 =
+                        contact?.Addr2
+                        ?? "",
 
-                LetterDate =
-         settings.LetterDate,
+                    Addr3 =
+                        contact?.Addr3
+                        ?? "",
 
-                InspectionStartDate =
-         settings.ObjectionStartDate
-         ?? settings.LetterDate,
+                    Addr4 =
+                        contact?.Addr4
+                        ?? "",
 
-                InspectionEndDate =
-         settings.ObjectionEndDate
-         ?? settings.LetterDate.AddDays(30),
+                    Addr5 =
+                        contact?.Addr5
+                        ?? "",
 
-                ExtendedEndDate =
-         settings.ExtensionDate,
+                    PropertyDesc =
+                        propertyDesc,
 
-                FinancialYearsText =
-         settings.FinancialYearsText,
+                    PhysicalAddress =
+                        firstRow.LisStreetAddress
+                        ?? contact?.PremiseAddress
+                        ?? "",
 
-                SignaturePath =
-         signaturePath,
+                    ValuationKey =
+                        firstRow.ValuationKey
+                        ?? "",
 
-                ForceFourRows =
-         forceFour,
+                    ForceFourRows =
+                        forceFour,
 
-                PropertyRows =
-         propRows
-            };
+                    PropertyRows =
+                        propRows,
 
-            var pdfBytes = _s49Builder.BuildNotice(pdfData, ctx);
-            return (pdfBytes, propertyDesc);
+                    PremiseId =
+                        log.PremiseId
+                };
+
+            var ctx =
+                new Section49NoticeContext
+                {
+                    HeaderImagePath =
+                        Path.Combine(
+                            _env.WebRootPath,
+                            "Images",
+                            "Obj_Header.PNG"),
+
+                    SignaturePath =
+                        signaturePath,
+
+                    PortalUrl =
+                        "https://objections.joburg.org.za/",
+
+                    LetterDate =
+                        settings.LetterDate,
+
+                    InspectionStartDate =
+                        settings.ObjectionStartDate
+                        ?? settings.LetterDate,
+
+                    InspectionEndDate =
+                        settings.ObjectionEndDate
+                        ?? settings.LetterDate.AddDays(30),
+
+                    ExtendedEndDate =
+                        settings.ExtensionDate,
+
+                    FinancialYearsText =
+                        settings.FinancialYearsText
+                        ?? "",
+
+                    RollHeaderText =
+                        rollDisplayName,
+
+                    ForceFourRows =
+                        forceFour,
+
+                    PropertyRows =
+                        propRows
+                };
+
+            var pdfBytes =
+                _s49Builder.BuildNotice(
+                    pdfData,
+                    ctx);
+
+            return (
+                pdfBytes,
+                propertyDesc);
         }
 
         // ── S51 ─────────────────────────────────────────────────────────────

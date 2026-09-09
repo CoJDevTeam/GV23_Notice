@@ -39,10 +39,6 @@ namespace GV23_Notice.Services.Email
         private (string Subject, string BodyHtml) BuildS49(
      NoticeEmailRequest req)
         {
-            var heading =
-                "PUBLIC NOTICE CALLING FOR INSPECTION OF THE " +
-                "SUPPLEMENTARY VALUATION ROLL AND LODGING OF OBJECTIONS";
-
             var inspectionStart =
                 req.InspectionStart ??
                 DateOnly.FromDateTime(DateTime.Today);
@@ -65,7 +61,6 @@ namespace GV23_Notice.Services.Email
                     .Trim()
                 ?? "";
 
-            // Fail early. Never send an S49 email with a blank property.
             if (string.IsNullOrWhiteSpace(propertyDesc))
             {
                 throw new InvalidOperationException(
@@ -73,17 +68,48 @@ namespace GV23_Notice.Services.Email
                     "Property Description is empty.");
             }
 
-            var subject =
-                $"{req.RollShortCode} Section 49 Notice - {propertyDesc}";
+            // Use RollName, never the shortcode.
+            // Example:
+            // Supplementary Valuation Roll 4 (GVR2023)
+            var rollName =
+                !string.IsNullOrWhiteSpace(req.RollName)
+                    ? req.RollName.Trim()
+                    : !string.IsNullOrWhiteSpace(req.RollDisplayName)
+                        ? req.RollDisplayName.Trim()
+                        : "Supplementary Valuation Roll";
 
-            var mid = new StringBuilder();
+            if (!rollName.Contains(
+                    "GVR2023",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                rollName =
+                    $"{rollName} (GVR2023)";
+            }
+
+            var heading =
+                $"PUBLIC NOTICE CALLING FOR INSPECTION OF THE " +
+                $"{rollName.ToUpperInvariant()} " +
+                $"AND LODGING OF OBJECTIONS";
+
+            var subject =
+                $"{rollName} - {propertyDesc}";
+
+            var portalUrl =
+                !string.IsNullOrWhiteSpace(_opt.PortalUrl)
+                    ? _opt.PortalUrl.Trim()
+                    : "https://objections.joburg.org.za/";
+
+            var mid =
+                new StringBuilder();
+
+            // Greeting must always be generic.
+            mid.Append(
+                "<p><b>Dear Property Owner</b></p>");
 
             mid.Append(
                 $"<p><b>{H(heading)}</b></p>");
 
-            // =========================================================
-            // STANDALONE S49 PROPERTY DETAILS
-            // =========================================================
+            // Property details card
             mid.Append(
                 "<div style='" +
                 "margin:16px 0;" +
@@ -108,37 +134,29 @@ namespace GV23_Notice.Services.Email
                 "color:#111;" +
                 "'>");
 
-            mid.Append(H(propertyDesc));
+            mid.Append(
+                H(propertyDesc));
 
-            mid.Append("</div>");
-            mid.Append("</div>");
+            mid.Append(
+                "</div>");
 
-            // =========================================================
-            // S49 NOTICE BODY
-            // =========================================================
-            mid.Append("<p>");
+            mid.Append(
+                "</div>");
+
+            mid.Append(
+                "<p>");
 
             mid.Append(
                 "Notice is hereby given in terms of " +
-                "Section 49(1)(a)(i) read together with section 78 (2) " +
+                "Section 49(1)(a)(i) read together with section 78(2) " +
                 "of the ");
 
             mid.Append(
                 "<b>Local Government: Municipal Property Rates Act " +
                 "No. 6 of 2004</b> as amended, ");
 
-            mid.Append("that the ");
-
-            if (!string.IsNullOrWhiteSpace(req.RollTypeText))
-            {
-                mid.Append(
-                    $"<b>{H(req.RollTypeText)}</b> ");
-            }
-            else
-            {
-                mid.Append(
-                    "<b>supplementary valuation roll</b> ");
-            }
+            mid.Append(
+                $"that the <b>{H(rollName)}</b> ");
 
             mid.Append(
                 "for the financial years ");
@@ -152,29 +170,65 @@ namespace GV23_Notice.Services.Email
             mid.Append(
                 $"<b>{H(dateRangeText)}</b>.");
 
-            mid.Append("</p>");
+            mid.Append(
+                "</p>");
 
-            // =========================================================
-            // ATTACHMENT MESSAGE
-            // =========================================================
             mid.Append(
                 "<p>" +
                 "Please find the official <b>Section 49 Notice</b> " +
                 "for the above property attached to this email." +
                 "</p>");
 
+            // Direct online objection link.
             mid.Append(
-                "<p>" +
-                "Kind Regards,<br/>" +
-                "<b>City of Johannesburg</b><br/>" +
-                "Valuation Services Department" +
-                "</p>");
+                "<div style='" +
+                "margin:20px 0;" +
+                "text-align:left;" +
+                "'>");
+
+            mid.Append(
+                $"<a href=\"{H(portalUrl)}\" " +
+                "style=\"" +
+                "display:inline-block;" +
+                "background:#111;" +
+                "color:#ffffff;" +
+                "padding:12px 18px;" +
+                "text-decoration:none;" +
+                "font-weight:700;" +
+                "border-radius:4px;" +
+                "\">");
+
+            mid.Append(
+                "Open Online Objection System");
+
+            mid.Append(
+                "</a>");
+
+            mid.Append(
+                "</div>");
+
+            mid.Append(
+     "<p>" +
+     "Alternatively, use the following link:<br/>" +
+     "<a href=\"https://www.joburg.org.za\">" +
+     "www.joburg.org.za" +
+     "</a>" +
+     "</p>");
+
+            /*
+             * Do not append another Kind Regards block here.
+             * BaseHtml already supplies the standard email footer/signature.
+             * This removes the duplicate sign-off visible in Outlook.
+             */
 
             return (
                 subject,
-                BaseHtml(req, mid.ToString())
+                BaseHtml(
+                    req,
+                    mid.ToString())
             );
         }
+
 
         // =========================
         // S51
