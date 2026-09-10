@@ -37,7 +37,7 @@ namespace GV23_Notice.Services.Email
         // S49
         // =========================
         private (string Subject, string BodyHtml) BuildS49(
-     NoticeEmailRequest req)
+      NoticeEmailRequest req)
         {
             var inspectionStart =
                 req.InspectionStart ??
@@ -52,7 +52,7 @@ namespace GV23_Notice.Services.Email
 
             var dateRangeText =
                 $"{inspectionStart:dd MMMM yyyy} – " +
-                $"{finalEndDate:dd MMMM yyyy} until 15:00";
+                $"{finalEndDate:dd MMMM yyyy} until 15:00pm";
 
             var propertyDesc =
                 req.Items?
@@ -143,6 +143,7 @@ namespace GV23_Notice.Services.Email
             mid.Append(
                 "</div>");
 
+            // Main Section 49 paragraph
             mid.Append(
                 "<p>");
 
@@ -173,6 +174,25 @@ namespace GV23_Notice.Services.Email
             mid.Append(
                 "</p>");
 
+            // Late objection warning
+            mid.Append(
+                "<p style='" +
+                "font-weight:700;" +
+                "background:#fff7d6;" +
+                "padding:10px 12px;" +
+                "border-left:4px solid #E6B000;" +
+                "color:#111;" +
+                "'>");
+
+            mid.Append(
+                $"Note: Any objection received via email or hand delivery " +
+                $"after 15:00 on {finalEndDate:dd MMMM yyyy} " +
+                $"will be deemed late and will not be accepted.");
+
+            mid.Append(
+                "</p>");
+
+            // Attachment wording
             mid.Append(
                 "<p>" +
                 "Please find the official <b>Section 49 Notice</b> " +
@@ -207,18 +227,18 @@ namespace GV23_Notice.Services.Email
             mid.Append(
                 "</div>");
 
+            // Alternative City website link
             mid.Append(
-     "<p>" +
-     "Alternatively, use the following link:<br/>" +
-     "<a href=\"https://www.joburg.org.za\">" +
-     "www.joburg.org.za" +
-     "</a>" +
-     "</p>");
+                "<p>" +
+                "Alternatively, use the following link:<br/>" +
+                "<a href=\"https://www.joburg.org.za\">" +
+                "www.joburg.org.za" +
+                "</a>" +
+                "</p>");
 
             /*
              * Do not append another Kind Regards block here.
              * BaseHtml already supplies the standard email footer/signature.
-             * This removes the duplicate sign-off visible in Outlook.
              */
 
             return (
@@ -228,7 +248,6 @@ namespace GV23_Notice.Services.Email
                     mid.ToString())
             );
         }
-
 
         // =========================
         // S51

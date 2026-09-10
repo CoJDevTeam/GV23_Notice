@@ -69,36 +69,98 @@ namespace GV23_Notice.Services.Preview
             CancellationToken ct)
         {
             /*
-             * Section 49 preview now uses IS49RollRepository.
+             * S49 Preview rules
              *
-             * This is the same dynamic source used by batching, printing
-             * and emailing. SUPP4 therefore resolves:
+             * Preview must NOT depend only on "next batch" eligibility.
              *
-             * SourceDb     = Objection_Supp4
-             * RollTable    = Sup4
-             * ContactTable = Supp4_Postal_address
+             * PickNextPremiseIdsAsync() returns premises that are still
+             * available for batching. Once a premise has already been
+             * assigned to a batch, it may no longer be returned.
              *
-             * No legacy S49 preview stored procedure is used here.
+             * Preview must still work after batching, so:
+             *
+             * 1. Try currently available premises.
+             * 2. Fall back to previously batched S49 premises for the roll.
+             * 3. Load all actual property data through IS49RollRepository.
              */
 
-            var premiseIds =
+            var candidatePremiseIds =
+                new List<string>();
+
+            // ============================================================
+            // 1. TRY NEXT AVAILABLE PREMISES
+            // ============================================================
+
+            var availablePremiseIds =
                 await _s49Roll.PickNextPremiseIdsAsync(
                     rollId,
                     100,
                     ct);
 
-            if (premiseIds.Count == 0)
+            if (availablePremiseIds.Count > 0)
             {
-                throw new InvalidOperationException(
-                    "S49 preview: no roll rows were available.");
+                candidatePremiseIds.AddRange(
+                    availablePremiseIds);
             }
 
-            List<S49RollRowDto>? selectedRows = null;
-            SapContactDto? selectedContact = null;
-            string? selectedPremiseId = null;
+            // ============================================================
+            // 2. FALL BACK TO ALREADY BATCHED S49 PREMISES
+            // ============================================================
 
-            // First try to honour the requested single/split preview.
-            foreach (var premiseId in premiseIds)
+            /*
+             * This allows Preview / Step3Kickoff to continue working even
+             * after the available premises have already been assigned to
+             * Section 49 batches.
+             */
+            var batchedPremiseIds =
+                await (
+                    from log in _db.NoticeRunLogs
+                    join batch in _db.NoticeBatches
+                        on log.NoticeBatchId equals batch.Id
+                    where
+                        batch.RollId == rollId &&
+                        batch.Notice == NoticeKind.S49 &&
+                        log.PremiseId != null &&
+                        log.PremiseId != ""
+                    orderby log.Id descending
+                    select log.PremiseId!
+                )
+                .Distinct()
+                .Take(100)
+                .ToListAsync(ct);
+
+            foreach (var premiseId in batchedPremiseIds)
+            {
+                if (!candidatePremiseIds.Contains(
+                        premiseId,
+                        StringComparer.OrdinalIgnoreCase))
+                {
+                    candidatePremiseIds.Add(
+                        premiseId);
+                }
+            }
+
+            if (candidatePremiseIds.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "S49 preview: no available or previously batched " +
+                    "Section 49 premises were found for this roll.");
+            }
+
+            List<S49RollRowDto>? selectedRows =
+                null;
+
+            SapContactDto? selectedContact =
+                null;
+
+            string? selectedPremiseId =
+                null;
+
+            // ============================================================
+            // 3. TRY REQUESTED SINGLE / MULTI PREVIEW
+            // ============================================================
+
+            foreach (var premiseId in candidatePremiseIds)
             {
                 ct.ThrowIfCancellationRequested();
 
@@ -111,6 +173,11 @@ namespace GV23_Notice.Services.Preview
                 if (rows.Count == 0)
                     continue;
 
+                /*
+                 * At this point the repository may already have applied
+                 * business normalisation, for example Full Title
+                 * Long-Term Lease being reduced to one current row.
+                 */
                 var isMulti =
                     rows.Count > 1;
 
@@ -132,10 +199,18 @@ namespace GV23_Notice.Services.Preview
                 break;
             }
 
-            // Fallback: use the first valid premise so Step 2 can preview.
+            // ============================================================
+            // 4. FALLBACK TO ANY VALID S49 PREMISE
+            // ============================================================
+
+            /*
+             * If the user requested a split preview but none currently
+             * exists, or requested single but no single exists, still
+             * return a real valid preview instead of crashing.
+             */
             if (selectedRows == null)
             {
-                foreach (var premiseId in premiseIds)
+                foreach (var premiseId in candidatePremiseIds)
                 {
                     ct.ThrowIfCancellationRequested();
 
@@ -163,11 +238,17 @@ namespace GV23_Notice.Services.Preview
 
             if (selectedRows == null ||
                 selectedRows.Count == 0 ||
-                string.IsNullOrWhiteSpace(selectedPremiseId))
+                string.IsNullOrWhiteSpace(
+                    selectedPremiseId))
             {
                 throw new InvalidOperationException(
-                    "S49 preview: no valid roll row could be loaded.");
+                    "S49 preview: premises were found, but no valid " +
+                    "Section 49 roll data could be loaded.");
             }
+
+            // ============================================================
+            // 5. BUILD PREVIEW DATA
+            // ============================================================
 
             var first =
                 selectedRows[0];
@@ -181,13 +262,13 @@ namespace GV23_Notice.Services.Preview
                     selectedContact?.Addr5);
 
             /*
-             * NoticePreviewService already consumes RollRows as RowMap.
-             * Recreate that existing structure from the generic repository DTOs
-             * without changing the preview PDF service.
+             * Keep the existing RowMap contract expected by
+             * NoticePreviewService.
              */
             var rollRows =
                 selectedRows
-                    .Select(ToS49PreviewRowMap)
+                    .Select(
+                        ToS49PreviewRowMap)
                     .ToList();
 
             return new S49PreviewDbData
@@ -222,7 +303,9 @@ namespace GV23_Notice.Services.Preview
                 ValuationSplitIndicator =
                     first.ValuationSplitIndicator,
 
-                // No email is valid for S49 preview/printing.
+                /*
+                 * No email is valid for S49 preview/printing.
+                 */
                 Email =
                     SafeEmail(
                         selectedContact?.Email),

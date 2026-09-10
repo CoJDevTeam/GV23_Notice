@@ -142,47 +142,100 @@ namespace GV23_Notice.Controllers
         [HttpPost("Step2CreateBatch")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Step2CreateBatch(
-            Guid key,
-            DateTime? batchDate,
-            CancellationToken ct)
+        Guid key,
+        DateTime? batchDate,
+        CancellationToken ct)
         {
             if (key == Guid.Empty)
-                return BadRequest("Invalid workflow key.");
+                return BadRequest(
+                    "Invalid workflow key.");
 
-            var user = User?.Identity?.Name ?? "Unknown";
-            var date = (batchDate ?? DateTime.Today).Date;
+            var user =
+                User?.Identity?.Name
+                ?? "Unknown";
 
-            var s = await GetWorkflowSettingsAsync(key, ct);
+            var date =
+                (batchDate ?? DateTime.Today)
+                    .Date;
 
+            var s =
+                await GetWorkflowSettingsAsync(
+                    key,
+                    ct);
+
+            /*
+             * TPA and CLA-TPA are direct workflows.
+             * They do not create normal Step 3 batches.
+             */
             if (s.Notice == NoticeKind.TPA ||
                 s.Notice == NoticeKind.CLA_TPA)
             {
                 TempData["Error"] =
                     s.Notice == NoticeKind.CLA_TPA
-                        ? "CLA Third-Party Application notices do not use batch creation. Go directly to Print."
-                        : "Third-Party Appeal Application notices do not use batch creation. Go directly to Print.";
+                        ? "CLA Third-Party Application notices " +
+                          "do not use batch creation. " +
+                          "Go directly to Print."
+                        : "Third-Party Appeal Application notices " +
+                          "do not use batch creation. " +
+                          "Go directly to Print.";
 
-                return RedirectToAction(nameof(Print), new { key });
+                return RedirectToAction(
+                    nameof(Print),
+                    new
+                    {
+                        key
+                    });
             }
 
             try
             {
-                await _batchCreate.CreateBatchAsync(key, date, user, ct);
-                TempData["Success"] = "Batch created successfully.";
+                await _batchCreate.CreateBatchAsync(
+                    key,
+                    date,
+                    user,
+                    ct);
 
+                TempData["Success"] =
+                    "Batch created successfully. " +
+                    "You can now print the created batch.";
+
+                /*
+                 * Once a normal notice batch has been
+                 * created, move forward to Print.
+                 *
+                 * Do not return to Step3Kickoff because
+                 * that rebuilds Preview.
+                 *
+                 * For S49 specifically, Preview uses the
+                 * next available premises. Premises that
+                 * were just batched are no longer available,
+                 * so rebuilding Preview can return:
+                 *
+                 * "S49 preview: no roll rows were available."
+                 */
                 return RedirectToAction(
-                    "Step3Kickoff",
-                    "Workflow",
-                    new { settingsId = s.Id, key, showBatches = true });
+                    nameof(Print),
+                    new
+                    {
+                        key
+                    });
             }
             catch (Exception ex)
             {
-                TempData["Error"] = ex.Message;
+                TempData["Error"] =
+                    ex.Message;
 
+                /*
+                 * Creation failed.
+                 * Stay on the batch-management stage so
+                 * the user can correct the problem/retry.
+                 */
                 return RedirectToAction(
-                    "Step3Kickoff",
-                    "Workflow",
-                    new { settingsId = s.Id, key });
+                    nameof(Step2),
+                    new
+                    {
+                        key
+                    });
             }
         }
 

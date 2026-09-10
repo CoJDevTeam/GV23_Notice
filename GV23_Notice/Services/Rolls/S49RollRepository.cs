@@ -196,11 +196,96 @@ namespace GV23_Notice.Services.Rolls
                         premiseId);
             }
 
+            rows =
+    NormaliseSection49Rows(
+        rows);
             return (
                 rows,
                 contact);
         }
 
+        private static List<S49RollRowDto>
+    NormaliseSection49Rows(
+        List<S49RollRowDto> rows)
+        {
+            if (rows == null ||
+                rows.Count <= 1)
+            {
+                return rows
+                    ?? new List<S49RollRowDto>();
+            }
+
+            var propertyDesc =
+                rows
+                    .FirstOrDefault()?
+                    .PropertyDesc?
+                    .Trim()
+                ?? "";
+
+            var isFullTitleLongTermLease =
+                propertyDesc.Contains(
+                    "FULL TITLE LONG-TERM LEASE",
+                    StringComparison.OrdinalIgnoreCase);
+
+            if (!isFullTitleLongTermLease)
+            {
+                return rows;
+            }
+
+            /*
+             * FULL TITLE LONG-TERM LEASE BUSINESS RULE
+             *
+             * This property must be displayed as a
+             * standalone valuation — never as a
+             * multipurpose/split table.
+             *
+             * Prefer:
+             * 1. A non-zero market value
+             * 2. Latest effective date
+             * 3. Highest/latest valuation key
+             */
+            var selected =
+                rows
+                    .Where(x =>
+                        x.MarketValue > 0)
+                    .OrderByDescending(x =>
+                        x.WEFDate
+                        ?? DateTime.MinValue)
+                    .ThenByDescending(x =>
+                    {
+                        return long.TryParse(
+                            x.ValuationKey,
+                            out var key)
+                                ? key
+                                : 0L;
+                    })
+                    .FirstOrDefault();
+
+            /*
+             * Safety fallback:
+             * if no non-zero record exists,
+             * use the latest available valuation.
+             */
+            selected ??=
+                rows
+                    .OrderByDescending(x =>
+                        x.WEFDate
+                        ?? DateTime.MinValue)
+                    .ThenByDescending(x =>
+                    {
+                        return long.TryParse(
+                            x.ValuationKey,
+                            out var key)
+                                ? key
+                                : 0L;
+                    })
+                    .First();
+
+            return new List<S49RollRowDto>
+    {
+        selected
+    };
+        }
         // ============================================================
         // ASSIGN BATCH
         // ============================================================

@@ -1,20 +1,25 @@
 ﻿using GV23_Notice.Data;
+using GV23_Notice.Domain.Section49;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Models.DTOs;
 using GV23_Notice.Models.Workflow.ViewModels;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace GV23_Notice.Services.Step3
 {
     public sealed class Step3BatchQueryService : IStep3BatchQueryService
     {
         private readonly AppDbContext _db;
-
-        public Step3BatchQueryService(AppDbContext db)
+      
+        private readonly Section49Options _section49;
+        public Step3BatchQueryService(
+    AppDbContext db,
+    IOptions<Section49Options> section49Options)
         {
             _db = db;
+            _section49 = section49Options.Value;
         }
-
         public async Task<Step3Step2Vm> BuildAsync(Guid workflowKey, CancellationToken ct)
         {
             // ── 1) Resolve settings ──────────────────────────────────────────
@@ -84,7 +89,10 @@ namespace GV23_Notice.Services.Step3
                 Notice = s.Notice,
                 VersionText = versionText,
                 BatchDate = DateTime.Today,
-                BatchSize = 500,
+                BatchSize =
+    s.Notice == NoticeKind.S49
+        ? _section49.Batch.Size
+        : 500,
 
                 TotalPendingRecords = totalPending,
                 BatchesCreatedCount = createdBatchCount,

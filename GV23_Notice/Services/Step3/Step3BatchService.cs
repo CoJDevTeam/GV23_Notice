@@ -100,14 +100,71 @@ namespace GV23_Notice.Services.Step3
                     {
                         try
                         {
-                            var batchSize =
+                            var configuredBatchSize =
                                 _section49.Batch.Size;
 
-                            if (batchSize <= 0)
+                            if (configuredBatchSize <= 0)
                             {
                                 throw new InvalidOperationException(
                                     "Section49:Batch:Size must be greater than zero.");
                             }
+
+                            // ============================================================
+                            // GET HOW MANY S49 PREMISES ARE STILL AVAILABLE
+                            // ============================================================
+
+                            var pendingRows =
+                                await _db
+                                    .Set<S49PendingCountDto>()
+                                    .FromSqlRaw(
+                                        "EXEC dbo.S49_Step3_CountPending @p0",
+                                        s.RollId)
+                                    .AsNoTracking()
+                                    .ToListAsync(ct);
+
+                            var pendingRow =
+                                pendingRows.FirstOrDefault();
+
+                            var remainingPremises =
+                                pendingRow?.PendingPremiseCount
+                                ?? 0;
+
+                            if (remainingPremises <= 0)
+                            {
+                                throw new InvalidOperationException(
+                                    "No Section 49 properties remain available for batching.");
+                            }
+
+                            /*
+                             * Normal batch:
+                             * configured size = 10
+                             * remaining       = 100
+                             * actual size     = 10
+                             *
+                             * Final batch:
+                             * configured size = 10
+                             * remaining       = 6
+                             * actual size     = 6
+                             */
+                            var actualBatchSize =
+                                Math.Min(
+                                    configuredBatchSize,
+                                    remainingPremises);
+
+                            /*
+                             * Only require a full configured batch when enough
+                             * properties exist.
+                             *
+                             * If fewer properties remain, this is the final batch
+                             * and must be allowed through.
+                             */
+                            var isFinalPartialBatch =
+                                remainingPremises <
+                                configuredBatchSize;
+
+                            var requireFullBatch =
+                                !isFinalPartialBatch &&
+                                _section49.Batch.RequireFullBatch;
 
                             var picked =
                                 await _s49Repo.AssignBatchAsync(
@@ -115,9 +172,8 @@ namespace GV23_Notice.Services.Step3
                                     batchName: batchName,
                                     batchDate: batchDateUtc,
                                     createdBy: createdBy,
-                                    batchSize: batchSize,
-                                    requireFullBatch:
-                                        _section49.Batch.RequireFullBatch,
+                                    batchSize: actualBatchSize,
+                                    requireFullBatch: requireFullBatch,
                                     ct: ct);
 
                             var validRows =
@@ -127,21 +183,24 @@ namespace GV23_Notice.Services.Step3
                                             x.PremiseId))
                                     .ToList();
 
-                            if (
-                                _section49.Batch.RequireFullBatch
-                                &&
-                                validRows.Count != batchSize)
-                            {
-                                throw new InvalidOperationException(
-                                    $"Section 49 batch '{batchName}' must contain exactly " +
-                                    $"{batchSize} records. Repository returned " +
-                                    $"{validRows.Count}.");
-                            }
-
                             if (validRows.Count == 0)
                             {
                                 throw new InvalidOperationException(
                                     "No Section 49 records were available for batching.");
+                            }
+
+                            /*
+                             * We asked for exactly actualBatchSize.
+                             *
+                             * This protects normal and final batches without
+                             * demanding the original configured size.
+                             */
+                            if (validRows.Count != actualBatchSize)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Section 49 batch '{batchName}' expected " +
+                                    $"{actualBatchSize} properties but repository returned " +
+                                    $"{validRows.Count}.");
                             }
 
                             var runLogs =
@@ -182,14 +241,15 @@ namespace GV23_Notice.Services.Step3
                         }
                         catch (Exception ex)
                         {
-                            // Log exactly where S49 batch creation failed.
                             Console.WriteLine(
                                 $"S49 batch creation failed. " +
                                 $"RollId={s.RollId}, " +
                                 $"Batch={batchName}, " +
                                 $"Error={ex.Message}");
 
-                            // Remove the empty NoticeBatch header.
+                            /*
+                             * Remove empty batch header when batch creation fails.
+                             */
                             _db.ChangeTracker.Clear();
 
                             var failedBatch =

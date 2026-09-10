@@ -172,15 +172,47 @@ namespace GV23_Notice.Services.Notices.Section49
                         // ===== MAIN NOTICE PARAGRAPH (mixed bold) =====
                         col.Item().Text(t =>
                         {
-                            t.Span("Notice is hereby given in terms of Section 49(1)(a)(i) read together with section 78(2) of the ").Style(body9);
-                            t.Span("Local Government: Municipal Property Rates Act No. 6 of 2004").Style(body9b);
-                            t.Span($" as amended hereinafter referred to as the \"Act\", that the {rollDisplayWithReference} for the financial years ").Style(body9);
-                            t.Span(Safe(ctx.FinancialYearsText)).Style(body9b);
-                            t.Span(" is open for public inspection at the centre listed below, from ").Style(body9);
-                            t.Span(inspectionWindowText).Style(body9b);
-                            t.Span(". In addition, the valuation roll is available on the City's online objection portal at ").Style(body9);
-                            t.Span(portalUrl).Style(body9b);
-                            t.Span(".").Style(body9);
+                            t.Span(
+                                "Notice is hereby given in terms of " +
+                                "Section 49(1)(a)(i) read together with " +
+                                "section 78(2) of the ")
+                                .Style(body9);
+
+                            t.Span(
+                                "Local Government: Municipal Property " +
+                                "Rates Act No. 6 of 2004")
+                                .Style(body9b);
+
+                            t.Span(
+                                $" as amended hereinafter referred to as " +
+                                $"the \"Act\", that the " +
+                                $"{rollDisplayWithReference} for the " +
+                                $"financial years ")
+                                .Style(body9);
+
+                            t.Span(
+                                Safe(ctx.FinancialYearsText))
+                                .Style(body9b);
+
+                            t.Span(
+                                " is open for public inspection on the website ")
+                                .Style(body9);
+
+                            t.Span(
+                                portalUrl)
+                                .Style(body9b);
+
+                            t.Span(
+                                " and at the address listed below from ")
+                                .Style(body9);
+
+                            t.Span(
+                                $"{ctx.InspectionStartDate:dd MMMM yyyy} – " +
+                                $"{closingDate:dd MMMM yyyy} until 15:00 pm")
+                                .Style(body9b);
+
+                            t.Span(".")
+                                .Style(body9);
                         });
 
                         col.Item().Text($"An invitation is hereby made in terms of section 49(1)(a)(ii) read together with section 78(2) of the Act to any owner of property or other person who so desires that may wish to lodge an objection with the Municipal Manager in respect of any matter reflected in, or omitted from, the {rollDisplayWithReference}. The objection must be submitted within the above mentioned inspection period."
@@ -188,11 +220,29 @@ namespace GV23_Notice.Services.Notices.Section49
 
                         col.Item().Text(t =>
                         {
-                            t.Span("Attention is specifically drawn to the fact that in terms of section 50(2) of the Act an objection must be in relation to a ").Style(body9);
-                            t.Span("specific individual property").Style(body9b);
-                            t.Span($" and not against the {rollDisplayWithReference} as such. The lodging of objections in terms of Chapter 4(d) of the Regulations to the Act can be done at the centre listed below or preferably online at ").Style(body9);
-                            t.Span(portalUrl).Style(body9b);
-                            t.Span(".").Style(body9);
+                            t.Span(
+                                "Attention is specifically drawn to the fact that " +
+                                "in terms of section 50(2) of the Act an objection " +
+                                "must be in relation to a ")
+                                .Style(body9);
+
+                            t.Span(
+                                "specific individual property")
+                                .Style(body9b);
+
+                            t.Span(
+                                $" and not against the {rollDisplayWithReference} " +
+                                "as such. The lodging of objections in terms of " +
+                                "Chapter 4(d) of the Regulations to the Act can " +
+                                "be done at the address below or preferably " +
+                                "online at ")
+                                .Style(body9);
+
+                            t.Span(portalUrl)
+                                .Style(body9b);
+
+                            t.Span(".")
+                                .Style(body9);
                         });
 
                         col.Item().Text(
@@ -325,9 +375,11 @@ namespace GV23_Notice.Services.Notices.Section49
                         col.Item()
                             .PaddingTop(10)
                             .AlignCenter()
-                            .Text(
-                                $"CLOSING DATE FOR OBJECTIONS IS 15:00 ON {closingDate:dd MMMM yyyy}".ToUpper()
-                            )
+                           .Text(
+    $"CLOSING DATE FOR OBJECTIONS IS " +
+    $"15:00 pm ON {closingDate:dd MMMM yyyy}"
+        .ToUpper()
+)
                             .Style(
                                 body9b.FontColor(
                                     Colors.Red.Medium));
