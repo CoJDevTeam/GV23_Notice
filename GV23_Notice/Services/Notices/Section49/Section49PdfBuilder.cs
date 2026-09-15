@@ -283,38 +283,39 @@ namespace GV23_Notice.Services.Notices.Section49
 
                         // Property box (light blue-ish)
                         col.Item()
-      .Background(
-          Color.FromRGB(
-              245,
-              250,
-              255))
-      .Padding(8)
-      .Row(row =>
-      {
-          row.RelativeItem(1.2f)
-              .Text(t =>
-              {
-                  t.Span("Property Description: ")
-                      .SemiBold()
-                      .Style(body9);
+       .Background(
+           Color.FromRGB(
+               245,
+               250,
+               255))
+       .PaddingVertical(5)
+       .PaddingHorizontal(8)
+       .Column(details =>
+       {
+           details.Spacing(2);
 
-                  t.Span(
-                      Safe(data.PropertyDesc))
-                      .Style(body9);
-              });
+           details.Item()
+               .Text(t =>
+               {
+                   t.Span("Property Description: ")
+                       .Style(body9b);
 
-          row.RelativeItem(1f)
-              .Text(t =>
-              {
-                  t.Span("Physical Address: ")
-                      .SemiBold()
-                      .Style(body9);
+                   t.Span(
+                       Safe(data.PropertyDesc))
+                       .Style(body9);
+               });
 
-                  t.Span(
-                      physicalAddress)
-                      .Style(body9);
-              });
-      });
+           details.Item()
+               .Text(t =>
+               {
+                   t.Span("Physical Address: ")
+                       .Style(body9b);
+
+                   t.Span(
+                       physicalAddress)
+                       .Style(body9);
+               });
+       });
                         // Property table — styled to match Section 53 table
                         col.Item().Table(table =>
                         {

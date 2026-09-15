@@ -350,8 +350,15 @@ namespace GV23_Notice.Services.Storage
                     break;
 
                 case NoticeKind.S52:
-                    (pdfBytes, propertyDesc) = await BuildS52PdfAsync(settings, roll, log, ct);
+                    (pdfBytes, propertyDesc) =
+                        await BuildS52PdfAsync(
+                            settings,
+                            roll,
+                            batch,
+                            log,
+                            ct);
                     break;
+                   
 
                 case NoticeKind.S53:
                 case NoticeKind.S53Rev:
@@ -801,109 +808,203 @@ namespace GV23_Notice.Services.Storage
 
         // ── S52 ─────────────────────────────────────────────────────────────
         private async Task<(byte[] pdfBytes, string propertyDesc)> BuildS52PdfAsync(
-            NoticeSettings settings,
-            Domain.Rolls.RollRegistry roll,
-            NoticeRunLog log,
-            CancellationToken ct)
+     NoticeSettings settings,
+     Domain.Rolls.RollRegistry roll,
+     NoticeBatch batch,
+     NoticeRunLog log,
+     CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(log.AppealNo))
-                throw new InvalidOperationException($"RunLog {log.Id} has no AppealNo for S52 print.");
+                throw new InvalidOperationException(
+                    $"RunLog {log.Id} has no AppealNo for S52 print.");
 
             var connStr = _config.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException("DefaultConnection missing.");
+                ?? throw new InvalidOperationException(
+                    "DefaultConnection missing.");
 
             bool isReview = settings.IsSection52Review == true;
+
             var proc = isReview
                 ? "dbo.S52_Preview_SelectReviewTop1"
                 : "dbo.S52_Preview_SelectAppealTop1";
 
-            var appealType = string.IsNullOrWhiteSpace(log.RecipientName) ? null : log.RecipientName.Trim();
+            var appealType =
+                string.IsNullOrWhiteSpace(log.RecipientName)
+                    ? null
+                    : log.RecipientName.Trim();
 
             AppealDecisionRow? row = null;
 
             await using var cn = new SqlConnection(connStr);
+
             await cn.OpenAsync(ct);
+
             await using var cmd = cn.CreateCommand();
+
             cmd.CommandText = proc;
             cmd.CommandType = CommandType.StoredProcedure;
             cmd.CommandTimeout = 60;
-            cmd.Parameters.Add(new SqlParameter("@RollId", SqlDbType.Int) { Value = roll.RollId });
-            cmd.Parameters.Add(new SqlParameter("@AppealNo", SqlDbType.VarChar, 50) { Value = log.AppealNo.Trim() });
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@RollId",
+                    SqlDbType.Int)
+                {
+                    Value = roll.RollId
+                });
+
+            cmd.Parameters.Add(
+                new SqlParameter(
+                    "@AppealNo",
+                    SqlDbType.VarChar,
+                    50)
+                {
+                    Value = log.AppealNo.Trim()
+                });
+
             if (appealType != null)
-                cmd.Parameters.Add(new SqlParameter("@AppealType", SqlDbType.NVarChar, 50) { Value = appealType });
+            {
+                cmd.Parameters.Add(
+                    new SqlParameter(
+                        "@AppealType",
+                        SqlDbType.NVarChar,
+                        50)
+                    {
+                        Value = appealType
+                    });
+            }
 
-            await using var rd = await cmd.ExecuteReaderAsync(ct);
+            await using var rd =
+                await cmd.ExecuteReaderAsync(ct);
 
-            var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < rd.FieldCount; i++) colMap[rd.GetName(i)] = i;
+            var colMap =
+                new Dictionary<string, int>(
+                    StringComparer.OrdinalIgnoreCase);
 
-            string? Str(string col) => colMap.TryGetValue(col, out var o) && !rd.IsDBNull(o) ? rd.GetString(o) : null;
+            for (int i = 0; i < rd.FieldCount; i++)
+            {
+                colMap[rd.GetName(i)] = i;
+            }
+
+            string? Str(string col) =>
+                colMap.TryGetValue(col, out var o) &&
+                !rd.IsDBNull(o)
+                    ? rd.GetString(o)
+                    : null;
+
             string? Ext(string col)
             {
-                if (!colMap.TryGetValue(col, out var o) || rd.IsDBNull(o))
+                if (!colMap.TryGetValue(col, out var o) ||
+                    rd.IsDBNull(o))
+                {
                     return null;
+                }
 
-                return ExtentDisplayHelper.SameAsDb(rd.GetValue(o));
+                return ExtentDisplayHelper.SameAsDb(
+                    rd.GetValue(o));
             }
-            decimal? Dec(string col)
-            {
-                if (!colMap.TryGetValue(col, out var o) || rd.IsDBNull(o)) return null;
-                var v = rd.GetValue(o);
-                if (v is decimal d) return d;
-                return decimal.TryParse(v.ToString(), out var p) ? p : null;
-            }
-            string N(decimal? v) => v?.ToString(CultureInfo.InvariantCulture) ?? "";
-            var address = AddressDisplayHelper.Format(
-    Str("ADDR1"),
-    Str("ADDR2"),
-    Str("ADDR3"),
-    Str("ADDR4"),
-    Str("ADDR5"));
+
+            var address =
+                AddressDisplayHelper.Format(
+                    Str("ADDR1"),
+                    Str("ADDR2"),
+                    Str("ADDR3"),
+                    Str("ADDR4"),
+                    Str("ADDR5"));
+
             if (await rd.ReadAsync(ct))
             {
                 row = new AppealDecisionRow
                 {
                     A_UserID = Str("A_UserID"),
+
                     Appeal_No = Str("Appeal_No"),
                     Objection_No = Str("Objection_No"),
+
                     valuation_Key = Str("valuation_Key"),
                     Property_desc = Str("Property_desc"),
+
                     Email = Str("Email"),
+
                     ADDR1 = address.Addr1,
                     ADDR2 = address.Addr2,
                     ADDR3 = address.Addr3,
                     ADDR4 = address.Addr4,
                     ADDR5 = address.Addr5,
+
                     Town = Str("Town"),
                     ERF = Str("ERF"),
                     PTN = Str("PTN"),
                     RE = Str("RE"),
-                    // Market value stored as "R 4,330,000" — read as string to preserve format in PDF
-                    App_Market_Value = Str("App_Market_Value"),
-                    App_Market_Value2 = Str("App_Market_Value2"),
-                    App_Market_Value3 = Str("App_Market_Value3"),
-                    App_Extent = Ext("App_Extent"),
-                    App_Extent2 = Ext("App_Extent2"),
-                    App_Extent3 = Ext("App_Extent3"),
-                    App_Category = Str("App_Category"),
-                    App_Category2 = Str("App_Category2"),
-                    App_Category3 = Str("App_Category3"),
+
+                    App_Market_Value =
+                        Str("App_Market_Value"),
+
+                    App_Market_Value2 =
+                        Str("App_Market_Value2"),
+
+                    App_Market_Value3 =
+                        Str("App_Market_Value3"),
+
+                    App_Extent =
+                        Ext("App_Extent"),
+
+                    App_Extent2 =
+                        Ext("App_Extent2"),
+
+                    App_Extent3 =
+                        Ext("App_Extent3"),
+
+                    App_Category =
+                        Str("App_Category"),
+
+                    App_Category2 =
+                        Str("App_Category2"),
+
+                    App_Category3 =
+                        Str("App_Category3")
                 };
             }
 
             if (row is null)
-                throw new InvalidOperationException(
-                    $"S52 print: no data found for AppealNo={log.AppealNo} in RollId={roll.RollId}.");
-
-            var ctx = new Section52PdfContext
             {
-                HeaderImagePath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG"),
-                LetterDate = DateOnly.FromDateTime(settings.LetterDate)
-            };
+                throw new InvalidOperationException(
+                    $"S52 print: no data found for " +
+                    $"AppealNo={log.AppealNo} " +
+                    $"in RollId={roll.RollId}.");
+            }
 
-            var pdfBytes = _s52Builder.BuildNotice(row, ctx);
-            var propertyDesc = row.Property_desc ?? log.AppealNo ?? log.Id.ToString();
-            return (pdfBytes, propertyDesc);
+            // IMPORTANT:
+            // Use the actual batch date selected when printing.
+            var letterDate =
+                DateOnly.FromDateTime(
+                    batch.BatchDate);
+
+            var ctx =
+                new Section52PdfContext
+                {
+                    HeaderImagePath =
+                        Path.Combine(
+                            _env.WebRootPath,
+                            "Images",
+                            "Obj_Header.PNG"),
+
+                    LetterDate = letterDate
+                };
+
+            var pdfBytes =
+                _s52Builder.BuildNotice(
+                    row,
+                    ctx);
+
+            var propertyDesc =
+                row.Property_desc
+                ?? log.AppealNo
+                ?? log.Id.ToString();
+
+            return (
+                pdfBytes,
+                propertyDesc);
         }
 
         // ── S53 ─────────────────────────────────────────────────────────────

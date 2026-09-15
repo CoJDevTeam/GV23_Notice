@@ -77,133 +77,268 @@ namespace GV23_Notice.Services.Step3
 
         // ── Print Range ─────────────────────────────────────────────────────
         public async Task<S52PrintRangeResult> PrintRangeAsync(
-            int settingsId, bool isReview, string printedBy, CancellationToken ct)
+            int settingsId,
+            bool isReview,
+            string printedBy,
+            CancellationToken ct)
         {
-            var s = await _db.NoticeSettings.AsNoTracking()
-                        .FirstOrDefaultAsync(x => x.Id == settingsId, ct)
-                    ?? throw new InvalidOperationException($"NoticeSettings {settingsId} not found.");
+            var s = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == settingsId, ct)
+                ?? throw new InvalidOperationException(
+                    $"NoticeSettings {settingsId} not found.");
 
             if (!s.IsApproved)
-                throw new InvalidOperationException("Settings must be approved before printing.");
+                throw new InvalidOperationException(
+                    "Settings must be approved before printing.");
+
             if (!s.BulkFromDate.HasValue || !s.BulkToDate.HasValue)
-                throw new InvalidOperationException("BulkFromDate / BulkToDate are required for S52 range print.");
+                throw new InvalidOperationException(
+                    "BulkFromDate / BulkToDate are required for S52 range print.");
 
-            var roll = await _db.RollRegistry.AsNoTracking()
-                           .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
-                       ?? throw new InvalidOperationException("Roll not found.");
+            var roll = await _db.RollRegistry
+                .AsNoTracking()
+                .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
+                ?? throw new InvalidOperationException("Roll not found.");
 
-            // Fetch all rows from SP
-            var rows = await FetchAllRowsAsync(s.RollId, s.BulkFromDate.Value, s.BulkToDate.Value, isReview, ct);
+            // ============================================================
+            // S52 RANGE RULE
+            //
+            // BulkFromDate / BulkToDate are ONLY used to select which
+            // Appeal_Decision rows must be printed.
+            //
+            // The actual letter date and footer "Generated on" date are
+            // taken from EACH Appeal_Decision.Batch_Date individually.
+            // ============================================================
+            var fromDate = s.BulkFromDate.Value.Date;
+            var toDate = s.BulkToDate.Value.Date;
+
+            var rows = await FetchAllRowsAsync(
+                s.RollId,
+                fromDate,
+                toDate,
+                isReview,
+                ct);
 
             var result = new S52PrintRangeResult
             {
                 Total = rows.Count,
-                WorkflowKey = s.ApprovalKey ?? s.WorkflowKey ?? Guid.Empty
+                WorkflowKey = s.ApprovalKey
+                              ?? s.WorkflowKey
+                              ?? Guid.Empty
             };
 
-            if (rows.Count == 0) return result;
+            if (rows.Count == 0)
+                return result;
 
-            // Create a tracking batch (BatchKind = STEP3, auto-named)
-            var shortCode = (roll.ShortCode ?? "").Replace(" ", "");
-            var prefix = isReview ? $"S52R_{shortCode}_" : $"AD_{shortCode}_";
-            var lastSeq = await _db.NoticeBatches.AsNoTracking()
-                .Where(b => b.RollId == s.RollId && b.Notice == NoticeKind.S52
-                         && b.BatchName.StartsWith(prefix))
+            // ============================================================
+            // Create one tracking batch for this print run.
+            //
+            // NoticeBatch.BatchDate remains the configured From Date
+            // because this batch can contain records from several dates.
+            // It is NOT used as the individual S52 PDF letter date.
+            // ============================================================
+            var shortCode = (roll.ShortCode ?? "")
+                .Replace(" ", "");
+
+            var prefix = isReview
+                ? $"S52R_{shortCode}_"
+                : $"AD_{shortCode}_";
+
+            var lastSeq = await _db.NoticeBatches
+                .AsNoTracking()
+                .Where(b =>
+                    b.RollId == s.RollId &&
+                    b.Notice == NoticeKind.S52 &&
+                    b.BatchName.StartsWith(prefix))
                 .OrderByDescending(b => b.Id)
                 .Select(b => b.BatchName)
                 .FirstOrDefaultAsync(ct);
 
             var nextSeq = 1;
-            if (lastSeq != null)
+
+            if (!string.IsNullOrWhiteSpace(lastSeq))
             {
                 var tail = lastSeq[prefix.Length..];
-                if (int.TryParse(tail, out var parsed)) nextSeq = parsed + 1;
-            }
-            var batchName = $"{prefix}{nextSeq:0000}";
 
+                if (int.TryParse(tail, out var parsed))
+                    nextSeq = parsed + 1;
+            }
+
+            var batchName = $"{prefix}{nextSeq:0000}";
             var nowUtc = DateTime.UtcNow;
+
             var batch = new NoticeBatch
             {
-                WorkflowKey = s.ApprovalKey ?? s.WorkflowKey ?? Guid.Empty,
+                WorkflowKey = s.ApprovalKey
+                              ?? s.WorkflowKey
+                              ?? Guid.Empty,
+
                 NoticeSettingsId = s.Id,
                 RollId = s.RollId,
                 Notice = NoticeKind.S52,
                 BatchKind = "STEP3",
                 BatchName = batchName,
-                BatchDate = s.BulkFromDate.Value,
+
+                // Tracking date for the print run only.
+                // Individual PDF dates come from row.BatchDate below.
+                BatchDate = fromDate,
+
                 NumberOfRecords = rows.Count,
                 CreatedBy = printedBy,
                 CreatedAtUtc = nowUtc
             };
+
             _db.NoticeBatches.Add(batch);
             await _db.SaveChangesAsync(ct);
 
-            // Header image context (built once, reused per record)
-            var headerPath = Path.Combine(_env.WebRootPath, "Images", "Obj_Header.PNG");
-            var ctx = new Section52PdfContext
-            {
-                HeaderImagePath = headerPath,
-                LetterDate = DateOnly.FromDateTime(s.LetterDate)
-            };
+            var headerPath = Path.Combine(
+                _env.WebRootPath,
+                "Images",
+                "Obj_Header.PNG");
 
-            // ── Step 1: Pre-insert ALL run logs as Generated ──────────────────
-            // This mirrors how Step3BatchService works — the polling endpoint
-            // watches Generated→Printed transitions, so logs must exist first.
-            var logs = rows.Select(row => new NoticeRunLog
-            {
-                NoticeBatchId = batch.Id,
-                AppealNo = row.AppealNo,
-                ObjectionNo = row.ObjectionNo,
-                PremiseId = row.PremiseId,
-                RecipientEmail = row.Email,
-                PropertyDesc = row.PropertyDesc,
-                // Store Appeal_Type in RecipientName (mirrors S53 storing ObjectorType)
-                // so BuildS52PdfAsync and path builder can determine Prop Owner later
-                RecipientName = row.AppealType ?? row.Addr1,
-                Status = RunStatus.Generated,
-                CreatedAtUtc = nowUtc
-            }).ToList();
+            _log.LogInformation(
+                "S52 print starting. RollId={RollId}, Batch={Batch}, " +
+                "FromDate={FromDate:yyyy-MM-dd}, ToDate={ToDate:yyyy-MM-dd}, " +
+                "IsReview={IsReview}, Rows={Rows}",
+                s.RollId,
+                batchName,
+                fromDate,
+                toDate,
+                isReview,
+                rows.Count);
+
+            // ============================================================
+            // Step 1:
+            // Pre-insert all RunLogs as Generated.
+            // ============================================================
+            var logs = rows
+                .Select(row => new NoticeRunLog
+                {
+                    NoticeBatchId = batch.Id,
+
+                    AppealNo = row.AppealNo,
+                    ObjectionNo = row.ObjectionNo,
+                    PremiseId = row.PremiseId,
+
+                    RecipientEmail = row.Email,
+                    PropertyDesc = row.PropertyDesc,
+
+                    // Store Appeal_Type so Prop Owner / other recipient
+                    // can still be determined when building the path.
+                    RecipientName = row.AppealType ?? row.Addr1,
+
+                    Status = RunStatus.Generated,
+                    CreatedAtUtc = nowUtc
+                })
+                .ToList();
 
             _db.NoticeRunLogs.AddRange(logs);
-            await _db.SaveChangesAsync(ct);   // All logs visible to polling as Generated
+            await _db.SaveChangesAsync(ct);
 
-            // ── Step 2: Process each record — build PDF → update log status ───
-            for (int i = 0; i < rows.Count; i++)
+            // ============================================================
+            // Step 2:
+            // Generate every S52 PDF.
+            //
+            // IMPORTANT:
+            // Each row gets its OWN PDF context using its OWN Batch_Date.
+            // Example:
+            // 11 Sep row -> 11 Sep letter/footer
+            // 13 Sep row -> 13 Sep letter/footer
+            // 15 Sep row -> 15 Sep letter/footer
+            // ============================================================
+            for (var i = 0; i < rows.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
 
                 var row = rows[i];
                 var log = logs[i];
-                var appealRow = MapToAppealDecisionRow(row);
 
                 try
                 {
-                    var pdfBytes = _pdf.BuildNotice(appealRow, ctx);
-                    var propertyDesc = row.PropertyDesc ?? row.AppealNo ?? log.Id.ToString();
-                    var isPropOwner = string.Equals(row.AppealType, "Prop Owner",
-                                           StringComparison.OrdinalIgnoreCase);
+                    if (!row.BatchDate.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            $"S52 record AppealNo={row.AppealNo} has no Batch_Date.");
+                    }
 
-                    var pdfPath = _paths.BuildS52PdfPath(roll, row.AppealNo ?? "", propertyDesc,
-                                                         isReview, isPropOwner);
-                    SavePdf(pdfPath, pdfBytes);
+                    var noticeDate = DateOnly.FromDateTime(
+                        row.BatchDate.Value.Date);
+
+                    var ctx = new Section52PdfContext
+                    {
+                        HeaderImagePath = headerPath,
+
+                        // Section52PdfService uses this value for BOTH:
+                        // 1. top-right letter date
+                        // 2. footer "Generated on" date
+                        LetterDate = noticeDate
+                    };
+
+                    var appealRow = MapToAppealDecisionRow(row);
+
+                    var pdfBytes = _pdf.BuildNotice(
+                        appealRow,
+                        ctx);
+
+                    var propertyDesc =
+                        row.PropertyDesc
+                        ?? row.AppealNo
+                        ?? log.Id.ToString();
+
+                    var isPropOwner = string.Equals(
+                        row.AppealType,
+                        "Prop Owner",
+                        StringComparison.OrdinalIgnoreCase);
+
+                    var pdfPath = _paths.BuildS52PdfPath(
+                        roll,
+                        row.AppealNo ?? "",
+                        propertyDesc,
+                        isReview,
+                        isPropOwner);
+
+                    SavePdf(
+                        pdfPath,
+                        pdfBytes);
 
                     log.PdfPath = pdfPath;
                     log.Status = RunStatus.Printed;
+                    log.ErrorMessage = null;
+
                     result.Printed++;
 
                     _log.LogInformation(
-                        "S52 PDF printed: {AppealNo} AppealType={Type} isPropOwner={PO} → {Path}",
-                        row.AppealNo, row.AppealType ?? "n/a", isPropOwner, pdfPath);
+                        "S52 PDF printed: AppealNo={AppealNo}, " +
+                        "BatchDate={BatchDate:yyyy-MM-dd HH:mm:ss.fff}, " +
+                        "PdfDate={PdfDate}, AppealType={Type}, " +
+                        "IsPropOwner={PropOwner}, Path={Path}",
+                        row.AppealNo,
+                        row.BatchDate.Value,
+                        noticeDate,
+                        row.AppealType ?? "n/a",
+                        isPropOwner,
+                        pdfPath);
                 }
                 catch (Exception ex)
                 {
-                    _log.LogError(ex, "S52 print failed for AppealNo={AppealNo}", row.AppealNo);
+                    _log.LogError(
+                        ex,
+                        "S52 print failed for AppealNo={AppealNo}",
+                        row.AppealNo);
+
                     log.Status = RunStatus.Failed;
-                    log.ErrorMessage = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
+
+                    log.ErrorMessage =
+                        ex.Message.Length > 2000
+                            ? ex.Message[..2000]
+                            : ex.Message;
+
                     result.Failed++;
                 }
 
-                await _db.SaveChangesAsync(ct);   // Polling sees Generated→Printed for this record
+                // Polling sees Generated -> Printed / Failed per record.
+                await _db.SaveChangesAsync(ct);
             }
 
             return result;
@@ -242,6 +377,25 @@ namespace GV23_Notice.Services.Step3
                 return decimal.TryParse(v.ToString(), out var p) ? p : null;
             }
 
+            DateTime? Dt(string col)
+            {
+                if (!map.TryGetValue(col, out var o) || rd.IsDBNull(o))
+                    return null;
+
+                var v = rd.GetValue(o);
+
+                if (v is DateTime dt)
+                    return dt;
+
+                return DateTime.TryParse(
+                    v?.ToString(),
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AllowWhiteSpaces,
+                    out var parsed)
+                        ? parsed
+                        : null;
+            }
+
             while (await rd.ReadAsync(ct))
             {
                 list.Add(new S52KickoffRow
@@ -273,6 +427,11 @@ namespace GV23_Notice.Services.Step3
                     AppCategory = Str("App_Category"),
                     AppCategory2 = Str("App_Category2"),
                     AppCategory3 = Str("App_Category3"),
+
+                    // Actual Batch_Date from Appeal_Decision.
+                    // Time is retained here; only the PDF display uses the date portion.
+                    BatchDate = Dt("Batch_Date"),
+
                     // "Prop Owner", "Third_Party", "Representative"
                 });
             }
@@ -350,6 +509,9 @@ namespace GV23_Notice.Services.Step3
             public string? AppCategory { get; set; }
             public string? AppCategory2 { get; set; }
             public string? AppCategory3 { get; set; }
+
+            // Actual Appeal_Decision.Batch_Date for this specific notice.
+            public DateTime? BatchDate { get; set; }
         }
     }
 }

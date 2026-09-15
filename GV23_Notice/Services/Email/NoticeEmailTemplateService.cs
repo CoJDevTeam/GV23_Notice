@@ -185,8 +185,8 @@ namespace GV23_Notice.Services.Email
                 "'>");
 
             mid.Append(
-                $"Note: Any objection received via email or hand delivery " +
-                $"after 15:00 on {finalEndDate:dd MMMM yyyy} " +
+                $"Note: Any objection received via email or hand delivered " +
+                $"after 15:00 PM on {finalEndDate:dd MMMM yyyy} " +
                 $"will be deemed late and will not be accepted.");
 
             mid.Append(
