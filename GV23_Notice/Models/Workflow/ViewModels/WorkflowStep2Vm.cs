@@ -36,6 +36,9 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public string? Step2ApprovedBy { get; set; }
         public DateTime? Step2ApprovedAtUtc { get; set; }
 
+        /// <summary>Workflow key — lets the view link straight to Step 3 when already approved.</summary>
+        public Guid? ApprovalKey { get; set; }
+
         // correction modal
         public string? CorrectionComment { get; set; }
 

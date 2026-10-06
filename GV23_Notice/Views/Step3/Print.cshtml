@@ -40,7 +40,6 @@
         key = Model.WorkflowKey
     }) ?? "#";
 }
-<link href="~/css/Step3/Step3KickoffCss.css" rel="stylesheet" />
 <style>
     /* ── FULL-SCREEN SHELL ────────────────────────────────── */
     .sp-fs {
@@ -1012,7 +1011,7 @@
     }
 </style>
 
-<div class="sp-fs">
+<div class="sp-fs en-has-panel">
 
     <!-- META BAR -->
     <div class="sp-meta">
@@ -1159,15 +1158,24 @@
         <div class="sp-trail-label">
             Print @(Model.IsS52 ? "Range" : isClaTpa ? "CLA Notices" : isTpa ? "Third-Party Applications" : "Batches")
             &nbsp;·&nbsp;
-            <span>@(qaRequired ? "QA Required" : "Step 3")</span>
+            <span>@(qaRequired ? "Quality Check Required" : "Step 3")</span>
         </div>
+        <button type="button" class="en-panel-btn" data-en-panel="enActionPanel" aria-controls="enActionPanel" aria-expanded="false">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>
+            Actions and Summary
+        </button>
     </div>
 
     <!-- BODY -->
     <div class="sp-body">
 
         <!-- ── LEFT SIDEBAR ──────────────────────────────────────────────── -->
-        <div class="sp-left">
+        <div class="sp-left en-panel" id="enActionPanel" role="dialog" aria-modal="true" aria-label="Actions and summary"
+             data-en-lift=".sp-alert" data-en-lift-to=".sp-right">
+            <div class="en-panel-head">
+                <span class="en-panel-title">Actions and Summary</span>
+                <button type="button" class="en-panel-x" data-en-panel-close aria-label="Close">&times;</button>
+            </div>
 
             @if (TempData["Success"] != null)
             {
@@ -1331,7 +1339,7 @@
                     @if (mustGoQa)
                     {
                         <a href="@Url.Action("QA", "Step3", new { key })" class="btn-outline-gold">
-                            🔍 Go to QA →
+                            🔍 Go to Quality Check →
                         </a>
                     }
                     else
@@ -1342,7 +1350,7 @@
                     }
 
                     <a href="@kickoffUrl" class="btn-outline-dark">
-                        ← Back to Kickoff
+                        ← Back to Batches
                     </a>
                 }
                 else if (isClaTpa && cla != null)
@@ -1387,7 +1395,7 @@
                     @if (mustGoQa)
                     {
                         <a href="@Url.Action("QA", "Step3", new { key })" class="btn-outline-gold">
-                            🔍 Go to QA →
+                            🔍 Go to Quality Check →
                         </a>
                     }
                     else
@@ -1398,7 +1406,7 @@
                     }
 
                     <a href="@kickoffUrl" class="btn-outline-dark">
-                        ← Back to Kickoff
+                        ← Back to Batches
                     </a>
                 }
                 else if (isTpa && tpa != null)
@@ -1439,7 +1447,7 @@
                     @if (mustGoQa)
                     {
                         <a href="@Url.Action("QA", "Step3", new { key })" class="btn-outline-gold">
-                            🔍 Go to QA →
+                            🔍 Go to Quality Check →
                         </a>
                     }
                     else
@@ -1450,7 +1458,7 @@
                     }
 
                     <a href="@kickoffUrl" class="btn-outline-dark">
-                        ← Back to Kickoff
+                        ← Back to Batches
                     </a>
                 }
                 else
@@ -1477,7 +1485,7 @@
                     {
                         <a href="@Url.Action("QA", "Step3", new { key })"
                                class="btn-outline-gold">
-                            🔍 Go to QA →
+                            🔍 Go to Quality Check →
                         </a>
                     }
                     else
@@ -1489,7 +1497,7 @@
                     }
 
                     <a href="@kickoffUrl" class="btn-outline-dark">
-                        ← Back to Kickoff
+                        ← Back to Batches
                     </a>
                 }
 
@@ -1886,7 +1894,7 @@
                                 </div>
 
                                 <a href="@kickoffUrl" class="btn-gold" style="margin-top:14px;max-width:220px">
-                                    ← Back to Kickoff
+                                    ← Back to Batches
                                 </a>
                             }
                         }

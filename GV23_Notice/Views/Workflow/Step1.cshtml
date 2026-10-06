@@ -6,6 +6,11 @@
     var isEdit = Model.SettingsId.HasValue;
     var isClaTpa = Model.Notice == NoticeKind.CLA_TPA;
     var isTpa = Model.Notice == NoticeKind.TPA;
+    var summaryUrl = isEdit
+        ? Url.Action("Step1Summary", "Workflow", new { settingsId = Model.SettingsId, partial = true })
+        : null;
+    var openSummary = ViewBag.OpenSummary is bool os && os && isEdit;
+    var isLockedApproved = ViewBag.IsApproved is bool ia && ia;
 }
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -30,8 +35,8 @@
             <div class="s1-logo-mark">VNS</div>
             <div class="s1-topbar-divider"></div>
             <div>
-                <div class="s1-page-title">Notice Configuration</div>
-                <div class="s1-page-sub">Step 1 — Date Configuration</div>
+                <div class="s1-page-title">Date Configuration</div>
+                <div class="s1-page-sub">Step 1 of 3 — Set the notice dates, then review the summary</div>
             </div>
         </div>
         <div class="s1-topbar-right">
@@ -41,9 +46,9 @@
             @if (isEdit)
             {
                 <a class="s1-topbar-link s1-topbar-link-gold"
-                       asp-controller="Workflow" asp-action="Step1Summary"
-                       asp-route-settingsId="@Model.SettingsId">
-                    View Summary →
+                   href="@Url.Action("Step1Summary", "Workflow", new { settingsId = Model.SettingsId })"
+                   data-en-open-url="@summaryUrl">
+                    View Date Summary
                 </a>
             }
         </div>
@@ -53,17 +58,17 @@
     <div class="s1-stepper">
         <div class="s1-step s1-step-active">
             <div class="s1-step-num">1</div>
-            <div class="s1-step-label">Configure Dates</div>
+            <div class="s1-step-label">Date Configuration</div>
         </div>
         <div class="s1-step-line"></div>
         <div class="s1-step">
             <div class="s1-step-num">2</div>
-            <div class="s1-step-label">Preview</div>
+            <div class="s1-step-label">Notice Preview</div>
         </div>
         <div class="s1-step-line"></div>
         <div class="s1-step">
             <div class="s1-step-num">3</div>
-            <div class="s1-step-label">Start Step 3</div>
+            <div class="s1-step-label">Batches, Printing and Sending</div>
         </div>
     </div>
 
@@ -86,11 +91,11 @@
                     </div>
                     <div class="s1-sidebar-item" id="nav-common" onclick="scrollTo('card-common')">
                         <div class="s1-sidebar-num">02</div>
-                        Common Fields
+                        General Details
                     </div>
                     <div class="s1-sidebar-item" id="nav-notice" onclick="scrollTo('card-notice')">
                         <div class="s1-sidebar-num">03</div>
-                        Notice-Specific
+                        Notice Dates
                     </div>
                 </div>
                 <div style="padding:0 20px">
@@ -112,6 +117,17 @@
 
             <!-- MAIN -->
             <div class="s1-main">
+
+                @if (isLockedApproved)
+                {
+                    <div class="en-alert en-alert-warn" style="margin-bottom:16px">
+                        <strong>!</strong>
+                        <div>
+                            Version @ViewBag.ApprovedVersion is already approved and locked.
+                            If you change and save the dates, a <strong>new version</strong> will be created and must be approved again.
+                        </div>
+                    </div>
+                }
 
                 <!-- Validation Banner -->
                 <div class="s1-val-banner" id="valBanner">
@@ -606,25 +622,25 @@
                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                         <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    Save &amp; Review Summary
+                    Save and Review Summary
                 </span>
             </button>
             @if (isEdit)
             {
                 <a class="s1-btn s1-btn-secondary"
-                       asp-controller="Workflow" asp-action="Step1Summary"
-                       asp-route-settingsId="@Model.SettingsId">
+                   href="@Url.Action("Step1Summary", "Workflow", new { settingsId = Model.SettingsId })"
+                   data-en-open-url="@summaryUrl">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                         <circle cx="12" cy="12" r="3" />
                     </svg>
-                    View Summary
+                    View Date Summary
                 </a>
             }
             <a class="s1-btn s1-btn-outline"
                    asp-controller="Workflow" asp-action="SettingsLibrary">
-                ← Settings Library
+                ← Saved Configurations
             </a>
         </div>
 
@@ -731,6 +747,25 @@
                                             WfToast.error("@Html.Raw(TempData["Error"]?.ToString()?.Replace("\"", "\\\""))"));
                         </text>
         }
+
+        /* ── Date summary modal ─────────────────────────── */
+        @if (openSummary)
+        {
+            <text>
+            document.addEventListener('DOMContentLoaded', function () {
+                window.eNotice.openUrl('@Html.Raw(summaryUrl)');
+            });
+            </text>
+        }
+        // "Edit Dates" inside the modal: we are already on this page, so just close it
+        document.addEventListener('click', function (e) {
+            var edit = e.target.closest('[data-en-edit]');
+            if (!edit) return;
+            e.preventDefault();
+            window.eNotice.closeModal(edit.closest('.en-modal'));
+            var first = document.getElementById('card-period');
+            if (first) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
 
         /* ── Helpers ────────────────────────────────────── */
         function toIsoDate(d) {

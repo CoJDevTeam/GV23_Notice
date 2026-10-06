@@ -45,27 +45,9 @@ namespace GV23_Notice.Services.Step3
                            .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
                        ?? throw new InvalidOperationException("Roll not found.");
 
-            // 2) Compute correct prefix per notice type
-            var shortCode = roll.ShortCode ?? "";
-            var prefix = BuildStep3BatchPrefix(s, shortCode);
-
-            // 3) Compute next sequence using the correct prefix
-            var last = await _db.NoticeBatches.AsNoTracking()
-                .Where(b => b.RollId == s.RollId
-                         && b.BatchKind == "STEP3"
-                         && b.BatchName.StartsWith(prefix))
-                .OrderByDescending(b => b.Id)
-                .FirstOrDefaultAsync(ct);
-
-            var nextSeq = 1;
-            if (last != null && last.BatchName.Length > prefix.Length)
-            {
-                var suf = last.BatchName[prefix.Length..];
-                if (int.TryParse(suf, out var parsed))
-                    nextSeq = parsed + 1;
-            }
-
-            var batchName = $"{prefix}{nextSeq:0000}";
+            // 2 + 3) Prefix and next sequence — ONE shared rule, also used by the
+            //        Batch Dashboard so the "Next batch" shown always matches.
+            var batchName = await NextBatchNameAsync(s, roll.ShortCode ?? "", ct);
             var batchDateUtc = batchDate.Date;
             var nowUtc = DateTime.UtcNow;
 
@@ -721,6 +703,56 @@ namespace GV23_Notice.Services.Step3
                 ? BatchMode.Single
                 : BatchMode.Bulk;
         }
+        /// <summary>
+        /// The batch name the next "Create Batch" will use for this workflow.
+        /// Read-only: nothing is reserved or saved.
+        /// </summary>
+        public async Task<string> PeekNextBatchNameAsync(int settingsId, CancellationToken ct)
+        {
+            var s = await _db.NoticeSettings.AsNoTracking()
+                        .FirstOrDefaultAsync(x => x.Id == settingsId, ct)
+                    ?? throw new InvalidOperationException("NoticeSettings not found.");
+
+            var roll = await _db.RollRegistry.AsNoTracking()
+                           .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct)
+                       ?? throw new InvalidOperationException("Roll not found.");
+
+            return await NextBatchNameAsync(s, roll.ShortCode ?? "", ct);
+        }
+
+        /// <summary>Records per batch shown to users (S49 is configurable; the stored procedures take the top 500).</summary>
+        public int GetRecordsPerBatch(NoticeKind notice)
+            => notice == NoticeKind.S49 && _section49.Batch.Size > 0
+                ? _section49.Batch.Size
+                : 500;
+
+        private async Task<string> NextBatchNameAsync(NoticeSettings s, string shortCode, CancellationToken ct)
+        {
+            var prefix = BuildStep3BatchPrefix(s, shortCode);
+
+            // Look at every STEP3 batch on this roll with the same prefix (across versions)
+            var names = await _db.NoticeBatches.AsNoTracking()
+                .Where(b => b.RollId == s.RollId
+                         && b.BatchKind == "STEP3"
+                         && b.BatchName.StartsWith(prefix))
+                .Select(b => b.BatchName)
+                .ToListAsync(ct);
+
+            // Use the highest number, not the newest row, so a deleted/failed batch can't cause a repeat
+            var maxSeq = 0;
+            foreach (var name in names)
+            {
+                if (name.Length > prefix.Length &&
+                    int.TryParse(name[prefix.Length..], out var n) &&
+                    n > maxSeq)
+                {
+                    maxSeq = n;
+                }
+            }
+
+            return $"{prefix}{maxSeq + 1:0000}";
+        }
+
         private static string BuildStep3BatchPrefix(NoticeSettings s, string shortCode)
         {
             return s.Notice switch

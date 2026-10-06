@@ -54,8 +54,6 @@
         (qaRequired && !qaApproved);
 }
 
-<link href="~/css/Step3/Step3KickOffCss1.css" rel="stylesheet" />
-
 <!-- PAGE LOADER -->
 <div id="pageLoader">
     <div class="ld-logo">GV23 <span>Notices</span></div>
@@ -953,7 +951,7 @@
         }
 </style>
 
-<div class="se-fs">
+<div class="se-fs en-has-panel">
     <div class="se-meta">
         <div class="se-chip"><span class="se-chip-lbl">Roll</span><span class="se-chip-val gold">@Model.RollShortCode — @Model.RollName</span></div>
         <div class="se-chip"><span class="se-chip-lbl">Notice</span><span class="se-chip-val gold">@Model.Notice</span></div>
@@ -1024,12 +1022,21 @@
         </div>
         <div class="se-step-lbl">
             Send Notices to Clients &nbsp;·&nbsp;
-            <span>@(qaRequired ? "QA Gate Active" : "Step 3 / Step 3")</span>
+            <span>@(qaRequired ? "Quality Check Required" : "Step 3")</span>
         </div>
+        <button type="button" class="en-panel-btn" data-en-panel="enActionPanel" aria-controls="enActionPanel" aria-expanded="false">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>
+            Actions and Summary
+        </button>
     </div>
 
     <div class="se-body">
-        <div class="se-left">
+        <div class="se-left en-panel" id="enActionPanel" role="dialog" aria-modal="true" aria-label="Actions and summary"
+             data-en-lift=".se-alert" data-en-lift-to=".se-right">
+            <div class="en-panel-head">
+                <span class="en-panel-title">Actions and Summary</span>
+                <button type="button" class="en-panel-x" data-en-panel-close aria-label="Close">&times;</button>
+            </div>
             @if (TempData["Success"] != null)
             {
                 <div class="se-alert se-alert-ok">@TempData["Success"]</div>

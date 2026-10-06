@@ -14,7 +14,7 @@
     ? "Step 3 — CLA Notice Print"
     : isTpa
         ? "Step 3 — Third-Party Appeal Print"
-        : "Step 3 — Batch Dashboard";
+        : "Step 3 — Batches, Printing and Sending";
 
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
 
@@ -72,8 +72,8 @@
                         </svg>
                     </div>
                     <div>
-                        <div class="s2-head-title">Step 2 Approved</div>
-                        <div class="s2-head-sub">Ready to create your first batch</div>
+                        <div class="s2-head-title">Notice Preview Approved</div>
+                        <div class="s2-head-sub">You can now create the first batch</div>
                     </div>
                 </div>
                 <button class="s2-close" onclick="closeS2Modal()">✕</button>
@@ -87,14 +87,14 @@
                     {
                         <div class="cb-info-row"><span class="cb-info-key">Appeal Closes</span><span class="cb-info-val">@Model.AppealCloseDate.Value.ToString("dd MMMM yyyy")</span></div>
                     }
-                    <div class="cb-info-row"><span class="cb-info-key">First Batch</span><span class="cb-info-val mono">@Model.NextBatchCode</span></div>
+                    <div class="cb-info-row"><span class="cb-info-key">First Batch Number</span><span class="cb-info-val mono">@Model.NextBatchCode</span></div>
                 </div>
                 <p class="s2-note">
-                    ℹ Click <strong>Create First Batch</strong> to open the batch form, or <strong>View Dashboard</strong> to continue later.
+                    Choose <strong>Create First Batch</strong> now, or <strong>Later</strong> to come back to this page from <em>Batches, Printing and Sending</em>.
                 </p>
             </div>
             <div class="s2-foot">
-                <button class="cb-cancel" onclick="closeS2Modal()">View Dashboard</button>
+                <button class="cb-cancel" onclick="closeS2Modal()">Later</button>
                 <button class="cb-submit" onclick="closeS2AndOpenCreate()">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
@@ -133,8 +133,8 @@
                 {
                     <div class="cb-info-row"><span class="cb-info-key">Objection Period</span><span class="cb-info-val">@(Model.ObjectionStartDate?.ToString("dd MMM") ?? "—") – @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</span></div>
                 }
-                <div class="cb-info-row"><span class="cb-info-key">Batch Code</span><span class="cb-info-val mono">@Model.NextBatchCode</span></div>
-                <div class="cb-info-row"><span class="cb-info-key">Records</span><span class="cb-info-val">Up to 500 per batch</span></div>
+                <div class="cb-info-row"><span class="cb-info-key">Batch Number</span><span class="cb-info-val mono">@Model.NextBatchCode</span></div>
+                <div class="cb-info-row"><span class="cb-info-key">Records</span><span class="cb-info-val">Up to @Model.RecordsPerBatch.ToString("N0") per batch</span></div>
             </div>
             <form asp-action="Step2CreateBatch" asp-controller="Step3" method="post" id="cbForm">
                 @Html.AntiForgeryToken()
@@ -170,7 +170,7 @@
                         ? "CLA Notice Print Dashboard"
                         : isTpa
                             ? "Third-Party Appeal Print Dashboard"
-                            : "Batch Dashboard")
+                            : "Batches, Printing and Sending")
                 </div>
                 <div class="dash-sub">
                     Step 3 —
@@ -181,8 +181,8 @@
              </div>
         </div>
         <div class="dash-hero-right">
-            <a class="dash-hero-link" href="@Url.Action("Index", "Step3")">← All Workflows</a>
-            <a class="dash-hero-link" href="@Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = "Default", mode = "single" })">Preview Notice</a>
+            <a class="dash-hero-link" href="@Url.Action("Index", "Step3")">← All Approved Notices</a>
+            <a class="dash-hero-link" href="@Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId })">View Notice Preview</a>
         </div>
     </div>
 
@@ -231,7 +231,7 @@
     <div class="dash-body">
 
         <!-- Alerts -->
-        @if (TempData["Success"] != null)
+        @if (TempData["Success"] != null && !Model.FromStep2)
         {
             <div class="dash-alert dash-alert-ok">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
@@ -347,18 +347,18 @@
                 </div>
 
                 <div class="dash-stat stat-gold">
-                    <div class="dash-stat-lbl">Next Batch</div>
+                    <div class="dash-stat-lbl">Next Batch Number</div>
                     <div class="dash-stat-num"
                          style="font-size:15px;font-family:monospace!important">
                         @Model.NextBatchCode
                     </div>
-                    <div class="dash-stat-sub">Auto-assigned code</div>
+                    <div class="dash-stat-sub">Given automatically</div>
                 </div>
 
                 <div class="dash-stat">
                     <div class="dash-stat-lbl">Records per Batch</div>
-                    <div class="dash-stat-num">500</div>
-                    <div class="dash-stat-sub">Fixed per run</div>
+                    <div class="dash-stat-num">@Model.RecordsPerBatch.ToString("N0")</div>
+                    <div class="dash-stat-sub">The last batch may be smaller</div>
                 </div>
             }
         </div>
@@ -416,7 +416,7 @@
                                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                                 <rect x="6" y="14" width="12" height="8" />
                             </svg>
-                            Print Dashboard
+                            Print Notices
                         </a>
 
                         <a href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })"
@@ -429,7 +429,7 @@
                                 <line x1="22" y1="2" x2="11" y2="13" />
                                 <polygon points="22 2 15 22 11 13 2 9 22 2" />
                             </svg>
-                            Send Email
+                            Send Notices
                         </a>
                     }
 
@@ -581,9 +581,9 @@
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th>Batch Code</th>
+                                <th>Batch Number</th>
                                 <th>Batch Date</th>
-                                <th>Records</th>
+                                <th>Number of Records</th>
                                 <th>Created By</th>
                                 <th>Created At</th>
                                 <th>Status</th>
@@ -609,7 +609,7 @@
                                     <td>
                                         @if (b.IsApproved)
                                         {
-                                            <span class="k-badge k-badge-ok">✓ Done</span>
+                                            <span class="k-badge k-badge-ok">✓ Completed</span>
                                         }
                                         else
                                         {
@@ -626,7 +626,7 @@
                                                     <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
                                                     <rect x="6" y="14" width="12" height="8" />
                                                 </svg>
-                                                Print
+                                                Print Notices
                                             </a>
                                             <a class="tbl-btn tbl-btn-send"
                                                href="@Url.Action("SendEmail", "Step3", new { key = Model.ApprovalKey })">
@@ -634,7 +634,7 @@
                                                     <line x1="22" y1="2" x2="11" y2="13" />
                                                     <polygon points="22 2 15 22 11 13 2 9 22 2" />
                                                 </svg>
-                                                Send
+                                                Send Notices
                                             </a>
                                         </div>
                                     </td>

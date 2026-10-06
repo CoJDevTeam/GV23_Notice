@@ -3,7 +3,7 @@
 @using GV23_Notice.Domain.Workflow
 
 @{
-    ViewData["Title"] = "Step 3 — Batch Summary & Print";
+    ViewData["Title"] = "Step 3 — Batch Summary and Printing";
 
     var batchSize = Model.BatchSize <= 0 ? 500 : Model.BatchSize;
     var totalPending = Math.Max(0, Model.TotalPendingRecords);
@@ -17,7 +17,6 @@
     bool allDone = remaining == 0 && createdBatches > 0;
 }
 
-<link href="~/css/step3/step3kickoffcss.css" rel="stylesheet" />
 <style>
     /* ── FULL-SCREEN SHELL ───────────────────────────────── */
     .sp-fullscreen {
@@ -912,7 +911,7 @@
 <!-- ════════════════════════════════════════════════════════════
      FULL SCREEN SHELL
 ════════════════════════════════════════════════════════════ -->
-<div class="sp-fullscreen">
+<div class="sp-fullscreen en-has-panel">
 
     <!-- META BAR -->
     <div class="sp-meta-bar">
@@ -934,14 +933,23 @@
             <div class="sp-bc-arrow">›</div>
             <div class="sp-bc active"><div class="sp-bc-dot">4</div>Print</div>
         </div>
-        <div class="sp-step-label">Batch Summary &amp; Print &nbsp;·&nbsp; <span>Step 3 / Step 2</span></div>
+        <div class="sp-step-label">Batch Summary and Printing &nbsp;·&nbsp; <span>Step 3</span></div>
+        <button type="button" class="en-panel-btn" data-en-panel="enActionPanel" aria-controls="enActionPanel" aria-expanded="false">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="18" x2="14" y2="18" /></svg>
+            Actions and Summary
+        </button>
     </div>
 
     <!-- BODY -->
     <div class="sp-body">
 
         <!-- ── LEFT: SUMMARY SIDEBAR ───────────────────────── -->
-        <div class="sp-left">
+        <div class="sp-left en-panel" id="enActionPanel" role="dialog" aria-modal="true" aria-label="Actions and summary"
+             data-en-lift=".sp-alert" data-en-lift-to=".sp-right">
+            <div class="en-panel-head">
+                <span class="en-panel-title">Actions and Summary</span>
+                <button type="button" class="en-panel-x" data-en-panel-close aria-label="Close">&times;</button>
+            </div>
 
             @if (TempData["Success"] != null)
             {

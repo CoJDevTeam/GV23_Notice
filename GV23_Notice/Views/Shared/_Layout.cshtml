@@ -1,4 +1,4 @@
-﻿@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @inject IAuthorizationService AuthorizationService
 
@@ -13,311 +13,267 @@
     var fullName = User.FindFirst("FullName")?.Value ?? User.Identity?.Name ?? "User";
     var shortName = fullName.Contains("\\") ? fullName.Split("\\").Last() : fullName;
     var initials = string.Concat(
-                        shortName.Split(' ', System.StringSplitOptions.RemoveEmptyEntries)
-                                 .Take(2).Select(w => char.ToUpper(w[0])));
+        shortName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                 .Take(2).Select(w => char.ToUpper(w[0])));
     if (initials.Length == 0) initials = "U";
     var roleName = User.FindFirst(ClaimTypes.Role)?.Value ?? "";
 
-    string Nav(string ctrl, string? act = null)
-    {
-        var cm = string.Equals(controller, ctrl, StringComparison.OrdinalIgnoreCase);
-        var am = string.IsNullOrWhiteSpace(act)
-              || string.Equals(action, act, StringComparison.OrdinalIgnoreCase);
-        return cm && am ? "vns-nav-item active" : "vns-nav-item";
-    }
+    bool Is(string ctrl, params string[] acts) =>
+        string.Equals(controller, ctrl, StringComparison.OrdinalIgnoreCase) &&
+        (acts.Length == 0 || acts.Any(a => string.Equals(action, a, StringComparison.OrdinalIgnoreCase)));
 
-    // Determine which step is active for group highlighting
-    bool isStep1 = string.Equals(controller, "Workflow", StringComparison.OrdinalIgnoreCase)
-                 && string.Equals(action, "Step1", StringComparison.OrdinalIgnoreCase);
-    bool isStep2 = string.Equals(controller, "Workflow", StringComparison.OrdinalIgnoreCase)
-                 && string.Equals(action, "Step2", StringComparison.OrdinalIgnoreCase);
-    bool isStep3 = string.Equals(controller, "Step3", StringComparison.OrdinalIgnoreCase);
-    bool isCorrection = string.Equals(controller, "NoticeCorrection", StringComparison.OrdinalIgnoreCase);
+    // Which drawer item is active
+    bool navHome = Is("Home");
+    bool navDates = Is("Workflow", "Step1", "Step1Summary");
+    bool navPreview = Is("Workflow", "Step2", "SettingsLibrary", "Step2EmailSuccess");
+    bool navProcess = (Is("Step3") && !Is("Step3", "SendStats")) || Is("Workflow", "Step3Kickoff", "Step3Landing");
+    bool navStats = Is("Stats") || Is("Step3", "SendStats");
+    bool navSearch = Is("NoticeSearch");
+    bool navCorrections = Is("NoticeCorrection");
+
+    string A(bool on) => on ? "en-nav-link active" : "en-nav-link";
+    string? Cur(bool on) => on ? "page" : null;
+
+    var pageTitle = ViewData["Title"]?.ToString()?.Split('—').FirstOrDefault()?.Trim() ?? "";
 }
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] — VNS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0b0c" />
+    <title>@(string.IsNullOrWhiteSpace(pageTitle) ? "eNotice" : $"{pageTitle} — eNotice")</title>
     <script type="importmap"></script>
     <link href="~/assets/img/COJ_Logo.png" rel="icon">
     <link href="~/assets/img/COJ_Logo.png" rel="apple-touch-icon">
 
-
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/GV23_Notice.styles.css" asp-append-version="true" />
-    <link href="~/css/home/layoutpremiumcss1.css" rel="stylesheet" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/enotice.css" asp-append-version="true" />
+
+    <script>
+        // Restore the collapsed drawer before first paint (desktop only)
+        (function () {
+            try {
+                if (window.innerWidth >= 1200 && localStorage.getItem('enotice.rail') === '1')
+                    document.documentElement.classList.add('en-rail-pending');
+            } catch (e) { }
+        })();
+    </script>
 </head>
-<body class="vns-layout">
+<body class="en-body">
+    <script>
+        if (document.documentElement.classList.contains('en-rail-pending')) document.body.classList.add('en-rail');
+    </script>
 
-    <!-- ══ SIDEBAR ══════════════════════════════════════════════ -->
-    <aside class="vns-sidebar" id="vnsSidebar">
+    <a href="#en-content" class="en-skip">Skip to content</a>
 
-        <!-- Brand -->
-        <div class="vns-sidebar-brand">
-            <a asp-controller="Home" asp-action="Index" class="vns-brand-link">
-                <div class="vns-brand-mark">VNS</div>
-                <div class="vns-brand-text">
-                    <div class="vns-brand-name">Valuation Notice</div>
-                    <div class="vns-brand-sub">City of Joburg</div>
-                </div>
+    <!-- ══ DRAWER ══════════════════════════════════════════════ -->
+    <aside class="en-drawer" id="enDrawer" aria-label="Main navigation">
+
+        <div class="en-drawer-head">
+            <a asp-controller="Home" asp-action="Index" class="en-brand" title="eNotice home">
+                <span class="en-brand-mark" aria-hidden="true">e</span>
+                <span class="en-brand-text">
+                    <span class="en-brand-name">e<span>Notice</span></span>
+                    <span class="en-brand-sub d-block">City of Johannesburg</span>
+                </span>
             </a>
-            <button class="vns-sidebar-toggle" id="sidebarToggle" title="Collapse sidebar">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <polyline points="15 18 9 12 15 6" />
-                </svg>
+            <button type="button" class="en-icon-btn en-rail-toggle" id="enRailToggle" title="Collapse menu" aria-label="Collapse menu">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <button type="button" class="en-icon-btn en-drawer-close" id="enDrawerClose" aria-label="Close menu">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
         </div>
 
-        <!-- Navigation -->
-        <nav class="vns-sidebar-nav">
-
-            <!-- Dashboard -->
-            <a asp-controller="Home" asp-action="Index" class="@Nav("Home", "Index")">
-                <span class="vns-nav-icon">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                        <polyline points="9 22 9 12 15 12 15 22" />
-                    </svg>
+        <nav class="en-nav">
+            <a asp-controller="Home" asp-action="Index" class="@A(navHome)" aria-current="@Cur(navHome)" title="Dashboard">
+                <span class="en-nav-ico">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></svg>
                 </span>
-                <span class="vns-nav-label">Dashboard</span>
+                <span class="en-nav-text">Dashboard</span>
             </a>
 
-            <div class="vns-nav-divider"></div>
+            <div class="en-nav-section">Notice Workflow</div>
+            <div class="en-nav-section-gap"></div>
 
-            <!-- ── STEP 1 ── -->
             @if (canAdmin)
             {
-                <div class="vns-step-group @(isStep1 ? "step-active" : "")">
-                    <div class="vns-step-group-header">
-                        <div class="vns-step-num">1</div>
-                        <div class="vns-step-group-title">Configure Dates</div>
-                    </div>
-                    <div class="vns-step-group-items">
-                        <a asp-controller="Workflow" asp-action="Step1" class="@Nav("Workflow", "Step1")">
-                            <span class="vns-nav-icon">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                    <rect x="3" y="4" width="18" height="18" rx="2" />
-                                    <line x1="16" y1="2" x2="16" y2="6" />
-                                    <line x1="8" y1="2" x2="8" y2="6" />
-                                    <line x1="3" y1="10" x2="21" y2="10" />
-                                </svg>
-                            </span>
-                            <span class="vns-nav-label">Date Configuration</span>
-                        </a>
-                    </div>
-                </div>
+                <a asp-controller="Workflow" asp-action="Step1" class="@A(navDates)" aria-current="@Cur(navDates)" title="Step 1 — Date Configuration">
+                    <span class="en-nav-ico"><span class="en-nav-step">1</span></span>
+                    <span class="en-nav-text">
+                        Date Configuration
+                        <span class="en-nav-hint">Set the notice dates and approve</span>
+                    </span>
+                </a>
 
-                <!-- ── STEP 2 ── -->
-                <div class="vns-step-group @(isStep2 ? "step-active" : "")">
-                    <div class="vns-step-group-header">
-                        <div class="vns-step-num">2</div>
-                        <div class="vns-step-group-title">Preview &amp; Approve</div>
-                    </div>
-                    <div class="vns-step-group-items">
-                        <a asp-controller="Workflow" asp-action="SettingsLibrary" class="@Nav("Workflow", "Step2")"
-                           title="Select a configuration to preview, then start Step 3">
-                            <span class="vns-nav-icon">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                    <circle cx="12" cy="12" r="3" />
-                                </svg>
-                            </span>
-                            <span class="vns-nav-label">Preview &amp; Start Step 3</span>
-                        </a>
-                    </div>
-                </div>
+                <a asp-controller="Workflow" asp-action="SettingsLibrary" class="@A(navPreview)" aria-current="@Cur(navPreview)" title="Step 2 — Notice Preview and Approval">
+                    <span class="en-nav-ico"><span class="en-nav-step">2</span></span>
+                    <span class="en-nav-text">
+                        Notice Preview and Approval
+                        <span class="en-nav-hint">Check the notice, then approve</span>
+                    </span>
+                </a>
             }
 
-            <!-- ── STEP 3 ── -->
             @if (canStep3)
             {
-                <div class="vns-step-group @(isStep3 ? "step-active" : "")">
-                    <div class="vns-step-group-header">
-                        <div class="vns-step-num">3</div>
-                        <div class="vns-step-group-title">Processing</div>
-                    </div>
-                    <div class="vns-step-group-items">
-                        <a asp-controller="Step3" asp-action="Index" class="@Nav("Step3", "Index")">
-                            <span class="vns-nav-icon">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                    <line x1="8" y1="6" x2="21" y2="6" />
-                                    <line x1="8" y1="12" x2="21" y2="12" />
-                                    <line x1="8" y1="18" x2="21" y2="18" />
-                                    <line x1="3" y1="6" x2="3.01" y2="6" />
-                                    <line x1="3" y1="12" x2="3.01" y2="12" />
-                                    <line x1="3" y1="18" x2="3.01" y2="18" />
-                                </svg>
-                            </span>
-                            <span class="vns-nav-label">3.1 Manage Batches</span>
-                        </a>
-                        <a asp-controller="Step3" asp-action="PrintQueue" class="@Nav("Step3", "PrintQueue")">
-                            <span class="vns-nav-icon">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                    <polyline points="6 9 6 2 18 2 18 9" />
-                                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-                                    <rect x="6" y="14" width="12" height="8" />
-                                </svg>
-                            </span>
-                            <span class="vns-nav-label">3.2 Print PDFs</span>
-                        </a>
-                        <a asp-controller="Step3" asp-action="SendQueue" class="@Nav("Step3", "SendQueue")">
-                            <span class="vns-nav-icon">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                                    <line x1="22" y1="2" x2="11" y2="13" />
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                                </svg>
-                            </span>
-                            <span class="vns-nav-label">3.3 Send Notices</span>
-                            <span class="vns-nav-badge">Active</span>
-                        </a>
-                    </div>
-                </div>
+                <a asp-controller="Step3" asp-action="Index" class="@A(navProcess)" aria-current="@Cur(navProcess)" title="Step 3 — Batches, Printing and Sending">
+                    <span class="en-nav-ico"><span class="en-nav-step">3</span></span>
+                    <span class="en-nav-text">
+                        Batches, Printing and Sending
+                        <span class="en-nav-hint">Create batch, print, send notices</span>
+                    </span>
+                </a>
             }
 
-            <div class="vns-nav-divider"></div>
+            <a asp-controller="Stats" asp-action="Index" class="@A(navStats)" aria-current="@Cur(navStats)" title="Notice Statistics">
+                <span class="en-nav-ico">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10" /><line x1="18" y1="20" x2="18" y2="4" /><line x1="6" y1="20" x2="6" y2="16" /></svg>
+                </span>
+                <span class="en-nav-text">
+                    Notice Statistics
+                    <span class="en-nav-hint">Sent, failed and pending notices</span>
+                </span>
+            </a>
 
-        
-            <!-- Notice Search / Corrections -->
             @if (canSearch)
             {
-                <a asp-controller="NoticeSearch" asp-action="Index" class="@Nav("NoticeSearch", "Index")">
-                    <span class="vns-nav-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                            <circle cx="11" cy="11" r="8" />
-                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                        </svg>
+                <div class="en-nav-section">Tools</div>
+                <div class="en-nav-section-gap"></div>
+
+                <a asp-controller="NoticeSearch" asp-action="Index" class="@A(navSearch)" aria-current="@Cur(navSearch)" title="Notice Search">
+                    <span class="en-nav-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                     </span>
-                    <span class="vns-nav-label">Notice Search</span>
+                    <span class="en-nav-text">Notice Search</span>
                 </a>
 
-                <a asp-controller="NoticeCorrection" asp-action="Index" class="@(isCorrection ? "vns-nav-item active" : "vns-nav-item")">
-                    <span class="vns-nav-icon">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 12a9 9 0 1 1-3-6.7" />
-                            <polyline points="21 3 21 9 15 9" />
-                            <path d="M12 7v5l3 2" />
-                        </svg>
+                <a asp-controller="NoticeCorrection" asp-action="Index" class="@A(navCorrections)" aria-current="@Cur(navCorrections)" title="Notice Corrections">
+                    <span class="en-nav-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
                     </span>
-                    <span class="vns-nav-label">Notice Corrections</span>
-                    <span class="vns-nav-badge">New</span>
+                    <span class="en-nav-text">Notice Corrections</span>
                 </a>
             }
 
-            <!-- Settings Library — always visible -->
-            <a asp-controller="Workflow" asp-action="SettingsLibrary" class="@Nav("Workflow", "SettingsLibrary")">
-                <span class="vns-nav-icon">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                    </svg>
-                </span>
-                <span class="vns-nav-label">Settings Library</span>
-            </a>
-            <div class="vns-nav-divider"></div>
-
-            <a asp-controller="Stats"
-                   asp-action="Index"
-                   class="@Nav("Stats", "Index")">
-                <span class="vns-nav-icon">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" stroke-width="2"
-                         stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="12" y1="20" x2="12" y2="10"></line>
-                        <line x1="18" y1="20" x2="18" y2="4"></line>
-                        <line x1="6" y1="20" x2="6" y2="16"></line>
-                    </svg>
-                </span>
-                <span class="vns-nav-label">Stats</span>
-            </a>
+            @if (!canAdmin)
+            {
+                <a asp-controller="Workflow" asp-action="SettingsLibrary" class="@A(navPreview)" aria-current="@Cur(navPreview)" title="Saved Configurations">
+                    <span class="en-nav-ico">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></svg>
+                    </span>
+                    <span class="en-nav-text">Saved Configurations</span>
+                </a>
+            }
         </nav>
 
-        <!-- User footer -->
-        <div class="vns-sidebar-user">
-            <div class="vns-sidebar-user-inner">
-                <div class="vns-user-avatar">@initials</div>
-                <div class="vns-user-info">
-                    <div class="vns-user-name">@shortName</div>
-                    @if (!string.IsNullOrWhiteSpace(roleName))
-                    {
-                        <div class="vns-user-role">@roleName</div>
-                    }
-                </div>
-                <div class="vns-online-dot" title="Online"></div>
+        <div class="en-drawer-foot" title="@shortName">
+            <div class="en-avatar" aria-hidden="true">@initials</div>
+            <div class="en-user">
+                <div class="en-user-name">@shortName</div>
+                @if (!string.IsNullOrWhiteSpace(roleName))
+                {
+                    <div class="en-user-role">@roleName</div>
+                }
             </div>
         </div>
-
     </aside>
 
-    <!-- ══ MAIN AREA ═════════════════════════════════════════════ -->
-    <div class="vns-main-wrap">
+    <div class="en-scrim" id="enScrim" aria-hidden="true"></div>
 
-        <div class="vns-topstrip">
-            <button class="vns-mobile-toggle" id="mobileToggle" aria-label="Open menu">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="18" x2="21" y2="18" />
-                </svg>
+    <!-- ══ MAIN ═════════════════════════════════════════════════ -->
+    <div class="en-main">
+        <header class="en-topbar">
+            <button type="button" class="en-menu-btn" id="enMenuBtn" aria-label="Open menu" aria-controls="enDrawer" aria-expanded="false">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
             </button>
-            <div class="vns-breadcrumb">
-                @(ViewData["Title"]?.ToString()?.Split('—').FirstOrDefault()?.Trim() ?? "")
-            </div>
-            <div class="vns-topstrip-right">
-                <div class="vns-live-dot" title="System active">
-                    <span class="vns-pulse"></span>
-                </div>
-                <div class="vns-topstrip-clock" id="layoutClock"></div>
-            </div>
-        </div>
+            <div class="en-crumb">@pageTitle</div>
+            <div class="en-clock" id="enClock" aria-hidden="true"></div>
+        </header>
 
-        <main class="vns-page-content">@RenderBody()</main>
+        <main class="en-content" id="en-content">@RenderBody()</main>
 
-        <footer class="vns-footer">
-            <span>&copy; @DateTime.Now.Year City of Johannesburg — Valuation Services</span>
+        <footer class="en-footer">
+            <span>&copy; @DateTime.Now.Year City of Johannesburg — Valuation Services · eNotice</span>
             <a asp-controller="Home" asp-action="Privacy">Privacy Policy</a>
         </footer>
-
     </div>
-
-    <div class="vns-overlay" id="vnsOverlay"></div>
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/enotice.js" asp-append-version="true"></script>
     <script>
-        (function(){
-            const el=document.getElementById('layoutClock');
-            if(!el)return;
-            const D=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-            const M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-            function tick(){
-                const d=new Date();
-                el.textContent=D[d.getDay()]+' '+String(d.getDate()).padStart(2,'0')+' '+M[d.getMonth()]
-                    +'  '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')
-                    +':'+String(d.getSeconds()).padStart(2,'0');
+        (function () {
+            // Clock
+            var el = document.getElementById('enClock');
+            if (el) {
+                var D = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                var M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                var p = function (n) { return String(n).padStart(2, '0'); };
+                var tick = function () {
+                    var d = new Date();
+                    el.textContent = D[d.getDay()] + ' ' + p(d.getDate()) + ' ' + M[d.getMonth()] + ' ' + d.getFullYear() + '  ' + p(d.getHours()) + ':' + p(d.getMinutes());
+                };
+                tick(); setInterval(tick, 15000);
             }
-            tick();setInterval(tick,1000);
-        })();
-        (function(){
-            const s=document.getElementById('vnsSidebar');
-            const t=document.getElementById('sidebarToggle');
-            const m=document.getElementById('mobileToggle');
-            const o=document.getElementById('vnsOverlay');
-            if(t)t.addEventListener('click',()=>{s.classList.toggle('collapsed');document.body.classList.toggle('sidebar-collapsed');});
-            if(m)m.addEventListener('click',()=>{s.classList.toggle('mobile-open');o.classList.toggle('active');});
-            if(o)o.addEventListener('click',()=>{s.classList.remove('mobile-open');o.classList.remove('active');});
+
+            // Drawer
+            var body = document.body;
+            var menuBtn = document.getElementById('enMenuBtn');
+            var railBtn = document.getElementById('enRailToggle');
+            var closeBtn = document.getElementById('enDrawerClose');
+            var scrim = document.getElementById('enScrim');
+            var drawer = document.getElementById('enDrawer');
+            var desktop = window.matchMedia('(min-width: 1200px)');
+
+            function saveRail(on) { try { localStorage.setItem('enotice.rail', on ? '1' : '0'); } catch (e) { } }
+
+            function openDrawer() {
+                body.classList.add('en-drawer-open');
+                body.classList.add('en-lock');
+                menuBtn.setAttribute('aria-expanded', 'true');
+                var first = drawer.querySelector('.en-nav-link');
+                if (first) first.focus({ preventScroll: true });
+            }
+            function closeDrawer() {
+                body.classList.remove('en-drawer-open');
+                body.classList.remove('en-lock');
+                menuBtn.setAttribute('aria-expanded', 'false');
+            }
+
+            menuBtn.addEventListener('click', function () {
+                if (desktop.matches) {
+                    var on = !body.classList.contains('en-rail');
+                    body.classList.toggle('en-rail', on);
+                    saveRail(on);
+                } else if (body.classList.contains('en-drawer-open')) {
+                    closeDrawer();
+                } else {
+                    openDrawer();
+                }
+            });
+
+            if (railBtn) railBtn.addEventListener('click', function () { body.classList.add('en-rail'); saveRail(true); });
+            if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+            scrim.addEventListener('click', closeDrawer);
+            document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && body.classList.contains('en-drawer-open')) closeDrawer(); });
+
+            // On tablet/phone, close the overlay drawer after choosing a page
+            drawer.querySelectorAll('.en-nav-link').forEach(function (a) {
+                a.addEventListener('click', function () { if (!desktop.matches) closeDrawer(); });
+            });
+
+            // Leaving phone/tablet size closes the overlay drawer
+            desktop.addEventListener('change', function () { closeDrawer(); });
         })();
     </script>
     @await RenderSectionAsync("Scripts", required: false)

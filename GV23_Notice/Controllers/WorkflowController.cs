@@ -48,6 +48,7 @@ namespace GV23_Notice.Controllers
         private readonly IThirdPartyAppealDateConfigurationService _thirdPartyDates;
         private readonly IThirdPartyAppealWorkflowSyncService _tpaWorkflowSync;
         private readonly IClaThirdPartyDateConfigurationService _claThirdPartyDateConfigurationService;
+        private readonly IStep3BatchService _batches;
         public WorkflowController(
      AppDbContext db,
      INoticeSettingsService settings,
@@ -66,7 +67,8 @@ namespace GV23_Notice.Controllers
         IS52RangePrintService s52Range,
      IThirdPartyAppealDateConfigurationService thirdPartyDates,
      IThirdPartyAppealWorkflowSyncService tpaWorkflowSync,
-     IClaThirdPartyDateConfigurationService claThirdPartyDateConfigurationService)
+     IClaThirdPartyDateConfigurationService claThirdPartyDateConfigurationService,
+     IStep3BatchService batches)
         {
             _db = db;
             _settings = settings;
@@ -87,13 +89,15 @@ namespace GV23_Notice.Controllers
             _tempFiles = tempFiles;
             _tpaWorkflowSync = tpaWorkflowSync;
             _claThirdPartyDateConfigurationService = claThirdPartyDateConfigurationService;
+            _batches = batches;
         }
 
         // GET: /Workflow/Step1
         [HttpGet("Step1")]
-        public async Task<IActionResult> Step1(int? rollId, NoticeKind? notice, BatchMode? mode, int? settingsId, CancellationToken ct)
+        public async Task<IActionResult> Step1(int? rollId, NoticeKind? notice, BatchMode? mode, int? settingsId, bool summary, CancellationToken ct)
         {
             await PopulateRollsAsync(ct);
+            ViewBag.OpenSummary = summary;   // open the Date Summary modal after Save
             ViewBag.ValuationPeriods = Helper.ValuationPeriodCatalog.Periods
     .Select(p => new SelectListItem
     {
@@ -109,6 +113,9 @@ namespace GV23_Notice.Controllers
                 var s = await _settings.GetByIdAsync(settingsId.Value, ct);
                 if (s is null) return NotFound();
 
+                ViewBag.IsApproved = s.IsApproved;
+                ViewBag.ApprovedVersion = s.Version;
+
                 var vm = MapToVm(s);
                 return View(vm);
             }
@@ -119,6 +126,8 @@ namespace GV23_Notice.Controllers
                 var latest = await _settings.GetLatestDraftOrApprovedAsync(rollId.Value, notice.Value, mode.Value, ct);
                 if (latest != null)
                 {
+                    ViewBag.IsApproved = latest.IsApproved;
+                    ViewBag.ApprovedVersion = latest.Version;
                     return View(MapToVm(latest));
                 }
 
@@ -469,6 +478,7 @@ namespace GV23_Notice.Controllers
             }
 
             NoticeSettings entity;
+            string newVersionNote = "";
 
             if (vm.SettingsId.HasValue)
             {
@@ -478,6 +488,33 @@ namespace GV23_Notice.Controllers
                         ct)
                     ?? throw new InvalidOperationException(
                         "The selected notice settings could not be found.");
+
+                /*
+                 * An approved configuration is locked (SaveDraftAsync throws).
+                 * Instead of a crash page, save the changes as a NEW version
+                 * that goes through approval again.
+                 */
+                if (entity.IsApproved)
+                {
+                    var lockedVersion = entity.Version;
+                    var carrySignature = entity.SignaturePath;
+                    var carryEvidence = entity.AppealCloseOverrideEvidencePath;
+
+                    entity =
+                        await _settings.CreateDraftAsync(
+                            vm.RollId,
+                            vm.Notice,
+                            vm.Mode,
+                            user,
+                            ct);
+
+                    entity.SignaturePath = carrySignature;
+                    entity.AppealCloseOverrideEvidencePath = carryEvidence;
+
+                    vm.SettingsId = entity.Id;
+                    newVersionNote =
+                        $"Version {lockedVersion} was already approved, so your changes were saved as version {entity.Version}. ";
+                }
             }
             else
             {
@@ -646,14 +683,17 @@ namespace GV23_Notice.Controllers
                     ? $"CLA-TPA Date Configuration saved and confirmed " +
                       $"(v{entity.Version}). {synchronizedRows} CLA record(s) " +
                       $"linked to this workflow. Please review the summary."
-                    : $"Saved and confirmed (v{entity.Version}). " +
-                      $"Please review summary to approve.";
+                    : newVersionNote +
+                      $"Dates saved (version {entity.Version}). " +
+                      $"Check the summary and approve.";
 
+            // Stay on Date Configuration and open the summary as a modal
             return RedirectToAction(
-                nameof(Step1Summary),
+                nameof(Step1),
                 new
                 {
-                    settingsId = entity.Id
+                    settingsId = entity.Id,
+                    summary = true
                 });
         }
 
@@ -699,7 +739,7 @@ namespace GV23_Notice.Controllers
 
         // GET: /Workflow/Step1Summary?settingsId=123
         [HttpGet("Step1Summary")]
-        public async Task<IActionResult> Step1Summary(int settingsId, CancellationToken ct)
+        public async Task<IActionResult> Step1Summary(int settingsId, bool partial, CancellationToken ct)
         {
             var s = await _settings.GetByIdAsync(settingsId, ct);
             if (s is null) return NotFound();
@@ -781,6 +821,14 @@ namespace GV23_Notice.Controllers
                         : tpaDate?.ResponseDueDate
             };
 
+            var isAjax = string.Equals(
+                Request.Headers["X-Requested-With"],
+                "XMLHttpRequest",
+                StringComparison.OrdinalIgnoreCase);
+
+            if (partial || isAjax)
+                return PartialView("_DateSummaryModal", vm);
+
             return View(vm);
         }
 
@@ -855,6 +903,12 @@ namespace GV23_Notice.Controllers
 
             var s = await _settings.GetByIdAsync(settingsId, ct);
             if (s is null) return NotFound();
+
+            // Double click / back button: ApproveAsync would throw "already approved"
+            if (s.IsApproved)
+            {
+                return RedirectToAction(nameof(Step2), new { settingsId = s.Id });
+            }
 
             if (!s.IsConfirmed)
             {
@@ -992,7 +1046,7 @@ namespace GV23_Notice.Controllers
             }
             await _settings.ApproveAsync(s.Id, user, "Admin approved via Step1Summary.", ct);
 
-            TempData["Success"] = "Approved. Redirecting to Step 2.";
+            TempData["Success"] = "Dates approved. Check the notice preview below.";
             return RedirectToAction(nameof(Step2), new { settingsId = s.Id });
         }
 
@@ -1414,6 +1468,13 @@ namespace GV23_Notice.Controllers
                 IsConfirmed = s.IsConfirmed,
                 IsApproved = s.IsApproved,
 
+                // Already approved → the view shows "Continue to Batches" (GET) instead
+                // of posting Step2Approve again (which used to re-send the approval email)
+                Step2Approved = s.Step2Approved,
+                Step2ApprovedBy = s.Step2ApprovedBy,
+                Step2ApprovedAtUtc = s.Step2ApprovedAt,
+                ApprovalKey = s.ApprovalKey,
+
                 PreviewFound = true
             };
 
@@ -1715,6 +1776,22 @@ namespace GV23_Notice.Controllers
                 .FirstOrDefaultAsync(r => r.RollId == s.RollId, ct);
             if (roll is null) return NotFound();
 
+            /*
+             * Already approved (user came back to the preview, double-clicked,
+             * or pressed Back): do NOT rebuild the snapshot and do NOT send the
+             * "[APPROVED] … Step 3 Kickoff Ready" email again. Just continue.
+             */
+            if (s.Step2Approved && s.ApprovalKey.HasValue && s.ApprovalKey.Value != Guid.Empty)
+            {
+                return RedirectToAction(nameof(Step3Kickoff), new
+                {
+                    settingsId = s.Id,
+                    key = s.ApprovalKey.Value,
+                    variant = dto.Variant.ToString(),
+                    mode = ToUiMode(dto.Mode)
+                });
+            }
+
             if (!s.ApprovalKey.HasValue || s.ApprovalKey.Value == Guid.Empty)
             {
                 s.ApprovalKey = Guid.NewGuid();
@@ -1857,24 +1934,14 @@ namespace GV23_Notice.Controllers
                 },
                 ct: ct);
 
-            // ✅ SEND to Data Team + CC (from appsettings)
-            try
-            {
-                var r = GetApprovalRecipients();
-                await SendWorkflowEmailAsync(approvalSubject, approvalBodyHtml, r.To, r.Cc, ct);
-            }
-            catch (Exception ex)
-            {
-                _log.LogError(ex, "Failed to send Step2 approval email for SettingsId={SettingsId}", s.Id);
-                TempData["Warning"] = "Approved, but failed to send approval email. Check SMTP/appsettings.";
-            }
+          
 
             s.ApprovedEmailSavedPath = savedPath;
             s.ApprovedAtUtc = DateTime.UtcNow;
             s.ApprovedBy = approvedBy;
             await _db.SaveChangesAsync(ct);
 
-            TempData["Success"] = "Step 2 approved — ready to create batches.";
+            TempData["Success"] = "Notice preview approved. It is now ready under Batches, Printing and Sending.";
             // Go directly to Step3Kickoff — fromStep2=true triggers the confirmation card
             return RedirectToAction(nameof(Step3Kickoff), new
             {
@@ -2002,6 +2069,7 @@ namespace GV23_Notice.Controllers
             string? variant,
             string? mode,
             string? appealNo,
+            bool fromStep2,
             CancellationToken ct)
         {
             var s = await _settings.GetByIdAsync(settingsId, ct);
@@ -2091,40 +2159,27 @@ namespace GV23_Notice.Controllers
             }
 
             /*
-             * Build preview PDF using the normal preview service.
-             * Next phase: make sure INoticePreviewService supports NoticeKind.TPA.
+             * NOTE: this page no longer builds a preview PDF. The view never showed it,
+             * it wrote a new file into wwwroot/temp on every visit, and for S49 it
+             * failed once the sample premises had been batched.
              */
-            var result = await _preview.BuildPreviewAsync(settingsId, v, m, appealNo, ct);
-
-            var pdfFileName = string.IsNullOrWhiteSpace(result.PdfFileName)
-    ? isClaTpa
-        ? $"CLA_TPA_Step3_Preview_{settingsId}.pdf"
-        : $"Step3Kickoff_{result.RollShortCode}_{result.Notice}_{settingsId}.pdf"
-    : result.PdfFileName;
-
-            var pdfUrl = await _tempFiles.SavePdfAsync(result.PdfBytes, pdfFileName, ct);
 
             /*
              * Normal notices use NoticeBatches.
              * TPA and CLA-TPA do not create normal batches, but Step 3 Kickoff is still shown.
              */
-            var batchPrefix = ComputeBatchPrefix(s, shortCode);
             var batchesCreated = 0;
 
             var nextBatchCode = isTpa
                 ? $"TPA_{shortCode.Replace(" ", "")}"
                 : isClaTpa
                     ? $"CLA_TPA_{shortCode.Replace(" ", "")}"
-                    : $"{batchPrefix}0001";
+                    : "";
 
             var kickoffBatchRows = new List<KickoffBatchRowVm>();
 
             if (!isDirectThirdPartyNotice)
             {
-                batchesCreated = await _db.NoticeBatches
-                    .AsNoTracking()
-                    .CountAsync(b => b.WorkflowKey == key && b.BatchKind == "STEP3", ct);
-
                 var createdBatchList = await _db.NoticeBatches
                     .AsNoTracking()
                     .Where(b => b.WorkflowKey == key && b.BatchKind == "STEP3")
@@ -2132,29 +2187,11 @@ namespace GV23_Notice.Controllers
                     .Take(200)
                     .ToListAsync(ct);
 
-                var lastBatch = createdBatchList
-                    .FirstOrDefault(b => b.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
-                    ?? await _db.NoticeBatches
-                        .AsNoTracking()
-                        .Where(b =>
-                            b.RollId == s.RollId &&
-                            b.Notice == s.Notice &&
-                            b.BatchKind == "STEP3" &&
-                            b.BatchName.StartsWith(batchPrefix))
-                        .OrderByDescending(b => b.Id)
-                        .FirstOrDefaultAsync(ct);
+                batchesCreated = createdBatchList.Count;
 
-                var nextSeq = 1;
-
-                if (lastBatch != null && lastBatch.BatchName.StartsWith(batchPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    var tail = lastBatch.BatchName[batchPrefix.Length..];
-
-                    if (int.TryParse(tail, out var parsed))
-                        nextSeq = parsed + 1;
-                }
-
-                nextBatchCode = $"{batchPrefix}{nextSeq:0000}";
+                // Same rule the batch service uses when it actually creates the batch
+                // (the old code stripped spaces: "SUPP4" vs real batches "SUPP 4" → always 0001)
+                nextBatchCode = await _batches.PeekNextBatchNameAsync(s.Id, ct);
 
                 kickoffBatchRows = createdBatchList
                     .Select(b => new KickoffBatchRowVm
@@ -2179,7 +2216,7 @@ namespace GV23_Notice.Controllers
 
                 RollId = roll.RollId,
                 RollShortCode = shortCode,
-                RollName = roll.Name ?? result.RollName ?? "",
+                RollName = roll.Name ?? "",
 
                 Notice = s.Notice,
                 Mode = s.Mode,
@@ -2213,13 +2250,7 @@ namespace GV23_Notice.Controllers
                 // Batch panel
                 NextBatchCode = nextBatchCode,
                 BatchesAlreadyCreated = batchesCreated,
-
-                // Preview
-                RecipientName = result.RecipientName ?? "",
-                RecipientEmail = result.RecipientEmail ?? "",
-                EmailSubject = result.EmailSubject ?? "",
-                EmailBodyHtml = result.EmailBodyHtml ?? "",
-                PdfUrl = pdfUrl,
+                RecordsPerBatch = _batches.GetRecordsPerBatch(s.Notice),
 
                 SelectedVariant = string.IsNullOrWhiteSpace(variant) ? "Default" : variant!,
                 SelectedMode = string.IsNullOrWhiteSpace(mode) ? "single" : mode!,
@@ -2240,39 +2271,11 @@ namespace GV23_Notice.Controllers
                 CreatedBatches = kickoffBatchRows,
                 ShowBatchTab =
     !isDirectThirdPartyNotice &&
-    TempData["Success"] != null
+    TempData["Success"] != null,
+                FromStep2 = fromStep2 && !isS52 && kickoffBatchRows.Count == 0
             };
 
             return View(vm);
-        }
-        private static string ComputeBatchPrefix(NoticeSettings s, string rollShortCode)
-        {
-            var code = rollShortCode.Replace(" ", "");
-
-            return s.Notice switch
-            {
-                NoticeKind.S52 =>
-                    s.IsSection52Review == true
-                        ? $"S52_{code}_"
-                        : $"AD_{code}_",
-
-                NoticeKind.DJ =>
-                    $"DJ_{code}_",
-
-                NoticeKind.IN =>
-                    s.IsInvalidOmission == true
-                        ? $"IOM_{code}_"
-                        : $"IOBJ_{code}_",
-
-                NoticeKind.TPA =>
-                    $"TPA_{code}_",
-
-                NoticeKind.CLA_TPA =>
-                    $"CLA_TPA_{code}_",
-
-                _ =>
-                    $"{s.Notice}_{code}_"
-            };
         }
         [HttpGet("Step3PreviewPdf")]
         public async Task<IActionResult> Step3PreviewPdf(int settingsId, Guid key, CancellationToken ct)

@@ -90,6 +90,9 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         /// </summary>
         public bool FromStep2 { get; set; }
 
+        /// <summary>Records that go into one batch (S49 comes from appsettings Section49:Batch:Size).</summary>
+        public int RecordsPerBatch { get; set; } = 500;
+
         public bool IsThirdPartyAppealApplication { get; set; }
         public int? ThirdPartyResponseDays { get; set; }
         public DateTime? ThirdPartyEstimatedSendDate { get; set; }

@@ -3,7 +3,7 @@
 @using GV23_Notice.Domain.Workflow
 
 @{
-    ViewData["Title"] = "Step 3 — Processing";
+    ViewData["Title"] = "Batches, Printing and Sending";
 
     string D(DateTime d) => d.ToString("dd MMM yyyy", CultureInfo.InvariantCulture);
 
@@ -118,15 +118,15 @@
                     <span class="s3i-hero-dot"></span>
                     Data Team · Phase 3 of 3
                 </div>
-                <h1 class="s3i-hero-title">Step 3 — <em>Processing</em></h1>
+                <h1 class="s3i-hero-title">Batches, <em>Printing and Sending</em></h1>
                 <p class="s3i-hero-sub">
-                    Select an approved configuration to process notices.
-                    Normal notices use batches. TPA and CLA Third-Party Application workflows print directly without batches.
+                    Choose an approved notice to create a batch, print the notices and send them.
+                    Third-Party Appeal and CLA Third-Party Application notices print directly without batches.
                 </p>
             </div>
 
             <a class="s3i-hero-link" href="@Url.Action("SettingsLibrary", "Workflow")">
-                ← Settings Library
+                ← Notice Preview and Approval
             </a>
         </div>
     </div>
@@ -136,7 +136,7 @@
         <!-- Stats strip -->
         <div class="s3i-stats">
             <div class="s3i-stat s3i-stat-gold">
-                <div class="s3i-stat-lbl">Total Workflows</div>
+                <div class="s3i-stat-lbl">Approved Notices</div>
                 <div class="s3i-stat-num">@allRows.Count</div>
                 <div class="s3i-stat-sub">Approved configurations</div>
             </div>

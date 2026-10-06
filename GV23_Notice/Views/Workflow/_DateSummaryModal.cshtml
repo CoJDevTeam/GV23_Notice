@@ -1,0 +1,214 @@
+@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep1SummaryVm
+@using GV23_Notice.Domain.Workflow
+@*
+    Date Configuration Summary — rendered as a modal.
+    Used by:
+      • Workflow/Step1 page (loaded with fetch after "Save and Review Summary")
+      • Workflow/Step1Summary full page (opened automatically)
+    Each date appears ONCE. No scripts in here (it is injected with innerHTML).
+*@
+@{
+    string D(DateTime? d) => d.HasValue ? d.Value.ToString("dd MMMM yyyy") : "Not set";
+
+    string NoticeName(NoticeKind n) => n switch
+    {
+        NoticeKind.S49 => "Section 49 — Public Inspection and Objections",
+        NoticeKind.S51 => "Section 51 — Objection Outcome",
+        NoticeKind.S52 => "Section 52 — Appeal Notices",
+        NoticeKind.S53 => "Section 53 — Municipal Valuer's Decision",
+        NoticeKind.S53Rev => "Section 53 — Revised Municipal Valuer's Decision",
+        NoticeKind.DJ => "Dear Johnny — Acknowledgement Notice",
+        NoticeKind.IN => "Invalid Objection or Omission Notice",
+        NoticeKind.S78 => "Section 78 — Property Verification Review",
+        NoticeKind.TPA => "Third-Party Appeal Application",
+        NoticeKind.CLA_TPA => "CLA Third-Party Application Notice",
+        _ => n.ToString()
+    };
+
+    string Icon(NoticeKind n) => n switch
+    {
+        NoticeKind.S53Rev => "53R",
+        NoticeKind.CLA_TPA => "CLA",
+        NoticeKind.TPA => "TPA",
+        NoticeKind.DJ => "DJ",
+        NoticeKind.IN => "IN",
+        _ => n.ToString().Replace("S", "")
+    };
+
+    bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
+    bool needsSignature = Model.Notice == NoticeKind.S49;
+    bool isTpa = Model.Notice == NoticeKind.TPA;
+    bool isCla = Model.Notice == NoticeKind.CLA_TPA;
+    bool isS53 = Model.Notice is NoticeKind.S53 or NoticeKind.S53Rev;
+    bool canApprove = Model.IsConfirmed && (!needsSignature || hasSignature);
+
+    var step1Url = Url.Action("Step1", "Workflow", new { settingsId = Model.SettingsId });
+    var step2Url = Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId });
+}
+
+<div class="en-modal en-modal-lg" id="enSummaryModal" role="dialog" aria-modal="true" aria-labelledby="enSummaryTitle">
+    <div class="en-modal-dialog">
+
+        <div class="en-modal-head">
+            <div class="en-modal-icon" aria-hidden="true">@Icon(Model.Notice)</div>
+            <div style="min-width:0">
+                <h2 class="en-modal-title" id="enSummaryTitle">Date Configuration Summary</h2>
+                <p class="en-modal-sub">@NoticeName(Model.Notice)</p>
+                <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+                    <span class="en-badge">@Model.RollShortCode — @Model.RollName</span>
+                    <span class="en-badge">Version @Model.Version</span>
+                    @if (Model.IsApproved)
+                    {
+                        <span class="en-badge en-badge-ok">✓ Approved</span>
+                    }
+                    else if (Model.IsConfirmed)
+                    {
+                        <span class="en-badge en-badge-gold">Saved — waiting for approval</span>
+                    }
+                </div>
+            </div>
+            <button type="button" class="en-modal-x" data-en-close aria-label="Close">&times;</button>
+        </div>
+
+        <div class="en-modal-body">
+
+            @if (needsSignature && !hasSignature)
+            {
+                <div class="en-alert en-alert-warn">
+                    <strong>!</strong>
+                    <div>A signature must be uploaded before Section 49 can be approved. Choose <strong>Edit Dates</strong> and upload it.</div>
+                </div>
+            }
+
+            <dl class="en-kv">
+                <div>
+                    <dt>@(isCla ? "Notification letter date" : isTpa ? "Estimated send date" : "Letter date")</dt>
+                    <dd>@D(Model.LetterDate)</dd>
+                </div>
+
+                @if (Model.Notice == NoticeKind.S49)
+                {
+                    <div><dt>Objection period opens</dt><dd>@D(Model.ObjectionStartDate)</dd></div>
+                    <div class="en-kv-strong"><dt>Objection period closes</dt><dd>@D(Model.ObjectionEndDate)</dd></div>
+                    if (Model.ExtensionDate.HasValue)
+                    {
+                        <div><dt>Extended closing date</dt><dd>@D(Model.ExtensionDate)</dd></div>
+                    }
+                }
+
+                @if (Model.Notice == NoticeKind.S51)
+                {
+                    <div class="en-kv-strong"><dt>Evidence closing date</dt><dd>@D(Model.EvidenceCloseDate)</dd></div>
+                }
+
+                @if (Model.Notice == NoticeKind.S52)
+                {
+                    <div>
+                        <dt>Notices included</dt>
+                        <dd>
+                            @(Model.S52SendMode switch
+                            {
+                                S52SendMode.ReviewOnly => "Section 52 Review only",
+                                S52SendMode.AppealDecisionOnly => "Appeal Decision only",
+                                _ => "Appeal Decision and Section 52 Review"
+                            })
+                        </dd>
+                    </div>
+                    <div><dt>Records from</dt><dd>@D(Model.BulkFromDate)</dd></div>
+                    <div><dt>Records to</dt><dd>@D(Model.BulkToDate)</dd></div>
+                }
+
+                @if (isS53)
+                {
+                    <div><dt>@(Model.Notice == NoticeKind.S53Rev ? "Revised decision batch date" : "Batch date")</dt><dd>@D(Model.BatchDate)</dd></div>
+                    <div class="en-kv-strong"><dt>Appeal closing date</dt><dd>@D(Model.AppealCloseDate)</dd></div>
+                    if (!string.IsNullOrWhiteSpace(Model.AppealCloseOverrideReason))
+                    {
+                        <div>
+                            <dt>Closing date changed because</dt>
+                            <dd>
+                                @Model.AppealCloseOverrideReason
+                                <span class="en-badge @(string.IsNullOrWhiteSpace(Model.AppealCloseOverrideEvidencePath) ? "en-badge-warn" : "en-badge-ok")" style="margin-left:6px">
+                                    @(string.IsNullOrWhiteSpace(Model.AppealCloseOverrideEvidencePath) ? "Evidence missing" : "Evidence uploaded")
+                                </span>
+                            </dd>
+                        </div>
+                    }
+                }
+
+                @if (Model.Notice == NoticeKind.S78)
+                {
+                    if (Model.ExtractionDate.HasValue)
+                    {
+                        <div><dt>Data extraction date</dt><dd>@D(Model.ExtractionDate)</dd></div>
+                    }
+                    if (Model.ExtractPeriodDays.HasValue)
+                    {
+                        <div><dt>Extraction period</dt><dd>@Model.ExtractPeriodDays days</dd></div>
+                    }
+                    <div><dt>Review period opens</dt><dd>@D(Model.ReviewOpenDate)</dd></div>
+                    <div class="en-kv-strong"><dt>Review period closes</dt><dd>@D(Model.ReviewCloseDate)</dd></div>
+                }
+
+                @if (isTpa)
+                {
+                    <div><dt>Owner response period</dt><dd>@(Model.ThirdPartyResponseDays ?? 51) calendar days</dd></div>
+                    <div class="en-kv-strong">
+                        <dt>Estimated response due date</dt>
+                        <dd>
+                            @D(Model.ThirdPartyEstimatedResponseDueDate ?? Model.LetterDate.AddDays(51))
+                            <span class="en-check-note">Final date is calculated from the day the email is actually sent.</span>
+                        </dd>
+                    </div>
+                }
+
+                @if (isCla)
+                {
+                    <div><dt>Representation period opens</dt><dd>@D(Model.ObjectionStartDate ?? Model.LetterDate)</dd></div>
+                    <div class="en-kv-strong"><dt>Representation period closes</dt><dd>@D(Model.ObjectionEndDate ?? Model.LetterDate.AddDays(30))</dd></div>
+                }
+
+                @if (Model.CityManagerSignDate.HasValue)
+                {
+                    <div><dt>City Manager signed on</dt><dd>@D(Model.CityManagerSignDate)</dd></div>
+                }
+
+                @if (needsSignature)
+                {
+                    <div>
+                        <dt>Signature</dt>
+                        <dd>
+                            @if (hasSignature)
+                            {
+                                <span class="en-badge en-badge-ok">✓ Uploaded</span>
+                            }
+                            else
+                            {
+                                <span class="en-badge en-badge-warn">Missing — required</span>
+                            }
+                        </dd>
+                    </div>
+                }
+            </dl>
+        </div>
+
+        <div class="en-modal-foot">
+            @if (Model.IsApproved)
+            {
+                <button type="button" class="en-btn en-btn-ghost" data-en-close>Close</button>
+                <a class="en-btn en-btn-primary" href="@step2Url">Continue to Notice Preview →</a>
+            }
+            else
+            {
+                <a class="en-btn en-btn-ghost" href="@step1Url" data-en-edit>Edit Dates</a>
+                <form asp-controller="Workflow" asp-action="Step1SummaryApprove" method="post" data-en-busy="Approving…">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+                    <button type="submit" class="en-btn en-btn-primary" @(canApprove ? "" : "disabled") data-en-autofocus>
+                        ✓ Approve Dates and Continue to Preview
+                    </button>
+                </form>
+            }
+        </div>
+    </div>
+</div>

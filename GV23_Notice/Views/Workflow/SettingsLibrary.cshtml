@@ -2,7 +2,7 @@
 @using GV23_Notice.Domain.Workflow
 @using GV23_Notice.Domain.Workflow.Entities
 @{
-    ViewData["Title"] = "Settings Library";
+    ViewData["Title"] = "Notice Preview and Approval";
 
     string NoticeName(NoticeKind n) => n switch
     {
@@ -61,8 +61,8 @@
             <div class="sl-logo-mark">VNS</div>
             <div class="sl-hero-div"></div>
             <div>
-                <div class="sl-hero-title">Settings Library</div>
-                <div class="sl-hero-sub">Open an existing configuration, continue approval, or resume Step 3</div>
+                <div class="sl-hero-title">Notice Preview and Approval</div>
+                <div class="sl-hero-sub">Choose a saved date configuration to preview the notice, approve it, or continue to batches</div>
             </div>
         </div>
         <div class="sl-hero-right">
@@ -71,7 +71,7 @@
                     <line x1="12" y1="5" x2="12" y2="19" />
                     <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                New Configuration
+                New Date Configuration
             </a>
             <a class="sl-hero-btn sl-btn-outline" asp-controller="Home" asp-action="Index">
                 ← Dashboard
@@ -124,7 +124,7 @@
             {
                 <div class="sl-empty">
                     <div class="sl-empty-icon">📭</div>
-                    <p>No approved configurations found.<br />Create one from Step 1.</p>
+                    <p>No approved date configurations yet.<br />Create one in Date Configuration.</p>
                 </div>
             }
             else
@@ -133,11 +133,11 @@
                     <table id="settingsTable" class="sl-table" style="width:100%">
                         <thead>
                             <tr>
-                                <th>ID</th>
+                                <th>Number</th>
                                 <th>Roll</th>
                                 <th>Notice Type</th>
-                                <th>Mode</th>
-                                <th>Ver</th>
+                                <th>Batch Mode</th>
+                                <th>Version</th>
                                 <th>Letter Date</th>
                                 <th>Workflow Status</th>
                                 <th>Signature</th>
@@ -221,7 +221,7 @@
                                                          stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
                                                         <polyline points="9 18 15 12 9 6" />
                                                     </svg>
-                                                    Continue CLA
+                                                    Continue CLA Notice
                                                 </a>
                                             }
                                             else if (r.IsConfirmed)
@@ -241,7 +241,7 @@
                                                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                                         <circle cx="12" cy="12" r="3" />
                                                     </svg>
-                                                    @(r.IsApproved ? "Preview" : "Continue Approval")
+                                                    @(r.IsApproved ? "Open Notice Preview" : "Continue Approval")
                                                 </a>
                                             }
                                             else
@@ -259,12 +259,13 @@
                                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                                 </svg>
-                                                Edit
+                                                Edit Dates
                                             </a>
 
                                             <a class="sl-action sl-action-summary"
-                                                   href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })">
-                                                Summary
+                                                   href="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId })"
+                                                   data-en-open-url="@Url.Action("Step1Summary", "Workflow", new { settingsId = r.SettingsId, partial = true })">
+                                                Date Summary
                                             </a>
                                         </div>
                                     </td>

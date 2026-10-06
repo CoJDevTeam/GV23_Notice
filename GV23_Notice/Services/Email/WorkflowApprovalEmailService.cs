@@ -358,7 +358,7 @@ namespace GV23_Notice.Services.Email
             <p style='margin:2px 0 0;font-size:10px;color:#333333;letter-spacing:0.3px;'>Group Finance: Property Branch · Valuation Services</p>
           </td>
           <td style='text-align:right;'>
-            <p style='margin:0;font-size:10px;color:#333333;'>GV23 Notices System</p>
+            <p style='margin:0;font-size:10px;color:#333333;'>eNotice</p>
           </td>
         </tr>
       </table>
@@ -371,7 +371,7 @@ namespace GV23_Notice.Services.Email
     <td style='background:#f9f9f9;border-top:3px solid #e6b000;padding:20px 32px;'>
       <p style='margin:0 0 4px;font-size:13px;color:#333333;font-weight:600;'>City of Johannesburg</p>
       <p style='margin:0 0 4px;font-size:12px;color:#666666;'>Valuation Services Department</p>
-      <p style='margin:0;font-size:11px;color:#999999;'>This is an automated workflow notification from the GV23 Notices System. Please do not reply to this email.</p>
+      <p style='margin:0;font-size:11px;color:#999999;'>This is an automated workflow notification from the eNotice. Please do not reply to this email.</p>
     </td>
   </tr>";
 

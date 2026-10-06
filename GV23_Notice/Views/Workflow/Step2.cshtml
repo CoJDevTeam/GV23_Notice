@@ -1,625 +1,283 @@
 ﻿@model GV23_Notice.Models.Workflow.ViewModels.WorkflowStep2Vm
 @using GV23_Notice.Domain.Workflow
 @{
-    ViewData["Title"] = "Step 2 — Preview";
+    ViewData["Title"] = "Notice Preview";
 
     bool isInvalid = Model.Notice == NoticeKind.IN;
     bool isS52 = Model.Notice == NoticeKind.S52;
     bool isTpa = Model.Notice == NoticeKind.TPA;
-    bool isClaTpa = Model.Notice == NoticeKind.CLA_TPA;
-    bool isDirectThirdPartyNotice = isTpa || isClaTpa;
-    bool supportsSingleEmailMulti =
-        Model.Notice is NoticeKind.S49 or NoticeKind.S51 or NoticeKind.S53
-                     or NoticeKind.S78 or NoticeKind.S52;
+    bool isCla = Model.Notice == NoticeKind.CLA_TPA;
+    bool isDirect = isTpa || isCla;
 
-    string selectedMode = string.IsNullOrWhiteSpace(Model.SelectedMode)
-        ? "single"
-        : Model.SelectedMode.Trim().ToLowerInvariant();
-    if (selectedMode == "multi") selectedMode = "emailmulti";
-
-    string selectedVariant = string.IsNullOrWhiteSpace(Model.SelectedVariant)
-        ? "Default"
-        : Model.SelectedVariant.Trim();
-
-    string S2Link(string variant, string mode)
-        => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant, mode, appealNo = Model.AppealNo }) ?? "#";
-
-    string S2LinkKeep(string mode)
-        => Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant = selectedVariant, mode, appealNo = Model.AppealNo }) ?? "#";
+    // Only real content variants remain (Invalid: Omission/Objection, S52: Appeal/Review).
+    // PDF "modes" (Single / Email Multi / Split PDF) are removed from the UI.
+    string selectedVariant = string.IsNullOrWhiteSpace(Model.SelectedVariant) ? "Default" : Model.SelectedVariant.Trim();
+    string VariantUrl(string variant) =>
+        Url.Action("Step2", "Workflow", new { settingsId = Model.SettingsId, variant, mode = "single", appealNo = Model.AppealNo }) ?? "#";
 
     bool hasSignature = !string.IsNullOrWhiteSpace(Model.SignaturePath);
-    bool isDJ = Model.Notice == NoticeKind.DJ;
-    bool allowSplitPdf =
-      !isInvalid &&
-      !isDJ &&
-      !isDirectThirdPartyNotice;
+    bool needsSignature = Model.Notice == NoticeKind.S49;
+    bool alreadyApproved = Model.Step2Approved && Model.ApprovalKey.HasValue && Model.ApprovalKey != Guid.Empty;
+    bool canApprove = Model.PreviewFound && Model.IsApproved && (!needsSignature || hasSignature);
 
     string NoticeName(NoticeKind n) => n switch
     {
-        NoticeKind.S49 => "Section 49 — Public Inspection & Objections",
-        NoticeKind.S51 => "Section 51 — Objection Decision",
+        NoticeKind.S49 => "Section 49 — Public Inspection and Objections",
+        NoticeKind.S51 => "Section 51 — Objection Outcome",
         NoticeKind.S52 => "Section 52 — Appeal Notices",
-        NoticeKind.S53 => "Section 53 — MVD Decision",
-        NoticeKind.DJ => "Dear Johnny Notice",
-        NoticeKind.IN => "Invalid Notice",
-        NoticeKind.S78 => "Section 78 — Review Period",
+        NoticeKind.S53 => "Section 53 — Municipal Valuer's Decision",
+        NoticeKind.S53Rev => "Section 53 — Revised Municipal Valuer's Decision",
+        NoticeKind.DJ => "Dear Johnny — Acknowledgement Notice",
+        NoticeKind.IN => "Invalid Objection or Omission Notice",
+        NoticeKind.S78 => "Section 78 — Property Verification Review",
         NoticeKind.TPA => "Third-Party Appeal Application",
-        NoticeKind.CLA_TPA => "CLA-THIRD PARTY APPLICATION NOTICE",
+        NoticeKind.CLA_TPA => "CLA Third-Party Application Notice",
         _ => n.ToString()
     };
+
+    // ONE closing date per notice — the full list lives in the Date Summary modal
+    (string Label, DateTime? Date)? closing = Model.Notice switch
+    {
+        NoticeKind.S49 => ("Objection period closes", Model.ExtensionDate ?? Model.ObjectionEndDate),
+        NoticeKind.S51 => ("Evidence closing date", Model.EvidenceCloseDate),
+        NoticeKind.S53 or NoticeKind.S53Rev => ("Appeal closing date", Model.AppealCloseDate),
+        NoticeKind.S78 => ("Review period closes", Model.ReviewCloseDate),
+        NoticeKind.CLA_TPA => ("Representation period closes", Model.ObjectionEndDate ?? Model.LetterDate.AddDays(30)),
+        _ => null
+    };
+
+    var summaryUrl = Url.Action("Step1Summary", "Workflow", new { settingsId = Model.SettingsId, partial = true });
+    var batchesUrl = alreadyApproved
+        ? Url.Action("Step3Kickoff", "Workflow", new { settingsId = Model.SettingsId, key = Model.ApprovalKey, variant = selectedVariant, mode = "single" })
+        : null;
 }
 
-@* <link href="~/css/admincss/step2css.css" rel="stylesheet" asp-append-version="true" /> *@
-<link href="~/css/step2/step2css.css" rel="stylesheet" />
-<div class="s2-root">
+<div class="en-page">
 
-    <!-- Top bar -->
-    <div class="s2-topbar">
-        <div class="s2-topbar-left">
-            <div class="s2-logo-mark">VNS</div>
-            <div class="s2-topbar-div"></div>
-            <div>
-                <div class="s2-page-title">Notice Preview</div>
-                <div class="s2-page-sub">Step 2 — Review the notice and email, then start Step 3</div>
-            </div>
+    <!-- Header -->
+    <div class="en-pagehead">
+        <div style="min-width:0">
+            <div class="en-eyebrow">Step 2 of 3</div>
+            <h1 class="en-title">Notice Preview</h1>
+            <p class="en-sub">@NoticeName(Model.Notice) · @Model.RollShortCode — @Model.RollName · Version @Model.Version</p>
         </div>
-        <div class="s2-topbar-right">
-            <a class="s2-topbar-link" asp-controller="Workflow" asp-action="SettingsLibrary">
-                ← Settings Library
-            </a>
-            <a class="s2-topbar-link" asp-controller="Workflow" asp-action="Step1"
-               asp-route-settingsId="@Model.SettingsId">
-                Edit Step 1
-            </a>
+        <div class="en-actions">
+            <a class="en-btn en-btn-ghost" asp-controller="Workflow" asp-action="Step1" asp-route-settingsId="@Model.SettingsId">← Back to Date Configuration</a>
         </div>
     </div>
 
     <!-- Stepper -->
-    <div class="s2-stepper">
-        <div class="s2-step done">
-            <div class="s2-step-num">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-            </div>
-            <div class="s2-step-label">Configure Dates</div>
-        </div>
-        <div class="s2-step-line"></div>
-        <div class="s2-step active">
-            <div class="s2-step-num">2</div>
-            <div class="s2-step-label">Preview</div>
-        </div>
-        <div class="s2-step-line"></div>
-        <div class="s2-step">
-            <div class="s2-step-num">3</div>
-            <div class="s2-step-label">Start Step 3</div>
-        </div>
+    <div class="en-stepper" aria-label="Progress">
+        <div class="en-step done"><span class="en-step-num">✓</span> Date Configuration</div>
+        <div class="en-step-line"></div>
+        <div class="en-step @(alreadyApproved ? "done" : "active")"><span class="en-step-num">@(alreadyApproved ? "✓" : "2")</span> Notice Preview</div>
+        <div class="en-step-line"></div>
+        <div class="en-step @(alreadyApproved ? "active" : "")"><span class="en-step-num">3</span> Batches, Printing and Sending</div>
     </div>
 
-    <!-- Alerts -->
+    <!-- Messages -->
     @if (TempData["Success"] != null)
     {
-        <div class="s2-alert s2-alert-ok">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-            @TempData["Success"]
-        </div>
+        <div class="en-alert en-alert-ok" role="status">✓ <div>@TempData["Success"]</div></div>
+    }
+    @if (TempData["Warning"] != null)
+    {
+        <div class="en-alert en-alert-warn" role="status">! <div>@TempData["Warning"]</div></div>
     }
     @if (TempData["Error"] != null)
     {
-        <div class="s2-alert s2-alert-err">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
-            @TempData["Error"]
-        </div>
+        <div class="en-alert en-alert-err" role="alert">✕ <div>@TempData["Error"]</div></div>
     }
 
-    <!-- Meta pills -->
-    <div class="s2-meta-bar">
-        <span class="s2-meta-pill s2-notice-pill">@NoticeName(Model.Notice)</span>
-        <span class="s2-meta-pill"><strong>Roll:</strong> @Model.RollShortCode — @Model.RollName</span>
-        <span class="s2-meta-pill"><strong>@(isClaTpa
-                    ? "Notification Date:"
-                    : "Letter Date:")
-            </strong>
-
-            @Model.LetterDate.ToString("dd MMM yyyy")
-        </span>
-        <span class="s2-meta-pill"><strong>Recipient:</strong> @Model.RecipientName</span>
-        @if (!isDirectThirdPartyNotice)
-        {
-            <span class="s2-meta-pill">
-                <strong>Mode:</strong> @selectedMode
-                &nbsp;|&nbsp;
-                <strong>Variant:</strong> @selectedVariant
-            </span>
-        }
-        else if (isClaTpa)
-        {
-            <span class="s2-meta-pill">
-                <strong>Representation Period:</strong>
-                30 calendar days
-            </span>
-        }
-        else
-        {
-            <span class="s2-meta-pill">
-                <strong>Owner Response Period:</strong>
-                51 calendar days
-            </span>
-        }
-    </div>
-
-    <!-- Variant / Mode tabs -->
+    <!-- Variant switch (content variants only) -->
     @if (isInvalid)
     {
-        <div class="s2-tabs">
-            <span class="s2-tab-label">Variant</span>
-            <a class="s2-tab @(selectedVariant == "InvalidOmission" ? "active" : "")"
-               href="@S2Link("InvalidOmission", "single")">Invalid Omission</a>
-            <a class="s2-tab @((selectedVariant == "InvalidObjection" || selectedVariant == "Default") ? "active" : "")"
-               href="@S2Link("InvalidObjection", "single")">Invalid Objection</a>
+        <div class="en-tabs" role="tablist" aria-label="Notice type">
+            <a class="en-tab @(selectedVariant == "InvalidObjection" || selectedVariant == "Default" ? "active" : "")" href="@VariantUrl("InvalidObjection")">Invalid Objection</a>
+            <a class="en-tab @(selectedVariant == "InvalidOmission" ? "active" : "")" href="@VariantUrl("InvalidOmission")">Invalid Omission</a>
         </div>
     }
     else if (isS52)
     {
-        bool canReview = Model.S52CanShowReview;
-        bool canAppeal = Model.S52CanShowAppealDecision;
-        <div class="s2-tabs">
-            <span class="s2-tab-label">Variant</span>
-            @if (canAppeal)
-            {
-                <a class="s2-tab @((selectedVariant == "S52Appeal" || selectedVariant == "Default") ? "active" : "")"
-                     href="@S2Link("S52Appeal", selectedMode)">Appeal Decision</a>
-            }
-            else
-            {
-
-                     <span class="s2-tab-disabled" title="Not selected on Step 1">Appeal Decision</span>
-                 }
-            @if (canReview)
-            {
-                <a class="s2-tab @(selectedVariant == "S52Review" ? "active" : "")"
-                     href="@S2Link("S52Review", selectedMode)">Section 52 Review</a>
-            }
-            else
-            {
-
-                     <span class="s2-tab-disabled" title="Not selected on Step 1">Section 52 Review</span>
-                 }
-            <div class="s2-tab-divider"></div>
-            <span class="s2-tab-label">Mode</span>
-            <a class="s2-tab @(selectedMode == "single" ? "active" : "")" href="@S2LinkKeep("single")">Single</a>
-            <a class="s2-tab @(selectedMode == "emailmulti" ? "active" : "")" href="@S2LinkKeep("emailmulti")">Email Multi</a>
+        <div class="en-tabs" role="tablist" aria-label="Notice type">
+            <a class="en-tab @(Model.S52CanShowAppealDecision ? "" : "disabled") @(selectedVariant == "S52Appeal" || selectedVariant == "Default" ? "active" : "")"
+               href="@VariantUrl("S52Appeal")" title="@(Model.S52CanShowAppealDecision ? "" : "Not selected in Date Configuration")">Appeal Decision</a>
+            <a class="en-tab @(Model.S52CanShowReview ? "" : "disabled") @(selectedVariant == "S52Review" ? "active" : "")"
+               href="@VariantUrl("S52Review")" title="@(Model.S52CanShowReview ? "" : "Not selected in Date Configuration")">Section 52 Review</a>
         </div>
-        @if (canReview && canAppeal)
+        @if (Model.S52CanShowAppealDecision && Model.S52CanShowReview)
         {
-            <div class="s2-both-banner">
-                ✅ <strong>Both</strong> sub-types selected — review each tab before starting Step 3.
-            </div>
+            <p class="en-sub" style="margin:-8px 0 14px">Both notice types are included — check each tab before approving.</p>
         }
     }
-    else if (supportsSingleEmailMulti)
+
+    @if (!Model.PreviewFound)
     {
-        <div class="s2-tabs">
-            <span class="s2-tab-label">Mode</span>
-            <a class="s2-tab @(selectedMode == "single" ? "active" : "")" href="@S2LinkKeep("single")">Single</a>
-            <a class="s2-tab @(selectedMode == "emailmulti" ? "active" : "")" href="@S2LinkKeep("emailmulti")">Email Multi</a>
-            @if (allowSplitPdf)
-            {
-                <a class="s2-tab @(selectedMode == "splitpdf" ? "active" : "")" href="@S2LinkKeep("splitpdf")">Split PDF</a>
-            }
-        </div>
-    }
-
-    <!-- Body grid -->
-    <div class="s2-body">
-        @if (!Model.PreviewFound)
-{
-    <div style="grid-column:1 / -1;">
         @await Html.PartialAsync("_NotFoundPartial", Model)
-    </div>
-}
-else
-{
-        <!-- PDF preview -->
-        <div class="s2-card">
-            <div class="s2-card-head">
-                <div class="s2-card-title">
-                    <div class="s2-card-accent"></div>
-                    PDF Preview
-                </div>
+    }
+    else
+    {
+        <div class="en-preview">
+
+            <!-- PDF -->
+            <section class="en-card" aria-label="Notice PDF preview">
+                <div class="en-card-head">
+                    <h2 class="en-card-title">Notice PDF</h2>
                     @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
                     {
-                        <a href="@Model.PdfUrl" target="_blank" style="font-size:12px;font-weight:700;color:var(--s2-gold-d);text-decoration:none;">
-                            ↗ Open in New Tab
-                        </a>
-                    }
-            </div>
-            <div class="s2-card-body">
-                    @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
-                    {
-                        <iframe class="s2-pdf-iframe" src="@Model.PdfUrl" title="Notice PDF Preview"></iframe>
-                    }
-                    else
-                    {
-                        @await Html.PartialAsync("_NotFoundPartial", Model)
-                    }
-            </div>
-                <div class="s2-card-foot">
-                    @if (isClaTpa)
-                    {
-                        <span>
-                            Preview of one CLA property-owner notification.
-                            Bulk printing will process all linked CLA records during Step 3.
-                        </span>
-                    }
-                    else if (isTpa)
-                    {
-                        <span>
-                            Preview of one Third-Party Appeal Application notice.
-                        </span>
-                    }
-                    else
-                    {
-                        <span>
-                            <strong>Single</strong> = Standard notice ·
-                            <strong>Email Multi</strong> = Recipient holds multiple properties ·
-                            <strong>Split PDF</strong> = Rows split by category
-                        </span>
+                        <a class="en-btn-link" href="@Model.PdfUrl" target="_blank" rel="noopener">Open in new tab ↗</a>
                     }
                 </div>
-        </div>
-
-        <!-- Side panel -->
-        <div style="display:flex;flex-direction:column;gap:16px;">
-
-            <!-- Step 1 snapshot -->
-            <div class="s2-card">
-                <div class="s2-card-head">
-                    <div class="s2-card-title">
-                        <div class="s2-card-accent"></div>
-                        Step 1 Snapshot
-                    </div>
-                    <div style="display:flex;gap:5px;">
-                        @if (Model.IsApproved)
-                        {
-                            <span class="s2-badge s2-badge-ok">✓ Approved</span>
-                        }
-                        else
-                        {
-
-                            <span class="s2-badge s2-badge-muted">Not Approved</span>
-                        }
-                        @if (Model.IsConfirmed)
-                        {
-                            <span class="s2-badge s2-badge-gold">✓ Confirmed</span>
-                        }
-                    </div>
-                </div>
-                <div class="s2-snap-grid">
-                    <div class="s2-snap-item">
-                            <span class="s2-snap-label">
-                                @(isClaTpa
-                                    ? "Notification Letter Date"
-                                    : "Letter Date")
-                            </span>
-                        <span class="s2-snap-value">@Model.LetterDate.ToString("dd MMM yyyy")</span>
-                    </div>
-                    <div class="s2-snap-item">
-                        <span class="s2-snap-label">City Manager Sign</span>
-                        <span class="s2-snap-value @(Model.CityManagerSignDate == null ? "empty" : "")">
-                            @(Model.CityManagerSignDate?.ToString("dd MMM yyyy") ?? "—")
-                        </span>
-                    </div>
-                        @if (Model.ObjectionStartDate != null ||
-         Model.ObjectionEndDate != null)
-                        {
-                            <div class="s2-snap-item">
-                                <span class="s2-snap-label">
-                                    @(isClaTpa
-                                        ? "Representation Starts"
-                                        : "Objection Start")
-                                </span>
-
-                                <span class="s2-snap-value @(Model.ObjectionStartDate == null ? "empty" : "")">
-                                    @(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—")
-                                </span>
-                            </div>
-
-                            <div class="s2-snap-item">
-                                <span class="s2-snap-label">
-                                    @(isClaTpa
-                                        ? "Representation Closes"
-                                        : "Objection End")
-                                </span>
-
-                                <span class="s2-snap-value @(Model.ObjectionEndDate == null ? "empty" : "")">
-                                    @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")
-                                </span>
-                            </div>
-                        }
-                    
-                    @if (Model.AppealCloseDate != null)
-                    {
-                        <div class="s2-snap-item">
-                            <span class="s2-snap-label">Batch Date</span>
-                            <span class="s2-snap-value @(Model.BatchDate == null ? "empty" : "")">
-                                @(Model.BatchDate?.ToString("dd MMM yyyy") ?? "—")
-                            </span>
-                        </div>
-                        <div class="s2-snap-item">
-                            <span class="s2-snap-label">Appeal Close</span>
-                            <span class="s2-snap-value @(Model.AppealCloseDate == null ? "empty" : "")">
-                                @(Model.AppealCloseDate?.ToString("dd MMM yyyy") ?? "—")
-                            </span>
-                        </div>
-                    }
-                    @if (Model.BulkFromDate != null || Model.BulkToDate != null)
-                    {
-                        <div class="s2-snap-item">
-                            <span class="s2-snap-label">Bulk From</span>
-                            <span class="s2-snap-value @(Model.BulkFromDate == null ? "empty" : "")">
-                                @(Model.BulkFromDate?.ToString("dd MMM yyyy") ?? "—")
-                            </span>
-                        </div>
-                        <div class="s2-snap-item">
-                            <span class="s2-snap-label">Bulk To</span>
-                            <span class="s2-snap-value @(Model.BulkToDate == null ? "empty" : "")">
-                                @(Model.BulkToDate?.ToString("dd MMM yyyy") ?? "—")
-                            </span>
-                        </div>
-                    }
-                    @if (Model.EvidenceCloseDate != null)
-                    {
-                        <div class="s2-snap-item" style="grid-column:1/-1">
-                            <span class="s2-snap-label">Evidence Close</span>
-                            <span class="s2-snap-value">@Model.EvidenceCloseDate?.ToString("dd MMM yyyy")</span>
-                        </div>
-                    }
-                </div>
-                    @if (!isDirectThirdPartyNotice)
-                    {
-                        <div class="s2-sig-row">
-                            <span class="s2-sig-label">Signature</span>
-
-                            @if (hasSignature)
-                            {
-                                <span class="s2-badge s2-badge-ok">✓ Uploaded</span>
-                                <span class="s2-sig-path">
-                                    @System.IO.Path.GetFileName(Model.SignaturePath)
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="s2-badge s2-badge-warn">
-                                    ⚠ Not Uploaded
-                                </span>
-                            }
-                        </div>
-                    }
-
-
-            </div>
-
-            <!-- Email preview -->
-            <div class="s2-card">
-                <div class="s2-card-head">
-                    <div class="s2-card-title">
-                        <div class="s2-card-accent"></div>
-                        Email Preview
-                    </div>
-                </div>
-                <div class="s2-card-body">
-                    <div class="s2-email-subj">
-                        <span class="s2-subj-label">Subject</span>
-                        @Model.EmailSubject
-                    </div>
-                    <div class="s2-email-body">
-                        @Html.Raw(Model.EmailBodyHtml)
-                    </div>
-                </div>
-
-                <!-- ── Action bar: ONLY "Start Step 3" ─────────── -->
-                <div class="s2-action-bar">
-                    <button class="s2-btn s2-btn-step3" type="button" onclick="openStep3Modal()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                        </svg>
-                            @(isClaTpa
-          ? "Approve CLA Preview"
-          : "Start Step 3 Processing")
-                    </button>
-                    <a class="s2-btn s2-btn-back" asp-controller="Workflow" asp-action="Step1"
-                       asp-route-settingsId="@Model.SettingsId">
-                        ← Back to Step 1
-                    </a>
-                    <a class="s2-btn s2-btn-lib" asp-controller="Workflow" asp-action="SettingsLibrary">
-                        Settings Library
-                    </a>
-                </div>
-            </div>
-
-        </div><!-- /side panel -->
-        }
-    </div><!-- /s2-body -->
-
-</div><!-- /s2-root -->
-<!-- ══════════════════════════════════════════════
-     START STEP 3 — WARNING CONFIRMATION MODAL
-     (replaces both old Approve + Correction modals)
-══════════════════════════════════════════════ -->
-<div class="s2-modal-overlay" id="step3Modal">
-    <div class="s2-modal">
-
-        <div class="s2-modal-head">
-            <div class="s2-modal-head-left">
-                <div class="s2-modal-warn-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e6b000" stroke-width="2.2" stroke-linecap="round">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                        <line x1="12" y1="9" x2="12" y2="13" />
-                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                    </svg>
-                </div>
-                <div>
-                    <div class="s2-modal-title">
-                        @(isClaTpa
-                            ? "Confirm — Approve CLA Preview"
-                            : "Confirm — Start Step 3 Processing")
-                    </div>
-                    <div class="s2-modal-sub">
-                        @(isClaTpa
-                            ? "This will approve the CLA letter and email preview"
-                            : "This will unlock batch creation for this notice")
-                    </div>
-                </div>
-            </div>
-            <button class="s2-modal-x" onclick="closeStep3Modal()">✕</button>
-        </div>
-
-        <div class="s2-modal-body">
-            <div class="s2-modal-warning">
-                <span class="s2-modal-warning-icon">⚠</span>
-                <div class="s2-modal-warning-text">
-                    @if (isClaTpa)
-                    {
-                        <span>
-                            You are approving the letter and email preview for
-                            <strong>CLA-THIRD PARTY APPLICATION NOTICE</strong>.
-
-                            After approval, the workflow will continue to printing,
-                            appeal-pack verification and sending notices to property owners.
-                        </span>
-                    }
-                    else
-                    {
-                        <span>
-                            You are about to start Step 3 processing for
-                            <strong>@NoticeName(Model.Notice)</strong>
-                            on roll
-                            <strong>
-                                @Model.RollShortCode — @Model.RollName
-                            </strong>.
-
-                            Step 3 will allow the Data Team to create batches,
-                            print PDFs and send notices to ratepayers.
-                        </span>
-                    }
-                </div>
-            </div>
-
-            <div class="s2-modal-summary">
-                <div class="s2-ms-row">
-                    <span class="s2-ms-key">Roll</span>
-                    <span class="s2-ms-val">@Model.RollShortCode — @Model.RollName</span>
-                </div>
-                <div class="s2-ms-row">
-                    <span class="s2-ms-key">Notice</span>
-                    <span class="s2-ms-val">@NoticeName(Model.Notice)</span>
-                </div>
-                <div class="s2-ms-row">
-                    <span class="s2-ms-key">Letter Date</span>
-                    <span class="s2-ms-val">@Model.LetterDate.ToString("dd MMMM yyyy")</span>
-                </div>
-                @if (Model.Notice == NoticeKind.S53 && Model.AppealCloseDate != null)
+                @if (!string.IsNullOrWhiteSpace(Model.PdfUrl))
                 {
-                    <div class="s2-ms-row">
-                        <span class="s2-ms-key">Appeal Close</span>
-                        <span class="s2-ms-val">@Model.AppealCloseDate?.ToString("dd MMMM yyyy")</span>
-                    </div>
-                }
-                @if (Model.Notice == NoticeKind.S49)
-                {
-                    <div class="s2-ms-row">
-                        <span class="s2-ms-key">Objection Period</span>
-                        <span class="s2-ms-val">@(Model.ObjectionStartDate?.ToString("dd MMM yyyy") ?? "—") → @(Model.ObjectionEndDate?.ToString("dd MMM yyyy") ?? "—")</span>
-                    </div>
-                    <div class="s2-ms-row">
-                        <span class="s2-ms-key">Signature</span>
-                        <span class="s2-ms-val">@(hasSignature ? "✓ Uploaded" : "⚠ Not Uploaded")</span>
-                    </div>
-                }
-                @if (isClaTpa)
-                {
-                    <div class="s2-ms-row">
-                        <span class="s2-ms-key">
-                            Representation Period
-                        </span>
-
-                        <span class="s2-ms-val">
-                            30 calendar days
-                        </span>
-                    </div>
-
-                    <div class="s2-ms-row">
-                        <span class="s2-ms-key">
-                            Representation Closes
-                        </span>
-
-                        <span class="s2-ms-val">
-                            @(Model.ObjectionEndDate?.ToString("dd MMMM yyyy")
-                                ?? Model.LetterDate.AddDays(30).ToString("dd MMMM yyyy"))
-                        </span>
-                    </div>
-                }
-                <div class="s2-ms-row">
-                    <span class="s2-ms-key">Version</span>
-                    <span class="s2-ms-val">v @Model.Version</span>
-                </div>
-            </div>
-
-            <div class="s2-modal-note">
-                @if (isClaTpa)
-                {
-                    <span>
-                        ℹ This approval does not send emails.
-                        The next stage will print the CLA letters, verify appeal packs,
-                        and prepare the owner notifications.
-                    </span>
+                    <iframe class="en-preview-pdf" src="@Model.PdfUrl" title="Notice PDF preview"></iframe>
                 }
                 else
                 {
-                    <span>
-                        ℹ This does not send any notices to ratepayers.
-                        The Data Team will manage batch creation, PDF printing,
-                        and email dispatch in Step 3.
-                    </span>
+                    <div class="en-card-body">@await Html.PartialAsync("_NotFoundPartial", Model)</div>
                 }
-            </div>
-        </div>
+                <div class="en-card-foot">
+                    Sample notice for <strong>@Model.RecipientName</strong>. Every recipient gets their own details when the notices are printed.
+                </div>
+            </section>
 
-        <div class="s2-modal-foot">
-            <button type="button" class="s2-modal-cancel" onclick="closeStep3Modal()">Cancel</button>
-
-            <form asp-action="Step2Approve" asp-controller="Workflow" method="post" style="margin:0">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="settingsId" value="@Model.SettingsId" />
-                <input type="hidden" name="variant" value="@selectedVariant" />
-                <input type="hidden" name="mode" value="@selectedMode" />
-                <button type="submit" class="s2-modal-confirm">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                    @(isClaTpa
-     ? "Yes — Approve CLA Preview"
-     : "Yes — Start Step 3")
-                </button>
-            </form>
+            <!-- Checklist + action -->
+            <aside class="en-side">
+                <section class="en-card">
+                    <div class="en-card-head">
+                        <h2 class="en-card-title">Checklist</h2>
+                        <button type="button" class="en-btn-link" data-en-open-url="@summaryUrl">View date summary</button>
+                    </div>
+                    <div class="en-card-body">
+                        <ul class="en-checklist">
+                            <li>
+                                <span class="en-tick @(Model.IsApproved ? "ok" : "warn")">@(Model.IsApproved ? "✓" : "!")</span>
+                                <span class="en-check-label">
+                                    Dates @(Model.IsApproved ? "approved" : "not approved yet")
+                                    <span class="en-check-note">Version @Model.Version</span>
+                                </span>
+                            </li>
+                            <li>
+                                <span class="en-tick ok">✓</span>
+                                <span class="en-check-label">
+                                    @(isCla ? "Notification letter date" : isTpa ? "Estimated send date" : "Letter date")
+                                    <span class="en-check-val">@Model.LetterDate.ToString("dd MMMM yyyy")</span>
+                                </span>
+                            </li>
+                            @if (closing is { } c)
+                            {
+                                <li>
+                                    <span class="en-tick @(c.Date.HasValue ? "ok" : "warn")">@(c.Date.HasValue ? "✓" : "!")</span>
+                                    <span class="en-check-label">
+                                        @c.Label
+                                        <span class="en-check-val">@(c.Date?.ToString("dd MMMM yyyy") ?? "Not set")</span>
+                                    </span>
+                                </li>
+                            }
+                            @if (isTpa)
+                            {
+                                <li>
+                                    <span class="en-tick ok">✓</span>
+                                    <span class="en-check-label">
+                                        Owner response period
+                                        <span class="en-check-val">51 calendar days from the day it is sent</span>
+                                    </span>
+                                </li>
+                            }
+                            @if (needsSignature || hasSignature)
+                            {
+                                <li>
+                                    <span class="en-tick @(hasSignature ? "ok" : "warn")">@(hasSignature ? "✓" : "!")</span>
+                                    <span class="en-check-label">
+                                        Signature @(hasSignature ? "uploaded" : "missing")
+                                        @if (!hasSignature)
+                                        {
+                                            <span class="en-check-note">Required — upload it in Date Configuration.</span>
+                                        }
+                                    </span>
+                                </li>
+                            }
+                            <li>
+                                <span class="en-tick ok">✓</span>
+                                <span class="en-check-label">Notice preview created</span>
+                            </li>
+                            <li>
+                                <span class="en-tick @(alreadyApproved ? "ok" : "todo")">@(alreadyApproved ? "✓" : "")</span>
+                                <span class="en-check-label">
+                                    Notice preview @(alreadyApproved ? "approved" : "waiting for your approval")
+                                    @if (alreadyApproved && !string.IsNullOrWhiteSpace(Model.Step2ApprovedBy))
+                                    {
+                                        <span class="en-check-note">
+                                            By @(Model.Step2ApprovedBy)@(Model.Step2ApprovedAtUtc.HasValue ? $" on {Model.Step2ApprovedAtUtc.Value.ToLocalTime():dd MMM yyyy HH:mm}" : "")
+                                        </span>
+                                    }
+                                </span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="en-card-foot" style="display:grid;gap:8px">
+                        @if (alreadyApproved)
+                        {
+                            <a class="en-btn en-btn-primary en-btn-block" href="@batchesUrl">Continue to Batches, Printing and Sending →</a>
+                        }
+                        else
+                        {
+                            <button type="button" class="en-btn en-btn-primary en-btn-block" data-en-open="enApproveModal" @(canApprove ? "" : "disabled")>
+                                @(isCla ? "Approve CLA Notice Preview" : "Approve Notice Preview")
+                            </button>
+                            @if (!canApprove)
+                            {
+                                <span style="font-size:12px">Fix the items marked <strong>!</strong> first.</span>
+                            }
+                        }
+                    </div>
+                </section>
+            </aside>
         </div>
-    </div>
+    }
 </div>
 
-@section Scripts {
-    <script>
-        function openStep3Modal() {
-            document.getElementById('step3Modal').classList.add('open');
-            document.body.style.overflow = 'hidden';
-        }
-        function closeStep3Modal() {
-            document.getElementById('step3Modal').classList.remove('open');
-            document.body.style.overflow = '';
-        }
-        document.getElementById('step3Modal').addEventListener('click', function(e) {
-            if (e.target === this) closeStep3Modal();
-        });
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeStep3Modal();
-        });
-    </script>
+@if (!alreadyApproved && Model.PreviewFound)
+{
+    <!-- Confirm approval -->
+    <div class="en-modal" id="enApproveModal" role="dialog" aria-modal="true" aria-labelledby="enApproveTitle">
+        <div class="en-modal-dialog">
+            <div class="en-modal-head">
+                <div class="en-modal-icon" aria-hidden="true">✓</div>
+                <div>
+                    <h2 class="en-modal-title" id="enApproveTitle">Approve this notice preview?</h2>
+                    <p class="en-modal-sub">@NoticeName(Model.Notice)</p>
+                </div>
+                <button type="button" class="en-modal-x" data-en-close aria-label="Close">&times;</button>
+            </div>
+            <div class="en-modal-body">
+                <dl class="en-kv">
+                    <div><dt>Roll</dt><dd>@Model.RollShortCode — @Model.RollName</dd></div>
+                    <div><dt>Version</dt><dd>@Model.Version</dd></div>
+                </dl>
+                <p style="margin:14px 0 0;font-size:13.5px">
+                    @if (isCla)
+                    {
+                        <text>This approves the CLA letter. No emails go to property owners yet — the next stage prints the letters and checks the appeal packs.</text>
+                    }
+                    else
+                    {
+                        <text>This makes the notice available under <strong>Batches, Printing and Sending</strong>. No notices go to ratepayers yet.</text>
+                    }
+                </p>
+            </div>
+            <div class="en-modal-foot">
+                <button type="button" class="en-btn en-btn-ghost" data-en-close>Cancel</button>
+                <form asp-controller="Workflow" asp-action="Step2Approve" method="post" data-en-busy="Approving…">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="settingsId" value="@Model.SettingsId" />
+                    @* Post the enum name (e.g. S52AppealDecision) — "S52Appeal" does not bind to PreviewVariant *@
+                    <input type="hidden" name="variant" value="@GV23_Notice.Controllers.WorkflowController.PreviewVariantParser.Parse(selectedVariant)" />
+                    <input type="hidden" name="mode" value="single" />
+                    <input type="hidden" name="appealNo" value="@Model.AppealNo" />
+                    <button type="submit" class="en-btn en-btn-primary" data-en-autofocus>Yes, Approve</button>
+                </form>
+            </div>
+        </div>
+    </div>
 }
