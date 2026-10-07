@@ -8,6 +8,15 @@ namespace GV23_Notice.Services.QA
 
         Task<bool> IsQaApprovedAsync(Guid workflowKey, CancellationToken ct);
 
+        /// <summary>
+        /// Batches that may be sent. Section 49 is checked per batch; other notices
+        /// return every batch once their QA is approved (or none if it is not).
+        /// </summary>
+        Task<IReadOnlyCollection<int>> GetQaApprovedBatchIdsAsync(Guid workflowKey, CancellationToken ct);
+
+        /// <summary>Section 49 batches that are fully printed but have no approved QA sample yet.</summary>
+        Task<IReadOnlyList<string>> GetBatchesAwaitingQaAsync(Guid workflowKey, CancellationToken ct);
+
         Task<NoticeQaVm> BuildQaVmAsync(Guid workflowKey, CancellationToken ct);
 
         Task<int> CreateQaRunAsync(Guid workflowKey, string user, CancellationToken ct);
