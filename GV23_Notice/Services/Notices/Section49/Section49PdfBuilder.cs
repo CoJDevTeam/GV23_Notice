@@ -61,14 +61,44 @@ namespace GV23_Notice.Services.Notices.Section49
             if (!string.IsNullOrWhiteSpace(data.Addr5))
                 postalLines.Add(Safe(data.Addr5));
 
-            // Professional display fallback when no postal address exists.
-            // Database fields remain NULL/blank.
+            // No postal address on record (ADDR1–ADDR5 all empty):
+            // address the letter to "The Owner" at the property's street address,
+            // e.g.  THE OWNER / 2 GOLDING STREET / JOHANNESBURG.
+            // PDF display only — the database stays as it is.
             if (postalLines.Count == 0)
             {
-                if (!string.IsNullOrWhiteSpace(data.PropertyDesc))
-                    postalLines.Add(Safe(data.PropertyDesc));
+                postalLines.Add("THE OWNER");
 
-                postalLines.Add("JOHANNESBURG");
+                var street =
+                    !string.IsNullOrWhiteSpace(data.PhysicalAddress)
+                        ? data.PhysicalAddress
+                        : data.LisStreetAddress;
+
+                if (!string.IsNullOrWhiteSpace(street))
+                {
+                    // "2 GOLDING STREET, ROSEBANK" → one line per part
+                    foreach (var part in street.Split(
+                                 ',',
+                                 StringSplitOptions.RemoveEmptyEntries |
+                                 StringSplitOptions.TrimEntries))
+                    {
+                        postalLines.Add(part.ToUpperInvariant());
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(data.PropertyDesc))
+                {
+                    postalLines.Add(Safe(data.PropertyDesc).ToUpperInvariant());
+                }
+
+                if (!postalLines.Any(l =>
+                        l.Contains("JOHANNESBURG", StringComparison.OrdinalIgnoreCase)))
+                {
+                    postalLines.Add("JOHANNESBURG");
+                }
+
+                // Keep the address block the same height as a normal postal address
+                if (postalLines.Count > 5)
+                    postalLines = postalLines.Take(4).Append("JOHANNESBURG").ToList();
             }
 
             var physicalAddress =

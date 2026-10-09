@@ -640,7 +640,9 @@ namespace GV23_Notice.Services.Notices
                     Addr4 = db.Addr4 ?? "",
                     Addr5 = db.Addr5 ?? "",
                     PropertyDesc = db.PropertyDesc ?? "",
-                    PhysicalAddress = db.LisStreetAddress ?? "",
+                    PhysicalAddress = !string.IsNullOrWhiteSpace(db.LisStreetAddress)
+                        ? db.LisStreetAddress
+                        : db.PremiseAddress ?? "",
                     ValuationKey = db.ValuationKey ?? "",
                     ForceFourRows = forceFourRows,
                     PropertyRows = rowsFallback

@@ -225,13 +225,19 @@ namespace GV23_Notice.Services.Email
                     _emailOpt.Limits?.DelayMsBetweenSends
                         ?? 0);
 
+            // Section 49 with a roll mailbox: rows without an owner email are
+            // sent to the roll mailbox instead of being skipped as "NoEmail".
+            var includeRowsWithoutEmail =
+                GetS49RollMailbox(settings, roll) != null;
+
             var readyLogs =
                 await _db.NoticeRunLogs
                     .Where(x =>
                         ids.Contains(x.NoticeBatchId) &&
                         x.Status == RunStatus.Printed &&
-                        x.RecipientEmail != null &&
-                        x.RecipientEmail != "" &&
+                        (includeRowsWithoutEmail ||
+                         (x.RecipientEmail != null &&
+                          x.RecipientEmail != "")) &&
                         x.PdfPath != null &&
                         x.PdfPath != "")
                     .OrderBy(x => x.NoticeBatchId)
@@ -369,12 +375,31 @@ namespace GV23_Notice.Services.Email
                     ? freshEmail.Trim()
                     : log.RecipientEmail?.Trim();
 
-            if (string.IsNullOrWhiteSpace(
-                    originalRecipient))
+            // Section 49 roll mailbox (e.g. GV23Supp4@joburg.org.za)
+            var rollMailbox =
+                GetS49RollMailbox(settings, roll);
+
+            var ownerHasEmail =
+                !string.IsNullOrWhiteSpace(
+                    originalRecipient);
+
+            if (!ownerHasEmail)
             {
-                throw new InvalidOperationException(
-                    $"Recipient email is empty for RunLog {log.Id}.");
+                if (rollMailbox == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Recipient email is empty for RunLog {log.Id}.");
+                }
+
+                // No owner email: the roll mailbox receives the notice instead.
+                originalRecipient = rollMailbox;
             }
+
+            // Owner email for the S49 audit (null when only the roll mailbox was used)
+            string? ownerEmailForAudit =
+                ownerHasEmail
+                    ? originalRecipient
+                    : null;
 
             // Keep the original/client email in NoticeRunLog.
             log.RecipientEmail =
@@ -408,9 +433,22 @@ namespace GV23_Notice.Services.Email
                 _templates.Build(
                     request);
 
+            // Owner copy follows test mode; the roll mailbox is internal and always real.
             var actualRecipient =
-                ResolveActualRecipient(
-                    originalRecipient);
+                ownerHasEmail
+                    ? ResolveActualRecipient(
+                        originalRecipient!)
+                    : rollMailbox!;
+
+            var rollMailboxCopy =
+                ownerHasEmail &&
+                rollMailbox != null &&
+                !string.Equals(
+                    actualRecipient,
+                    rollMailbox,
+                    StringComparison.OrdinalIgnoreCase)
+                    ? rollMailbox
+                    : null;
 
             var isTestMode =
                 IsTestModeEnabled();
@@ -426,7 +464,7 @@ namespace GV23_Notice.Services.Email
                     log.PremiseId,
                     batchName,
                     status: Section49Statuses.Sending,
-                    originalEmail: originalRecipient,
+                    originalEmail: ownerEmailForAudit,
                     actualSentTo: actualRecipient,
                     isTestMode: isTestMode,
                     emlPath: null,
@@ -483,7 +521,8 @@ namespace GV23_Notice.Services.Email
                 BuildTrackingReference(
                     settings,
                     log),
-                ct);
+                ct,
+                bccAddress: rollMailboxCopy);
 
             log.Status =
                 RunStatus.Sent;
@@ -494,8 +533,11 @@ namespace GV23_Notice.Services.Email
             log.SentBy =
                 sentBy;
 
+            // Keep it visible that the owner was NOT emailed (post may still be needed)
             log.ErrorMessage =
-                null;
+                ownerHasEmail
+                    ? null
+                    : "No owner email on record. Notice sent to the roll mailbox only.";
 
             if (settings.Notice == NoticeKind.S49 &&
                 !string.IsNullOrWhiteSpace(log.PremiseId))
@@ -508,7 +550,7 @@ namespace GV23_Notice.Services.Email
                         log.PremiseId,
                         batchName,
                         status: Section49Statuses.Sent,
-                        originalEmail: originalRecipient,
+                        originalEmail: ownerEmailForAudit,
                         actualSentTo: actualRecipient,
                         isTestMode: isTestMode,
                         emlPath: emlPath,
@@ -1002,6 +1044,40 @@ namespace GV23_Notice.Services.Email
         // ============================================================
         // S49 AUDIT
         // ============================================================
+
+        /// <summary>
+        /// The Section 49 roll mailbox for this roll (RollDb:Sources:{db}:Section49:RollMailbox),
+        /// or null when it is not configured or this is not a Section 49 notice.
+        /// </summary>
+        private string? GetS49RollMailbox(
+            NoticeSettings settings,
+            RollRegistry roll)
+        {
+            if (settings.Notice != NoticeKind.S49 ||
+                string.IsNullOrWhiteSpace(roll.SourceDb))
+            {
+                return null;
+            }
+
+            try
+            {
+                var mailbox =
+                    _rollDb.GetSource(
+                        roll.SourceDb.Trim())
+                    .Section49?
+                    .RollMailbox?
+                    .Trim();
+
+                return string.IsNullOrWhiteSpace(mailbox)
+                    ? null
+                    : mailbox;
+            }
+            catch (InvalidOperationException)
+            {
+                // No RollDb source configured for this roll
+                return null;
+            }
+        }
 
         private bool UsesS49EmailAvailabilityMode(
             RollRegistry roll)
@@ -2024,7 +2100,8 @@ namespace GV23_Notice.Services.Email
             string actualRecipient,
             string pdfPath,
             string trackingReference,
-            CancellationToken ct)
+            CancellationToken ct,
+            string? bccAddress = null)
         {
             if (string.IsNullOrWhiteSpace(
                     pdfPath) ||
@@ -2078,6 +2155,15 @@ namespace GV23_Notice.Services.Email
             message.To.Add(
                 new MailAddress(
                     actualRecipient.Trim()));
+
+            // Section 49 roll mailbox copy (hidden from the owner)
+            if (!string.IsNullOrWhiteSpace(
+                    bccAddress))
+            {
+                message.Bcc.Add(
+                    new MailAddress(
+                        bccAddress.Trim()));
+            }
 
             if (!string.IsNullOrWhiteSpace(
                     _emailOpt.CcAddress))

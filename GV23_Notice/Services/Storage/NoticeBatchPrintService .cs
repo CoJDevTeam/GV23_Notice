@@ -598,9 +598,10 @@ namespace GV23_Notice.Services.Storage
                         propertyDesc,
 
                     PhysicalAddress =
-                        firstRow.LisStreetAddress
-                        ?? contact?.PremiseAddress
-                        ?? "",
+                        !string.IsNullOrWhiteSpace(firstRow.LisStreetAddress)
+                            ? firstRow.LisStreetAddress
+                            : contact?.PremiseAddress
+                              ?? "",
 
                     ValuationKey =
                         firstRow.ValuationKey
