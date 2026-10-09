@@ -29,6 +29,13 @@ namespace GV23_Notice.Models.Workflow.ViewModels
         public int FailedItems { get; set; }
 
         public List<NoticeQaGroupVm> Groups { get; set; } = new();
+
+        /// <summary>
+        /// Section 49: printed batches that still need their own QA sample.
+        /// When this has items the page offers "Create QA Sample for Next Batch"
+        /// even though the latest sample is already approved.
+        /// </summary>
+        public List<string> BatchesAwaitingQa { get; set; } = new();
     }
 
     public sealed class NoticeQaGroupVm

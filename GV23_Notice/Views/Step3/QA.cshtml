@@ -259,7 +259,20 @@
         </div>
     }
 
-    @if (Model.IsApproved)
+    @if (Model.BatchesAwaitingQa.Count > 0 && Model.QaStatus != "Open")
+    {
+        <div class="qa-alert qa-alert-info">
+            <strong>@string.Join(", ", Model.BatchesAwaitingQa)</strong>
+            @(Model.BatchesAwaitingQa.Count == 1 ? "has" : "have")
+            been printed and still need a quality check sample.
+            Choose <strong>Create Quality Check Sample for Next Batch</strong>.
+            @if (Model.IsApproved)
+            {
+                <text>Batches that are already approved can be sent now.</text>
+            }
+        </div>
+    }
+    else if (Model.IsApproved)
     {
         <div class="qa-alert qa-alert-success">
             QA has been approved. You can now send notices.
@@ -279,30 +292,32 @@
     }
 
     <div class="qa-actions">
-        @if (Model.QaRunId == null || Model.QaStatus == "Open")
+        @if (Model.QaRunId == null || Model.QaStatus == "Open" || Model.BatchesAwaitingQa.Count > 0)
         {
             <form asp-action="CreateQA" asp-controller="Step3" method="post">
                 @Html.AntiForgeryToken()
                 <input type="hidden" name="key" value="@key" />
                 <button type="submit" class="qa-btn qa-btn-main">
-                    Create / Recreate QA Sample
+                    @(Model.IsApproved && Model.BatchesAwaitingQa.Count > 0
+                        ? "Create Quality Check Sample for Next Batch"
+                        : "Create / Recreate QA Sample")
                 </button>
             </form>
         }
 
         <a class="qa-btn qa-btn-gold"
-               asp-action="Print"
-               asp-controller="Step3"
-               asp-route-key="@key">
+           asp-action="Print"
+           asp-controller="Step3"
+           asp-route-key="@key">
             Back to Print
         </a>
 
         @if (Model.IsApproved)
         {
             <a class="qa-btn qa-btn-green"
-                   asp-action="SendEmail"
-                   asp-controller="Step3"
-                   asp-route-key="@key">
+               asp-action="SendEmail"
+               asp-controller="Step3"
+               asp-route-key="@key">
                 Go to Send Notice
             </a>
         }
@@ -391,20 +406,20 @@
                                         if (isDirectThirdParty)
                                         {
                                             <a class="qa-btn qa-btn-main"
-                                                   target="_blank"
-                                                   asp-action="OpenQaPdfByPath"
-                                                   asp-controller="Step3"
-                                                   asp-route-qaItemId="@item.QaItemId">
+                                               target="_blank"
+                                               asp-action="OpenQaPdfByPath"
+                                               asp-controller="Step3"
+                                               asp-route-qaItemId="@item.QaItemId">
                                                 View PDF
                                             </a>
                                         }
                                         else
                                         {
                                             <a class="qa-btn qa-btn-main"
-                                                   target="_blank"
-                                                   asp-action="OpenPdf"
-                                                   asp-controller="Step3"
-                                                   asp-route-runLogId="@item.NoticeRunLogId">
+                                               target="_blank"
+                                               asp-action="OpenPdf"
+                                               asp-controller="Step3"
+                                               asp-route-runLogId="@item.NoticeRunLogId">
                                                 View PDF
                                             </a>
                                         }

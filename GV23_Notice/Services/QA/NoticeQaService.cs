@@ -99,6 +99,119 @@ namespace GV23_Notice.Services.QA
                     x.Status == "Approved", ct);
         }
 
+        public async Task<IReadOnlyCollection<int>> GetQaApprovedBatchIdsAsync(Guid workflowKey, CancellationToken ct)
+        {
+            var settings = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.ApprovalKey == workflowKey ||
+                         x.WorkflowKey == workflowKey,
+                    ct);
+
+            if (settings?.Notice == NoticeKind.S49)
+            {
+                var state = await LoadS49BatchQaStateAsync(workflowKey, ct);
+                return state.Where(x => x.Approved).Select(x => x.BatchId).ToList();
+            }
+
+            if (!await IsQaApprovedAsync(workflowKey, ct))
+                return Array.Empty<int>();
+
+            return await _db.NoticeBatches
+                .AsNoTracking()
+                .Where(x => x.WorkflowKey == workflowKey)
+                .Select(x => x.Id)
+                .ToListAsync(ct);
+        }
+
+        public async Task<IReadOnlyList<string>> GetBatchesAwaitingQaAsync(Guid workflowKey, CancellationToken ct)
+        {
+            var settings = await _db.NoticeSettings
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x => x.ApprovalKey == workflowKey ||
+                         x.WorkflowKey == workflowKey,
+                    ct);
+
+            if (settings?.Notice != NoticeKind.S49 || !_section49.Qa.Enabled)
+                return Array.Empty<string>();
+
+            var state = await LoadS49BatchQaStateAsync(workflowKey, ct);
+            return state.Where(x => !x.Approved).Select(x => x.BatchName).ToList();
+        }
+
+        private sealed record S49BatchQaState(int BatchId, string BatchName, bool Approved);
+
+        /// <summary>
+        /// One row per COMPLETELY printed S49 batch, with whether it has an approved QA sample.
+        /// Same rules as IsS49QaApprovedAsync / CreateS49QaRunAsync.
+        /// </summary>
+        private async Task<List<S49BatchQaState>> LoadS49BatchQaStateAsync(Guid workflowKey, CancellationToken ct)
+        {
+            var batches = await _db.NoticeBatches
+                .AsNoTracking()
+                .Where(x =>
+                    x.WorkflowKey == workflowKey &&
+                    x.Notice == NoticeKind.S49 &&
+                    x.BatchKind == "STEP3" &&
+                    x.NumberOfRecords > 0)
+                .OrderBy(x => x.Id)
+                .Select(x => new { x.Id, x.BatchName, x.NumberOfRecords })
+                .ToListAsync(ct);
+
+            if (batches.Count == 0)
+                return new List<S49BatchQaState>();
+
+            var batchIds = batches.Select(x => x.Id).ToList();
+
+            var logs = await _db.NoticeRunLogs
+                .AsNoTracking()
+                .Where(x => batchIds.Contains(x.NoticeBatchId))
+                .Select(x => new { x.Id, x.NoticeBatchId, x.Status, x.PdfPath })
+                .ToListAsync(ct);
+
+            var approvedRunLogIds = (await _db.NoticeQaRuns
+                    .AsNoTracking()
+                    .Where(x =>
+                        x.WorkflowKey == workflowKey &&
+                        x.Notice == NoticeKind.S49 &&
+                        x.Status == "Approved")
+                    .SelectMany(x => x.Items)
+                    .Where(i => i.NoticeRunLogId.HasValue)
+                    .Select(i => i.NoticeRunLogId!.Value)
+                    .ToListAsync(ct))
+                .ToHashSet();
+
+            var result = new List<S49BatchQaState>();
+
+            foreach (var batch in batches)
+            {
+                var batchLogs = logs.Where(x => x.NoticeBatchId == batch.Id).ToList();
+
+                var fullyPrinted =
+                    batchLogs.Count > 0 &&
+                    batchLogs.Count == batch.NumberOfRecords &&
+                    batchLogs.All(x =>
+                        x.Status == RunStatus.Printed &&
+                        !string.IsNullOrWhiteSpace(x.PdfPath));
+
+                // Skip batches that are not fully printed yet — unless they already have an
+                // approved sample (e.g. some notices were sent, so they are no longer "Printed").
+                if (!fullyPrinted &&
+                    !batchLogs.Any(x => approvedRunLogIds.Contains(x.Id)))
+                {
+                    continue;
+                }
+
+                result.Add(new S49BatchQaState(
+                    batch.Id,
+                    batch.BatchName,
+                    batchLogs.Any(x => approvedRunLogIds.Contains(x.Id))));
+            }
+
+            return result;
+        }
+
         public async Task<NoticeQaVm> BuildQaVmAsync(Guid workflowKey, CancellationToken ct)
         {
             var settings = await _db.NoticeSettings
@@ -195,6 +308,10 @@ namespace GV23_Notice.Services.QA
                 items.Count > 0 &&
                 items.All(x => x.IsCategoryValid) &&
                 qaRun.Status != "Approved";
+
+            // S49 is per batch: after "Print All Pending" another batch may need its own sample
+            if (settings.Notice == NoticeKind.S49)
+                vm.BatchesAwaitingQa = (await GetBatchesAwaitingQaAsync(workflowKey, ct)).ToList();
 
             var groupLabel = DetermineQaGroupLabel(settings.Notice);
 
