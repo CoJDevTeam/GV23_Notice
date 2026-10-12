@@ -44,62 +44,7 @@ namespace GV23_Notice.Services.Notices.Section49
             // These are PDF-only fallbacks and are never written back to the DB.
             var greeting = "Dear Property Owner";
 
-            var postalLines = new List<string>();
-
-            if (!string.IsNullOrWhiteSpace(data.Addr1))
-                postalLines.Add(Safe(data.Addr1));
-
-            if (!string.IsNullOrWhiteSpace(data.Addr2))
-                postalLines.Add(Safe(data.Addr2));
-
-            if (!string.IsNullOrWhiteSpace(data.Addr3))
-                postalLines.Add(Safe(data.Addr3));
-
-            if (!string.IsNullOrWhiteSpace(data.Addr4))
-                postalLines.Add(Safe(data.Addr4));
-
-            if (!string.IsNullOrWhiteSpace(data.Addr5))
-                postalLines.Add(Safe(data.Addr5));
-
-            // No postal address on record (ADDR1–ADDR5 all empty):
-            // address the letter to "The Owner" at the property's street address,
-            // e.g.  THE OWNER / 2 GOLDING STREET / JOHANNESBURG.
-            // PDF display only — the database stays as it is.
-            if (postalLines.Count == 0)
-            {
-                postalLines.Add("THE OWNER");
-
-                var street =
-                    !string.IsNullOrWhiteSpace(data.PhysicalAddress)
-                        ? data.PhysicalAddress
-                        : data.LisStreetAddress;
-
-                if (!string.IsNullOrWhiteSpace(street))
-                {
-                    // "2 GOLDING STREET, ROSEBANK" → one line per part
-                    foreach (var part in street.Split(
-                                 ',',
-                                 StringSplitOptions.RemoveEmptyEntries |
-                                 StringSplitOptions.TrimEntries))
-                    {
-                        postalLines.Add(part.ToUpperInvariant());
-                    }
-                }
-                else if (!string.IsNullOrWhiteSpace(data.PropertyDesc))
-                {
-                    postalLines.Add(Safe(data.PropertyDesc).ToUpperInvariant());
-                }
-
-                if (!postalLines.Any(l =>
-                        l.Contains("JOHANNESBURG", StringComparison.OrdinalIgnoreCase)))
-                {
-                    postalLines.Add("JOHANNESBURG");
-                }
-
-                // Keep the address block the same height as a normal postal address
-                if (postalLines.Count > 5)
-                    postalLines = postalLines.Take(4).Append("JOHANNESBURG").ToList();
-            }
+            var postalLines = BuildPostalLines(data);
 
             var physicalAddress =
                 !string.IsNullOrWhiteSpace(data.PhysicalAddress)
@@ -608,6 +553,75 @@ namespace GV23_Notice.Services.Notices.Section49
                         Path.GetExtension(x)))
                 .OrderBy(x => x)
                 .FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Address block printed at the top of the Section 49 letter.
+        /// Uses ADDR1–ADDR5; when they are all empty it falls back to
+        /// THE OWNER / street address / JOHANNESBURG. Unit tested.
+        /// </summary>
+        public static List<string> BuildPostalLines(Section49PdfData data)
+        {
+            static string Safe(string? s) => string.IsNullOrWhiteSpace(s) ? "" : s.Trim();
+
+            var postalLines = new List<string>();
+
+            if (!string.IsNullOrWhiteSpace(data.Addr1))
+                postalLines.Add(Safe(data.Addr1));
+
+            if (!string.IsNullOrWhiteSpace(data.Addr2))
+                postalLines.Add(Safe(data.Addr2));
+
+            if (!string.IsNullOrWhiteSpace(data.Addr3))
+                postalLines.Add(Safe(data.Addr3));
+
+            if (!string.IsNullOrWhiteSpace(data.Addr4))
+                postalLines.Add(Safe(data.Addr4));
+
+            if (!string.IsNullOrWhiteSpace(data.Addr5))
+                postalLines.Add(Safe(data.Addr5));
+
+            // No postal address on record (ADDR1–ADDR5 all empty):
+            // address the letter to "The Owner" at the property's street address,
+            // e.g.  THE OWNER / 2 GOLDING STREET / JOHANNESBURG.
+            // PDF display only — the database stays as it is.
+            if (postalLines.Count == 0)
+            {
+                postalLines.Add("THE OWNER");
+
+                var street =
+                    !string.IsNullOrWhiteSpace(data.PhysicalAddress)
+                        ? data.PhysicalAddress
+                        : data.LisStreetAddress;
+
+                if (!string.IsNullOrWhiteSpace(street))
+                {
+                    // "2 GOLDING STREET, ROSEBANK" → one line per part
+                    foreach (var part in street.Split(
+                                 ',',
+                                 StringSplitOptions.RemoveEmptyEntries |
+                                 StringSplitOptions.TrimEntries))
+                    {
+                        postalLines.Add(part.ToUpperInvariant());
+                    }
+                }
+                else if (!string.IsNullOrWhiteSpace(data.PropertyDesc))
+                {
+                    postalLines.Add(Safe(data.PropertyDesc).ToUpperInvariant());
+                }
+
+                if (!postalLines.Any(l =>
+                        l.Contains("JOHANNESBURG", StringComparison.OrdinalIgnoreCase)))
+                {
+                    postalLines.Add("JOHANNESBURG");
+                }
+
+                // Keep the address block the same height as a normal postal address
+                if (postalLines.Count > 5)
+                    postalLines = postalLines.Take(4).Append("JOHANNESBURG").ToList();
+            }
+
+            return postalLines;
         }
     }
 }

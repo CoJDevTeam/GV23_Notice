@@ -1,7 +1,7 @@
 using GV23_Notice.Controllers;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Models.DTOs;
-using GV23_Notice.Models.Stats;q
+using GV23_Notice.Models.Stats;
 using GV23_Notice.Models.Workflow.ViewModels;
 using GV23_Notice.Services.Search;
 using GV23_Notice.Services.Stats;

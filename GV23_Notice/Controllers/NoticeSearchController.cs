@@ -57,7 +57,13 @@ namespace GV23_Notice.Controllers
         [HttpGet("ViewPdf")]
         public async Task<IActionResult> ViewPdf([FromQuery] string path, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path))
+            // Only PDFs may be served — otherwise any file on the server could be downloaded
+            // (e.g. ?path=C:\inetpub\...\appsettings.json).
+            if (string.IsNullOrWhiteSpace(path) ||
+                !string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase))
+                return BadRequest("Only PDF files can be opened.");
+
+            if (!System.IO.File.Exists(path))
                 return NotFound("PDF not found on disk.");
             var bytes = await System.IO.File.ReadAllBytesAsync(path, ct);
             return File(bytes, "application/pdf");

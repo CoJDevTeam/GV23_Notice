@@ -1,4 +1,4 @@
-using GV23_Notice.Data;
+﻿using GV23_Notice.Data;
 using GV23_Notice.Domain.Workflow;
 using GV23_Notice.Models;
 using GV23_Notice.Models.Workflow.ViewModels;
@@ -48,8 +48,8 @@ namespace GV23_Notice.Controllers
                     TotalWorkflows = g.Count(),
                     Step1Confirmed = g.Count(x => x.IsConfirmed),
                     Step1Approved = g.Count(x => x.IsApproved),
-                    PendingStep2 = g.Count(x => x.IsApproved && !x.IsStep2Approved),
-                    Step2Approved = g.Count(x => x.IsStep2Approved)
+                    PendingStep2 = g.Count(x => x.IsApproved && !(x.Step2Approved || x.IsStep2Approved)),
+                    Step2Approved = g.Count(x => x.Step2Approved || x.IsStep2Approved)
                 })
                 .OrderBy(x => NoticeSortOrder(x.Notice))
                 .ToList();
@@ -168,11 +168,12 @@ namespace GV23_Notice.Controllers
                     LetterDate = s.LetterDate,
                     IsConfirmed = s.IsConfirmed,
                     IsApproved = s.IsApproved,
-                    IsStep2Approved = s.IsStep2Approved,
-                    HasWorkflowKey = s.WorkflowKey.HasValue,
+                    // Step2Approved is the flag the preview approval actually sets
+                    IsStep2Approved = s.Step2Approved || s.IsStep2Approved,
+                    HasWorkflowKey = (s.WorkflowKey ?? s.ApprovalKey).HasValue,
                     BatchCount = s.Batches.Count,
                     SentCount = sent,
-                    WorkflowKey = s.WorkflowKey
+                    WorkflowKey = s.WorkflowKey ?? s.ApprovalKey
                 };
             }).ToList();
 
@@ -182,8 +183,8 @@ namespace GV23_Notice.Controllers
                 TotalWorkflows = settings.Count,
                 Step1Confirmed = settings.Count(s => s.IsConfirmed),
                 Step1Approved = settings.Count(s => s.IsApproved),
-                PendingStep2 = settings.Count(s => s.IsApproved && !s.IsStep2Approved),
-                Step2Approved = settings.Count(s => s.IsStep2Approved),
+                PendingStep2 = settings.Count(s => s.IsApproved && !(s.Step2Approved || s.IsStep2Approved)),
+                Step2Approved = settings.Count(s => s.Step2Approved || s.IsStep2Approved),
                 TotalBatches = totalBatches,
                 TotalPrinted = totalPrinted,
                 TotalSent = totalSent,

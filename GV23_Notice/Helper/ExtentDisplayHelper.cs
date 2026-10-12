@@ -52,6 +52,22 @@ namespace GV23_Notice.Helpers
                 // SQL decimal values may arrive as strings such as
                 // "2330.0000" or "2330,0000". Parse and remove only
                 // insignificant trailing zeros.
+                //
+                // A comma with no dot is a decimal comma ("2330,0000" = 2330).
+                // Without this check the invariant parse below reads the comma
+                // as a thousands separator and returns 23300000.
+                if (text.Contains(',') && !text.Contains('.') &&
+                    decimal.TryParse(
+                        text.Replace(',', '.'),
+                        NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint,
+                        CultureInfo.InvariantCulture,
+                        out var commaValue))
+                {
+                    return commaValue.ToString(
+                        "0.############################",
+                        CultureInfo.InvariantCulture);
+                }
+
                 if (decimal.TryParse(
                         text,
                         NumberStyles.Any,

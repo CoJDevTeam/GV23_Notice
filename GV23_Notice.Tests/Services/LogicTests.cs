@@ -1,9 +1,10 @@
-using GV23_Notice.Controllers;
+﻿using GV23_Notice.Controllers;
 using GV23_Notice.Services;
 using GV23_Notice.Services.ClaThirdPartyApplications;
 using GV23_Notice.Services.Email;
 using GV23_Notice.Services.Notices.Section49;
 using GV23_Notice.Services.Preview;
+using Microsoft.Extensions.Configuration;
 
 namespace GV23_Notice.Tests.Services
 {
@@ -104,7 +105,7 @@ namespace GV23_Notice.Tests.Services
         }
     }
 
-    /// <summary>Who a Section 49 email goes to (owner / test recipient / roll mailbox).</summary>
+    /// <summary>Who a notice email goes to (owner / test recipient / roll mailbox). Same rule for every notice type.</summary>
     public class RecipientPlanTests
     {
         private const string Mailbox = "GV23Supp4@joburg.org.za";
@@ -112,7 +113,7 @@ namespace GV23_Notice.Tests.Services
         [Fact]
         public void Owner_gets_it_and_roll_mailbox_is_bcc()
         {
-            var plan = NoticeBatchEmailService.PlanRecipients(" owner@example.com ", Mailbox, testMode: false, testRecipient: null);
+            var plan = RollMailbox.Plan(" owner@example.com ", Mailbox, testMode: false, testRecipient: null);
 
             Assert.Equal("owner@example.com", plan.To);
             Assert.Equal(Mailbox, plan.Bcc);
@@ -123,7 +124,7 @@ namespace GV23_Notice.Tests.Services
         [Fact]
         public void No_owner_email_goes_to_the_roll_mailbox_only()
         {
-            var plan = NoticeBatchEmailService.PlanRecipients(null, Mailbox, testMode: false, testRecipient: null);
+            var plan = RollMailbox.Plan(null, Mailbox, testMode: false, testRecipient: null);
 
             Assert.Equal(Mailbox, plan.To);
             Assert.Null(plan.Bcc);
@@ -134,7 +135,7 @@ namespace GV23_Notice.Tests.Services
         [Fact]
         public void Test_mode_redirects_the_owner_copy_but_not_the_mailbox()
         {
-            var plan = NoticeBatchEmailService.PlanRecipients("owner@example.com", Mailbox, testMode: true, testRecipient: "tester@joburg.org.za");
+            var plan = RollMailbox.Plan("owner@example.com", Mailbox, testMode: true, testRecipient: "tester@joburg.org.za");
 
             Assert.Equal("tester@joburg.org.za", plan.To);
             Assert.Equal(Mailbox, plan.Bcc);
@@ -144,7 +145,7 @@ namespace GV23_Notice.Tests.Services
         [Fact]
         public void Test_mode_with_no_owner_email_still_uses_the_real_mailbox()
         {
-            var plan = NoticeBatchEmailService.PlanRecipients("", Mailbox, testMode: true, testRecipient: "tester@joburg.org.za");
+            var plan = RollMailbox.Plan("", Mailbox, testMode: true, testRecipient: "tester@joburg.org.za");
 
             Assert.Equal(Mailbox, plan.To);
             Assert.True(plan.MailboxOnly);
@@ -153,7 +154,7 @@ namespace GV23_Notice.Tests.Services
         [Fact]
         public void No_mailbox_configured_means_no_bcc()
         {
-            var plan = NoticeBatchEmailService.PlanRecipients("owner@example.com", null, testMode: false, testRecipient: null);
+            var plan = RollMailbox.Plan("owner@example.com", null, testMode: false, testRecipient: null);
 
             Assert.Equal("owner@example.com", plan.To);
             Assert.Null(plan.Bcc);
@@ -162,7 +163,7 @@ namespace GV23_Notice.Tests.Services
         [Fact]
         public void Mailbox_is_not_copied_to_itself()
         {
-            var plan = NoticeBatchEmailService.PlanRecipients(Mailbox.ToLowerInvariant(), Mailbox, testMode: false, testRecipient: null);
+            var plan = RollMailbox.Plan(Mailbox.ToLowerInvariant(), Mailbox, testMode: false, testRecipient: null);
 
             Assert.Null(plan.Bcc);
         }
@@ -171,14 +172,101 @@ namespace GV23_Notice.Tests.Services
         public void No_owner_and_no_mailbox_is_an_error()
         {
             Assert.Throws<InvalidOperationException>(() =>
-                NoticeBatchEmailService.PlanRecipients(" ", null, testMode: false, testRecipient: null, runLogId: 7));
+                RollMailbox.Plan(" ", null, testMode: false, testRecipient: null, reference: "RunLog 7"));
         }
 
         [Fact]
         public void Test_mode_without_a_test_recipient_is_an_error()
         {
             Assert.Throws<InvalidOperationException>(() =>
-                NoticeBatchEmailService.PlanRecipients("owner@example.com", Mailbox, testMode: true, testRecipient: ""));
+                RollMailbox.Plan("owner@example.com", Mailbox, testMode: true, testRecipient: ""));
+        }
+
+        [Fact]
+        public void Error_names_the_notice_reference()
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                RollMailbox.Plan(null, null, testMode: false, testRecipient: null, reference: "APP-123"));
+
+            Assert.Contains("APP-123", ex.Message);
+        }
+
+        [Fact]
+        public void Apply_puts_the_owner_in_to_and_the_mailbox_in_bcc()
+        {
+            using var message = new System.Net.Mail.MailMessage();
+
+            RollMailbox.Apply(message, RollMailbox.Plan("owner@example.com", Mailbox, false, null));
+
+            Assert.Equal("owner@example.com", Assert.Single(message.To).Address);
+            Assert.Equal(Mailbox, Assert.Single(message.Bcc).Address);
+        }
+
+        [Fact]
+        public void Apply_mailbox_only_has_no_bcc()
+        {
+            using var message = new System.Net.Mail.MailMessage();
+
+            RollMailbox.Apply(message, RollMailbox.Plan(null, Mailbox, false, null));
+
+            Assert.Equal(Mailbox, Assert.Single(message.To).Address);
+            Assert.Empty(message.Bcc);
+        }
+    }
+
+    /// <summary>Where the roll mailbox comes from (appsettings RollDb:Sources).</summary>
+    public class RollMailboxConfigTests
+    {
+        private const string Mailbox = "GV23Supp4@joburg.org.za";
+
+        private static IConfiguration Config(params (string Key, string? Value)[] values) =>
+            new ConfigurationBuilder()
+                .AddInMemoryCollection(values.Select(v => new KeyValuePair<string, string?>(v.Key, v.Value)))
+                .Build();
+
+        [Fact]
+        public void Reads_the_roll_level_setting()
+        {
+            var config = Config(("RollDb:Sources:Objection_Supp4:RollMailbox", Mailbox));
+
+            Assert.Equal(Mailbox, RollMailbox.FromConfig(config, "Objection_Supp4"));
+        }
+
+        [Fact]
+        public void Falls_back_to_the_older_section_49_setting()
+        {
+            var config = Config(("RollDb:Sources:Objection_Supp4:Section49:RollMailbox", Mailbox));
+
+            Assert.Equal(Mailbox, RollMailbox.FromConfig(config, " Objection_Supp4 "));
+        }
+
+        [Fact]
+        public void Other_rolls_get_no_copy()
+        {
+            var config = Config(("RollDb:Sources:Objection_Supp4:RollMailbox", Mailbox));
+
+            Assert.Null(RollMailbox.FromConfig(config, "Objection"));
+            Assert.Null(RollMailbox.FromConfig(config, null));
+            Assert.Null(RollMailbox.FromConfig(config, ""));
+        }
+
+        [Fact]
+        public void Bound_options_use_the_roll_level_setting_first()
+        {
+            var source = new GV23_Notice.Domain.Rolls.RollSourceOptions
+            {
+                RollMailbox = " roll@joburg.org.za ",
+                Section49 = new GV23_Notice.Domain.Rolls.RollSection49Options { RollMailbox = "old@joburg.org.za" }
+            };
+
+            Assert.Equal("roll@joburg.org.za", RollMailbox.FromSource(source));
+
+            source.RollMailbox = "";
+            Assert.Equal("old@joburg.org.za", RollMailbox.FromSource(source));
+
+            source.Section49.RollMailbox = "";
+            Assert.Null(RollMailbox.FromSource(source));
+            Assert.Null(RollMailbox.FromSource(null));
         }
     }
 
