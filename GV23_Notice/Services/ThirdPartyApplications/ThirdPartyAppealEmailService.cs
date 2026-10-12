@@ -198,11 +198,15 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                 Total = notices.Count
             };
 
+            // Roll mailbox copy (e.g. GV23Supp4@joburg.org.za), null when not configured
+            var rollMailbox = await GetRollMailboxAsync(settings.RollId, ct);
+
             foreach (var notice in notices)
             {
                 try
                 {
-                    if (string.IsNullOrWhiteSpace(notice.OwnerEmail))
+                    if (string.IsNullOrWhiteSpace(notice.OwnerEmail) &&
+                        rollMailbox == null)
                     {
                         notice.Status = "No-Owner-Email";
                         notice.ErrorMessage = "Owner email is missing.";
@@ -212,6 +216,14 @@ namespace GV23_Notice.Services.ThirdPartyApplications
                     }
 
                     ValidateReadyToSend(notice);
+
+                    // Owner (To) + roll mailbox (Bcc), or the roll mailbox only
+                    var plan = RollMailbox.Plan(
+                        ownerEmail: notice.OwnerEmail,
+                        rollMailbox: rollMailbox,
+                        testMode: false,
+                        testRecipient: null,
+                        reference: notice.Appeal_No);
 
                     var sentAt = DateTime.Now;
 
@@ -229,10 +241,13 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
                     await SendOneAsync(
                         notice,
+                        plan,
                         subject,
                         body,
                         cc,
                         ct);
+
+                    notice.EmailTo = plan.To;
 
                     var emlPath = SaveEmailEvidence(
                         settings,
@@ -245,14 +260,15 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
                     notice.EmailSubject = subject;
                     notice.EmailBody = body;
-                    notice.EmailTo = notice.OwnerEmail;
                     notice.EmailCc = cc;
                     notice.EmlPath = emlPath;
 
                     notice.SentAt = sentAt;
                     notice.SentBy = sentBy;
                     notice.Status = "Sent";
-                    notice.ErrorMessage = null;
+                    notice.ErrorMessage = plan.MailboxOnly
+                        ? RollMailbox.NoOwnerEmailNote
+                        : null;
 
                     result.Sent++;
                 }
@@ -298,6 +314,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
 
         private async Task SendOneAsync(
             ThirdPartyAppealApplicationNotice notice,
+            RecipientPlan plan,
             string subject,
             string body,
             string cc,
@@ -319,7 +336,7 @@ namespace GV23_Notice.Services.ThirdPartyApplications
             using var message = new MailMessage();
 
             message.From = new MailAddress(fromEmail, fromName);
-            message.To.Add(notice.OwnerEmail!);
+            RollMailbox.Apply(message, plan);
 
             foreach (var email in SplitEmails(cc))
                 message.CC.Add(email);
@@ -469,7 +486,7 @@ City of Johannesburg";
             var sb = new StringBuilder();
 
             sb.AppendLine($"From: \"{EscapeHeader(fromName)}\" <{fromEmail}>");
-            sb.AppendLine($"To: {notice.OwnerEmail}");
+            sb.AppendLine($"To: {notice.EmailTo ?? notice.OwnerEmail}");
             sb.AppendLine($"Cc: {cc}");
             sb.AppendLine($"Subject: {EncodeHeader(subject)}");
             sb.AppendLine($"Date: {FormatEmailDate(new DateTimeOffset(sentAt))}");
@@ -540,6 +557,19 @@ City of Johannesburg";
                 throw new InvalidOperationException("Workflow settings were not found.");
 
             return settings;
+        }
+
+        private async Task<string?> GetRollMailboxAsync(
+            int rollId,
+            CancellationToken ct)
+        {
+            var sourceDb = await _db.RollRegistry
+                .AsNoTracking()
+                .Where(x => x.RollId == rollId)
+                .Select(x => x.SourceDb)
+                .FirstOrDefaultAsync(ct);
+
+            return RollMailbox.FromConfig(_config, sourceDb);
         }
 
         private async Task<string> GetRollShortCodeAsync(

@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="GV23_Notice.Tests/GV23_Notice.Tests.csproj" Id="584c35d4-7a55-4c88-a51f-5f38539e35bc" />
   <Project Path="GV23_Notice/GV23_Notice.csproj" />
 </Solution>

@@ -117,9 +117,12 @@ namespace GV23_Notice.Services.Corrections
             if (batch.Items.Any(x => x.Status != "QA-Approved"))
                 throw new InvalidOperationException("Correction email cannot be sent before QA is approved.");
 
+            // Roll mailbox copy (e.g. GV23Supp4@joburg.org.za), null when not configured
+            var rollMailbox = await GetRollMailboxAsync(batch, ct);
+
             foreach (var item in batch.Items)
             {
-                ValidateItemReadyForEmail(item);
+                ValidateItemReadyForEmail(item, rollMailbox);
             }
 
             var cc = EnsureValuationEnquiriesCc(vm.Cc);
@@ -152,9 +155,18 @@ namespace GV23_Notice.Services.Corrections
 
                 try
                 {
+                    // Recipient (To) + roll mailbox (Bcc), or the roll mailbox only
+                    var plan = RollMailbox.Plan(
+                        ownerEmail: item.RecipientEmail,
+                        rollMailbox: rollMailbox,
+                        testMode: false,
+                        testRecipient: null,
+                        reference: item.ReferenceNo ?? item.ObjectionNo);
+
                     var emlPath = await SendOneCorrectionEmailAsync(
                         batch,
                         item,
+                        plan,
                         subject,
                         userBody,
                         cc,
@@ -164,7 +176,9 @@ namespace GV23_Notice.Services.Corrections
                     item.EmlPath = emlPath;
                     item.SentAt = DateTime.Now;
                     item.Status = "Sent";
-                    item.ErrorMessage = null;
+                    item.ErrorMessage = plan.MailboxOnly
+                        ? RollMailbox.NoOwnerEmailNote
+                        : null;
                 }
                 catch (Exception ex)
                 {
@@ -194,6 +208,7 @@ namespace GV23_Notice.Services.Corrections
         private async Task<string> SendOneCorrectionEmailAsync(
         NoticeCorrectionBatch batch,
         NoticeCorrectionItem item,
+        RecipientPlan plan,
         string subject,
         string body,
         string cc,
@@ -220,8 +235,9 @@ namespace GV23_Notice.Services.Corrections
 
             message.From = new MailAddress(fromEmail, fromName);
 
-            // Must come from NoticeCorrectionItems.RecipientEmail
-            message.To.Add(item.RecipientEmail!);
+            // NoticeCorrectionItems.RecipientEmail (To) + roll mailbox (Bcc),
+            // or the roll mailbox only when the recipient has no email.
+            RollMailbox.Apply(message, plan);
 
             foreach (var ccEmail in SplitEmails(cc))
             {
@@ -256,7 +272,25 @@ namespace GV23_Notice.Services.Corrections
 
             await client.SendMailAsync(message, ct);
 
-            return SaveEmailEvidence(batch, item, subject, body, cc, sentBy);
+            return SaveEmailEvidence(batch, item, plan.To, subject, body, cc, sentBy);
+        }
+
+        private async Task<string?> GetRollMailboxAsync(
+            NoticeCorrectionBatch batch,
+            CancellationToken ct)
+        {
+            var sourceDb = batch.SourceDb;
+
+            if (string.IsNullOrWhiteSpace(sourceDb))
+            {
+                sourceDb = await _db.RollRegistry
+                    .AsNoTracking()
+                    .Where(x => x.RollId == batch.RollId)
+                    .Select(x => x.SourceDb)
+                    .FirstOrDefaultAsync(ct);
+            }
+
+            return RollMailbox.FromConfig(_config, sourceDb);
         }
 
         private async Task SaveCorrectionEmailTemplateAsync(
@@ -317,9 +351,12 @@ namespace GV23_Notice.Services.Corrections
             _db.NoticeCorrectionEmailTemplates.Add(template);
         }
 
-        private static void ValidateItemReadyForEmail(NoticeCorrectionItem item)
+        private static void ValidateItemReadyForEmail(
+            NoticeCorrectionItem item,
+            string? rollMailbox)
         {
-            if (string.IsNullOrWhiteSpace(item.RecipientEmail))
+            if (string.IsNullOrWhiteSpace(item.RecipientEmail) &&
+                string.IsNullOrWhiteSpace(rollMailbox))
                 throw new InvalidOperationException($"Recipient email is missing for {item.ReferenceNo ?? item.ObjectionNo}.");
 
             if (string.IsNullOrWhiteSpace(item.PdfPath))
@@ -504,6 +541,7 @@ namespace GV23_Notice.Services.Corrections
         private string SaveEmailEvidence(
        NoticeCorrectionBatch batch,
        NoticeCorrectionItem item,
+       string toEmail,
        string subject,
        string body,
        string cc,
@@ -572,7 +610,7 @@ namespace GV23_Notice.Services.Corrections
 
             // Proper .eml headers. Outlook uses these to show date/time.
             sb.AppendLine($"From: \"{EscapeHeader(fromName)}\" <{fromEmail}>");
-            sb.AppendLine($"To: {item.RecipientEmail}");
+            sb.AppendLine($"To: {toEmail}");
             sb.AppendLine($"Cc: {cc}");
             sb.AppendLine($"Subject: {EncodeHeader(subject)}");
             sb.AppendLine($"Date: {dateHeader}");
